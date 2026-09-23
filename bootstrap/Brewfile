@@ -1,0 +1,7 @@
+brew "git"
+brew "gh"
+brew "jq"
+brew "node"
+brew "python"
+brew "uv"
+brew "rtk"

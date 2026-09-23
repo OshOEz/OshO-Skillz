@@ -1,0 +1,12 @@
+{
+  "name": "osho-skillz",
+  "owner": { "name": "OshOEz" },
+  "metadata": { "description": "OshO's Claude Code skills, hooks and global setup." },
+  "plugins": [
+    {
+      "name": "osho-core",
+      "source": "./plugins/osho-core",
+      "description": "Core hooks: code-review-graph auto-update and the per-session Superpowers offer."
+    }
+  ]
+}

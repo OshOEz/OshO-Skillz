@@ -1,0 +1,8 @@
+{
+  "name": "osho-core",
+  "version": "0.1.0",
+  "description": "Core hooks: code-review-graph auto-update and the per-session Superpowers offer.",
+  "author": { "name": "OshOEz" },
+  "repository": "https://github.com/OshOEz/OshO-Skillz",
+  "license": "MIT"
+}
