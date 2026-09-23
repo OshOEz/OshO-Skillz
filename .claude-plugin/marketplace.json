@@ -6,7 +6,7 @@
     {
       "name": "osho-core",
       "source": "./plugins/osho-core",
-      "description": "Core hooks: code-review-graph auto-update and the per-session Superpowers offer."
+      "description": "Core hooks and skills: repo-init, code-review-graph auto-update, per-session Superpowers offer."
     }
   ]
 }
