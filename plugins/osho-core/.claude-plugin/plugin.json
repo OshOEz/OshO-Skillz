@@ -1,7 +1,7 @@
 {
   "name": "osho-core",
-  "version": "0.2.0",
-  "description": "Core hooks and skills: repo-init, code-review-graph auto-update, per-session Superpowers offer.",
+  "version": "0.3.0",
+  "description": "Core hooks and skills: repo-init, donnees-fictives, code-review-graph auto-update, per-session Superpowers offer.",
   "author": { "name": "OshOEz" },
   "repository": "https://github.com/OshOEz/OshO-Skillz",
   "license": "MIT"
