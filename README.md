@@ -60,6 +60,7 @@ Third-party plugins are **referenced, never copied**: they auto-update from upst
 |---|---|---|
 | `repo-init` | Skill | After `git init` / `git clone`, or on request: builds the code-review-graph and installs its pre-commit hook |
 | `donnees-fictives` | Skill | Builds invented test data from confidential client documents, with an automatic leak check and purge |
+| `audit-loop` | Skill + agent | Say *"audit loop on PR #12"*: a senior auditor files issues for production-breaking problems only, a dev fixes them, repeat up to 3 rounds, then it proposes the merge |
 | `superpowers-offer` | Hooks | Removes Superpowers' always-on bootstrap; on substantial dev work, asks once per session whether to use it |
 | `crg` | Hooks | Shows the graph status at session start and updates it after each edit, only in repos where it was built |
 
@@ -82,7 +83,7 @@ From then on the graph stays up to date on every edit and every commit.
 
 ```
 .claude-plugin/marketplace.json   plugin catalogue
-plugins/<plugin>/                 one plugin: .claude-plugin/plugin.json, skills/, hooks/
+plugins/<plugin>/                 one plugin: .claude-plugin/plugin.json, skills/, agents/, hooks/
 bootstrap/install.sh              global setup entry point, runs steps/ in order
 bootstrap/steps/                  one script per install step
 bootstrap/Brewfile                CLI tools
