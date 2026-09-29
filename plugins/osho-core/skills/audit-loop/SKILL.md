@@ -10,11 +10,15 @@ Tu es le chef d'orchestre. Tu ne relis pas le code et tu ne corriges rien toi-m�
 ## 0. Prérequis
 
 1. `gh auth status`. Échec → arrêt, proposer `! gh auth login`.
-2. Trouver la PR :
+2. Trouver le dépôt local `<repo>` (la session n'est pas forcément dedans) :
+   - `git rev-parse --show-toplevel` réussit → c'est `<repo>`.
+   - sinon, chercher parmi les sous-dossiers celui dont `git -C <dossier> remote get-url origin` correspond au repo de la PR ; à défaut, demander le chemin.
+   - Toutes les commandes `gh` se lancent depuis `<repo>` : `cd <repo> && gh ...`.
+3. Trouver la PR :
    - n° ou URL fourni → `gh pr view <n> --json number,headRefName,state,url`. PR introuvable ou `state` différent de `OPEN` → arrêt, le dire.
    - sub-agent de dev en cours → attendre sa notification de fin, puis `gh pr list --head <branche> --state all --json number,state`. PR trouvée mais pas `OPEN` → arrêt, le dire.
    - aucune PR : si le dev a fini et poussé sa branche, ouvrir la PR (`gh pr create --base dev --head <branche> --fill` ; si `dev` n'existe pas sur le remote, demander la branche cible). Sinon demander à l'utilisateur.
-3. Retenir : n° PR, branche, identifiant du dev initial s'il existe, plan de référence **seulement** s'il n'existe que dans cette session (sinon l'auditeur le trouve seul).
+4. Retenir : `<repo>`, n° PR, branche, identifiant du dev initial s'il existe, plan de référence **seulement** s'il n'existe que dans cette session (sinon l'auditeur le trouve seul).
 
 Commande « issues ouvertes de la PR », source de vérité à chaque étape :
 
@@ -25,9 +29,10 @@ gh issue list --label audit-loop --state open --limit 200 --json number,title,bo
 
 ## 1. Audit — tour N (N de 1 à 3)
 
-Lancer l'agent `osho-core:auditor`, `isolation: "worktree"`, description `Audit PR #<n> tour <N>`, prompt :
+Lancer l'agent `osho-core:auditor` (pas d'isolation : il lit le code de la PR dans git, sans checkout), description `Audit PR #<n> tour <N>`, prompt :
 
 ```
+Repo : <repo>
 Audit de la PR #<n> (branche `<branche>`), tour <N> sur 3.
 <réponses de l'utilisateur aux questions précédentes, s'il y en a>
 <plan de référence, seulement s'il n'est ni dans le repo ni dans la PR>
@@ -35,7 +40,6 @@ Audit de la PR #<n> (branche `<branche>`), tour <N> sur 3.
 
 À la notification :
 - Pas de bloc `TOUR / VERDICT` → relancer une fois. Second échec → remonter à l'utilisateur, arrêt.
-- Le résultat indique un worktree conservé : `git -C <worktree> status --porcelain`. Non vide → l'auditeur a écrit des fichiers : prévenir l'utilisateur, ignorer ces changements. Vide → rien à signaler (changer de branche suffit à conserver un worktree).
 - Relire les issues ouvertes avec la commande du §0 : c'est elle qui fait foi, pas le bloc. Si `OUVERTES` cite une issue que la commande ne renvoie pas → prévenir l'utilisateur (corps d'issue mal formé), ne pas conclure à 0 issue.
 
 ## 2. Décider
@@ -50,7 +54,9 @@ Audit de la PR #<n> (branche `<branche>`), tour <N> sur 3.
 
 Choisir le dev :
 - dev initial connu **et** premier tour de correctifs → `SendMessage` vers lui avec le prompt ci-dessous. Si SendMessage échoue → dev neuf.
-- sinon, ou si une issue ouverte l'était déjà au tour précédent → dev neuf : agent `general-purpose`, `isolation: "worktree"`, description `Correctifs PR #<n> tour <N>`.
+- sinon, ou si une issue ouverte l'était déjà au tour précédent → dev neuf. Lui créer un worktree, pour qu'il ne touche jamais au répertoire de travail de l'utilisateur :
+  `W="$(mktemp -d)/pr<n>-t<N>" && git -C <repo> fetch origin <branche> && git -C <repo> worktree add --detach "$W" origin/<branche> && echo "$W"` → noter ce chemin comme `<worktree>`
+  puis lancer un agent `general-purpose` (sans `isolation`), description `Correctifs PR #<n> tour <N>`.
 
 Prompt dev :
 
@@ -59,7 +65,7 @@ Tu corriges la PR #<n> (branche `<branche>`) suite à l'audit du tour <N>.
 
 Issues à traiter : <#12 [P0], #14 [P1]>
 
-[dev neuf uniquement] Tu travailles dans ton worktree : `git fetch origin <branche> && git switch --detach origin/<branche>` (la branche peut être prise par un autre worktree).
+[dev neuf uniquement] Tu travailles uniquement dans `<worktree>`, déjà à jour sur la PR (HEAD détaché). Chaque commande : `cd <worktree> && ...`.
 
 Pour chaque issue, par ordre de priorité (P0 d'abord) :
 1. `gh issue view <num>` : lis le problème, l'impact et le critère de validation.
@@ -82,6 +88,7 @@ Réponds uniquement avec :
 À la notification :
 - Agent en échec ou pas de bloc `TRAITÉES / CONTESTÉES / BLOQUÉ` → relancer une fois. Second échec → remonter à l'utilisateur, arrêt.
 - `BLOQUÉ` différent de `non` → remonter à l'utilisateur et attendre sa décision.
+- Dev neuf : `git -C <repo> worktree remove <worktree>`. Refus (modifications non poussées) → prévenir l'utilisateur, ne pas forcer.
 - Sinon N = N + 1 → §1.
 
 ## 4. Escalade (après l'audit du tour 3)

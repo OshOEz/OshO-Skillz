@@ -24,12 +24,12 @@ plugins/osho-core/
 1. **Entrée** (prérequis unique : une PR existe)
    - PR fournie (n° ou URL) → étape 2.
    - Sub-agent de dev en cours → attendre son callback. Fini sans PR → ouvrir la PR ou demander à l'utilisateur.
-2. **Audit tour N (N ≤ 3)** : lancer `auditor` en arrière-plan, `isolation: "worktree"`, avec : n° PR, n° de tour, réponses aux questions précédentes, plan de la session s'il n'existe pas dans le repo/la PR.
+2. **Audit tour N (N ≤ 3)** : lancer `auditor` en arrière-plan, sans isolation (il lit le code de la PR via `git fetch pull/<n>/head` + `git show`/`git grep`, sans checkout), avec : chemin du repo, n° PR, n° de tour, réponses aux questions précédentes, plan de la session s'il n'existe pas dans le repo/la PR.
 3. **Question bloquante** → pause, poser la question (AskUserQuestion), relancer l'auditeur avec la réponse.
 4. **0 issue `audit-loop` ouverte** sur la PR → étape 7.
 5. **Correctifs**
    - Dev initial disponible et premier tour de correctifs → le reprendre via `SendMessage`.
-   - Sinon, ou si une issue survit à un tour de correctifs → nouveau dev (`isolation: "worktree"`, checkout de la branche de la PR).
+   - Sinon, ou si une issue survit à un tour de correctifs → nouveau dev dans un worktree créé par le chef d'orchestre (`git worktree add --detach`), supprimé après son passage.
    - Le dev pousse sur la branche de la PR et commente chaque issue traitée avec ses commits. Il ne ferme pas les issues.
 6. Tour N+1 → étape 2. **Après l'audit du tour 3 avec des issues encore ouvertes** : arrêt, liste des issues restantes à l'utilisateur, qui décide (tour supplémentaire, merge, abandon).
 7. **Sortie** : résumé en 3 à 5 lignes (tours, issues ouvertes/fermées), questions non bloquantes, puis « Merger la PR #X ? ». Ne merge jamais seul.
@@ -75,7 +75,7 @@ Branche et PR, liste des issues à traiter, consigne : lire chaque issue, corrig
 - `gh` non authentifié → arrêt, proposer `! gh auth login`.
 - PR introuvable / fermée → arrêt, le dire.
 - Sub-agent en échec ou sans bloc de retour → une relance, puis remonter à l'utilisateur.
-- Worktree de l'auditeur conservé avec des modifications → l'auditeur a écrit : prévenir l'utilisateur, ignorer ces changements.
+- Session hors du dépôt → trouver le repo parmi les sous-dossiers (remote `origin`), sinon demander le chemin.
 
 ## Validation
 
