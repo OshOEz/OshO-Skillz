@@ -35,7 +35,7 @@ Run the stages in this order, skipping those that are not in the level or are al
 | structural-index | mantis-structural-index | haiku | Sharp+ | whole repo | `workspace/kb/structural_index/` exists |
 | architecture | mantis-architecture | sonnet | all | whole repo | `workspace/kb/` has a `.md` file |
 | threat-model | mantis-threat-model | sonnet | all | whole repo | `workspace/kb/THREAT_MODEL.md` exists |
-| plan | mantis-plan | sonnet | all | whole repo | `workspace/plan.json` has 1 to `hypotheses_max` investigations |
+| plan | mantis-plan | sonnet | all | whole repo | `workspace/plan.json` has 1 to `hypotheses_max` investigations (Overkill: at least 1 — one-per-source-file can exceed `hypotheses_max`) |
 | researcher | mantis-researcher | sonnet | all | investigations split into `parallel` contiguous groups | every agent replied; `workspace/findings/` exists |
 | dedupe | mantis-dedupe | haiku | Sharp+ | all findings | finding count did not increase |
 | review | mantis-review | sonnet | all | findings split into `parallel` groups | each one has `reasoning` |
