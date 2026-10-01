@@ -23,7 +23,7 @@ Paths: `T="${CLAUDE_PLUGIN_ROOT}/skills/mantis-triage/scripts"`, `R="${CLAUDE_PL
 1. Mantis source: `if [ -d "$M/.git" ]; then git -C "$M" pull --ff-only -q; else git clone -q https://github.com/google/mantis "$M"; fi`. If the pull fails (for example when offline), continue with the local copy and add a note. Write `git -C "$M" rev-parse --short HEAD` into `campaign.json` as `mantis_commit`.
 2. No `state.json` yet → write it with `stages` set to every stage of the level (table below) as `"pending"`, `round: 1`, `notes: []`, `finished: false`, and `git_status_before` set to the output of `git -C "$REPO" status --porcelain -- . ':(exclude)osho-mantis'`.
 3. If the level includes reproduce and `docker info` fails → set reproduce to `"skipped"` and add the note « reproduce sauté : Docker indisponible ».
-4. Shadow copy: `rsync -a --delete --exclude .git --exclude osho-mantis "$REPO/" "$AUDIT/workspace/shadow/"`.
+4. Shadow copy (used only by reproduce and patch): if `state.json` has no `shadow` key yet, create one with `mktemp -d` **outside `$REPO` and `$AUDIT`** and save its path there as `shadow`. Then (re)populate it from tracked files only, no symlinks — so a hostile repo's `.venv`/`node_modules` symlinks are never copied into a sandbox a patch agent can write through, and never land under the audit folder where the symlink guard above would (wrongly) block every resume: `git -C "$REPO" ls-files -z | rsync -a --delete --no-links --from0 --files-from=- "$REPO/" "$SHADOW/"` (`$SHADOW` = the path saved in `state.json`).
 
 ## 3. Stages
 
@@ -46,6 +46,7 @@ Run the stages in this order, skipping those that are not in the level or are al
 | calibrate | mantis-calibrate | sonnet | Sharp+ | non-rejected findings, split into `parallel` groups | each one has `mantis_risk_score` |
 | reflect | mantis-reflect | sonnet | Savage, Overkill | whole workspace | agent replied |
 
+- "whole repo" scope (history, structural-index, architecture, threat-model, plan, researcher) always means `<REPO>` **excluding the `osho-mantis/` folder** (previous audits and this campaign's own files, not target code); say so in the Scope line. For plan, `<out_of_scope>` always includes `osho-mantis/` in addition to whatever triage set.
 - Dispatch parallel groups as several Agent calls in one message (`subagent_type: general-purpose`, with the model from the table).
 - A finding is "rejected" if `status` is `FALSE_POSITIVE` or `DUPLICATE`, or if `production_viability` is `NON_VIABLE` or `SAMPLE_OR_TEST`. Rejected findings skip all later stages.
 - Per-finding stages are resumable: on a rerun, only the findings in scope that still lack the checked field are processed.
@@ -58,7 +59,7 @@ Run the stages in this order, skipping those that are not in the level or are al
 You run the Mantis stage `<stage>` of a security audit.
 1. Read <M>/<mantis dir>/SKILL.md and follow it in standalone mode with:
    --state_root <AUDIT>      (state files live in <AUDIT>/workspace/)
-   --target_root <CODE>      (<CODE> = <REPO>; for reproduce and patch, <AUDIT>/workspace/shadow)
+   --target_root <CODE>      (<CODE> = <REPO>; for reproduce and patch, <SHADOW> — the path saved in state.json)
 2. <REPO> is read-only. Write only under <AUDIT>/workspace/.
 3. Do not delegate to sub-agents: you are one of <n> parallel workers.
 4. Scope: <scope>.            (e.g. "only investigations #4 to #6 of workspace/plan.json",
@@ -76,7 +77,7 @@ You run the Mantis stage `<stage>` of a security audit.
 ## 4. Finish
 
 1. Integrity: compare `git -C "$REPO" status --porcelain -- . ':(exclude)osho-mantis'` with `git_status_before`. If they differ, warn the user first, listing the files that changed, and do not discard anything.
-2. `rm -rf "$AUDIT/workspace/shadow"`.
+2. `rm -rf "$SHADOW"` (the path saved as `shadow` in `state.json`), then drop that key.
 3. Set `finished: true` in `state.json` and `finished_at` (`date +%Y-%m-%dT%H:%M:%S`) in `campaign.json`.
 4. `python3 "$R/render.py" "$AUDIT"`, then `open "$AUDIT/dashboard.html"`.
 5. Report, 5 lines max: counts by severity, the top Critical or High finding, the `README.md` path. If `versioning` is `versioned`, end with: `git -C "<REPO>" add "osho-mantis/<audit name>" && git -C "<REPO>" commit -m "Audit de sécurité Mantis <date>"`. Never commit yourself.
