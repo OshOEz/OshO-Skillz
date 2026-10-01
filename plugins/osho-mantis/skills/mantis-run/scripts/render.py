@@ -140,16 +140,17 @@ def render(audit_dir):
     campaign = load_json(audit_dir / "campaign.json", {})
     state = load_json(audit_dir / "state.json", {})
     findings, unreadable = load_findings(audit_dir / "workspace")
-    # Compute _file for each finding with deduplication
-    file_counts = {}
+    # Compute _file for each finding with deduplication against all used names
+    used = set()
     for f in findings:
-        base_file = safe_id(f)
-        if base_file not in file_counts:
-            f["_file"] = base_file
-            file_counts[base_file] = 1
-        else:
-            file_counts[base_file] += 1
-            f["_file"] = f"{base_file}-{file_counts[base_file]}"
+        name = safe_id(f)
+        if name in used:
+            suffix = 2
+            while f"{name}-{suffix}" in used:
+                suffix += 1
+            name = f"{name}-{suffix}"
+        used.add(name)
+        f["_file"] = name
     meta = {"repo_name": Path(campaign.get("repo") or audit_dir.parent.parent).name,
             "audit_name": audit_dir.name, "level": campaign.get("level"),
             "mantis_commit": campaign.get("mantis_commit"), "started_at": campaign.get("started_at"),

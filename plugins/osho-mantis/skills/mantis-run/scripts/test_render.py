@@ -103,8 +103,41 @@ def test_safe_id_collision():
         assert files["a/b"] in readme and files["a_b"] in readme
 
 
+def test_safe_id_triple_collision():
+    """Three findings: a/b, a_b-2, a_b (suffixed name can collide with another's unsuffixed safe_id)."""
+    COL1 = {"id": "a/b", "title": "First", "severity": "CRITICAL", "status": "VALID",
+            "patch_diff": "DIFF-1\n"}
+    COL2 = {"id": "a_b-2", "title": "Second", "severity": "CRITICAL", "status": "VALID",
+            "patch_diff": "DIFF-2\n"}
+    COL3 = {"id": "a_b", "title": "Third", "severity": "CRITICAL", "status": "VALID",
+            "patch_diff": "DIFF-3\n"}
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp, [COL1, COL2, COL3])
+        html, payload = data(d)
+        # All three findings should have distinct _file names
+        files = {f["id"]: f["_file"] for f in payload["findings"]}
+        all_files = set(files.values())
+        assert len(all_files) == 3, f"Expected 3 distinct _file names, got {len(all_files)}: {files}"
+        # All three patch files should exist with correct content
+        patches = sorted(p.name for p in (d / "patches").iterdir())
+        assert len(patches) == 3, f"Expected 3 patch files, got {len(patches)}: {patches}"
+        # Check each patch file has correct content
+        for finding_id, expected_diff in [("a/b", "DIFF-1"), ("a_b-2", "DIFF-2"), ("a_b", "DIFF-3")]:
+            patch_content = (d / "patches" / f"{files[finding_id]}.diff").read_text()
+            assert expected_diff in patch_content, f"Finding {finding_id} patch missing {expected_diff}"
+            # Verify no cross-contamination
+            for other_diff in ["DIFF-1", "DIFF-2", "DIFF-3"]:
+                if other_diff != expected_diff:
+                    assert other_diff not in patch_content, f"Finding {finding_id} patch contains unexpected {other_diff}"
+        # README should reference all three files
+        readme = (d / "README.md").read_text()
+        for file_name in all_files:
+            assert file_name in readme, f"README missing reference to {file_name}"
+
+
 if __name__ == "__main__":
     test_trois_findings()
     test_aucun_finding()
     test_safe_id_collision()
+    test_safe_id_triple_collision()
     print("OK")
