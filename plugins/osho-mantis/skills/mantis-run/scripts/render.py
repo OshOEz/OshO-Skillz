@@ -13,6 +13,12 @@ BUCKETS = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
 REJECTED_STATUS = {"FALSE_POSITIVE", "DUPLICATE"}
 REJECTED_VIABILITY = {"NON_VIABLE", "SAMPLE_OR_TEST"}
 NA = "non évalué à ce niveau"
+LEVEL_BANNERS = {
+    "Light": "Analyse statique : pas de reproduction, correctifs proposés non vérifiés.",
+    "Sharp": "Reproduction Docker des High+ et correctifs vérifiés par re-attaque.",
+    "Savage": "Reproduction de tout le viable, chaînes d'exploits.",
+    "Overkill": "Revue exhaustive de chaque fichier, 3 tours.",
+}
 
 
 def load_json(path, default):
@@ -94,8 +100,10 @@ def readme(meta, findings, unreadable, st):
     rejected = [f for f in findings if bucket(f) == "REJECTED"]
     out = [f"# Audit de sécurité — {text(meta['repo_name'])}", "",
            f"{meta['started_at'] or '?'} · niveau **{meta['level'] or '?'}** · Mantis `{meta['mantis_commit'] or '?'}`"
-           + (f" · durée {meta['duration']}" if meta["duration"] else ""), "",
-           "[Ouvrir le dashboard](dashboard.html) : GitHub affiche le HTML en source, ouvrez le fichier en local.", "",
+           + (f" · durée {meta['duration']}" if meta["duration"] else ""), ""]
+    if meta["level_banner"]:
+        out += [text(meta["level_banner"]), ""]
+    out += ["[Ouvrir le dashboard](dashboard.html) : GitHub affiche le HTML en source, ouvrez le fichier en local.", "",
            "| Critical | High | Medium | Low | Écartés |", "|---|---|---|---|---|",
            "| " + " | ".join(str(st["by_bucket"][k]) for k in BUCKETS + ["REJECTED"]) + " |", ""]
     if not findings:
@@ -162,6 +170,8 @@ def render(audit_dir):
             "duration": duration(campaign.get("started_at"), campaign.get("finished_at")),
             "notes": state.get("notes", []),
             "stages": [k for k, v in state.get("stages", {}).items() if v == "done"]}
+    meta["reproduce_done"] = "reproduce" in meta["stages"]
+    meta["level_banner"] = LEVEL_BANNERS.get(meta["level"], "")
     st = stats(findings)
     (audit_dir / "README.md").write_text(readme(meta, findings, unreadable, st))
     for f in findings:
@@ -217,6 +227,7 @@ pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:
 <body>
 <header><h1 id="title"></h1><div id="meta" class="muted"></div><div id="stages" class="muted"></div></header>
 <main>
+<div id="level-banner"></div>
 <section class="grid" id="stats"></section>
 <h2>Points critiques</h2><section class="grid" id="critical"></section>
 <h2>Kanban</h2><section class="board" id="board"></section>
@@ -306,8 +317,13 @@ document.title = 'Audit — ' + (m.repo_name || 'repo');
 document.getElementById('title').textContent = 'Audit de sécurité — ' + (m.repo_name || 'repo');
 document.getElementById('meta').textContent = [m.started_at, 'niveau ' + (m.level || '?'), 'Mantis ' + (m.mantis_commit || '?'), m.duration].filter(Boolean).join(' · ');
 if (m.stages.length) document.getElementById('stages').textContent = 'Étapes exécutées : ' + m.stages.join(', ');
-const tiles = [['Findings', s.total], ['Critical', s.by_bucket.CRITICAL], ['High', s.by_bucket.HIGH], ['Medium', s.by_bucket.MEDIUM], ['Low', s.by_bucket.LOW], ['Confirmés', s.confirmed], ['Reproduits', s.reproduced], ['Patchs vérifiés', s.patched], ['Écartés', s.by_bucket.REJECTED]];
-for (const [label, n] of tiles) document.getElementById('stats').append(el('div', {class: 'stat'}, el('b', {}, String(n)), label));
+if (m.level_banner) document.getElementById('level-banner').textContent = m.level_banner;
+const tiles = [['Findings', s.total], ['Critical', s.by_bucket.CRITICAL], ['High', s.by_bucket.HIGH], ['Medium', s.by_bucket.MEDIUM], ['Low', s.by_bucket.LOW], ['Confirmés', s.confirmed], ['Reproduits', s.reproduced, !m.reproduce_done], ['Patchs vérifiés', s.patched, !m.reproduce_done], ['Écartés', s.by_bucket.REJECTED]];
+for (const [label, n, na] of tiles) {
+  const t = na ? el('div', {class: 'stat'}, el('b', {}, '—'), label, el('div', {class: 'muted'}, NA))
+              : el('div', {class: 'stat'}, el('b', {}, String(n)), label);
+  document.getElementById('stats').append(t);
+}
 const crit = D.findings.filter(f => f._bucket === 'CRITICAL' || f._bucket === 'HIGH');
 const critBox = document.getElementById('critical');
 if (!crit.length) critBox.append(el('p', {class: 'muted'}, D.findings.length ? 'Aucun point Critical ou High.' : 'Aucun finding.'));

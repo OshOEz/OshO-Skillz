@@ -70,6 +70,31 @@ def test_trois_findings():
             assert r.returncode == 0, r.stderr
 
 
+def test_niveau_banniere_et_reproduce():
+    """Level banner + reproduce-not-run tiles show '-' instead of a misleading 0."""
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp, [CRIT, LOW])  # fixture state.json: reproduce = "skipped", not "done"
+        html, payload = data(d)
+        assert payload["meta"]["reproduce_done"] is False
+        assert payload["meta"]["level_banner"] == "Analyse statique : pas de reproduction, correctifs proposés non vérifiés."
+        readme = (d / "README.md").read_text()
+        assert "Analyse statique : pas de reproduction, correctifs proposés non vérifiés." in readme
+        if shutil.which("node"):
+            js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+            assert "reproduce_done" in js
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        (d / "workspace" / "findings").mkdir(parents=True)
+        (d / "campaign.json").write_text(json.dumps({"repo": "/x/demo", "level": "Sharp", "mantis_commit": "47099ed",
+                                                      "started_at": "2026-10-01T14:32:00"}))
+        (d / "state.json").write_text(json.dumps({"stages": {"reproduce": "done"}, "notes": []}))
+        r = subprocess.run([sys.executable, str(RENDER), str(d)], capture_output=True, text=True)
+        assert r.returncode == 0, r.stderr
+        _, payload = data(d)
+        assert payload["meta"]["reproduce_done"] is True
+        assert payload["meta"]["level_banner"] == "Reproduction Docker des High+ et correctifs vérifiés par re-attaque."
+
+
 def test_aucun_finding():
     with tempfile.TemporaryDirectory() as tmp:
         d = audit(tmp, [])
@@ -138,6 +163,7 @@ def test_safe_id_triple_collision():
 
 if __name__ == "__main__":
     test_trois_findings()
+    test_niveau_banniere_et_reproduce()
     test_aucun_finding()
     test_safe_id_collision()
     test_safe_id_triple_collision()
