@@ -217,43 +217,59 @@ TEMPLATE = r"""<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Audit Mantis</title>
 <style>
-:root{--bg:#f7f7f8;--card:#fff;--fg:#1d1d1f;--muted:#6b6b70;--line:#e3e3e6;--crit:#c62828;--high:#e65100;--med:#b58900;--low:#2e7d32;--rej:#757575;--add:#e6f4ea;--del:#fdecea}
-@media (prefers-color-scheme:dark){:root{--bg:#141416;--card:#1e1e21;--fg:#ececf0;--muted:#a0a0a8;--line:#2e2e33;--add:#12301c;--del:#3a1614}}
+:root{
+  --coral:#dd4175;--orange:#ff9777;--plum:#7c0559;
+  --heading:#181b31;--text:#2e293b;--muted:#6c667b;--light:#a7a9b8;
+  --peach:#fff5f1;--peach2:#ffd4c4;--line:#f1e6e2;--ok:#1f9d63;
+  --grad:linear-gradient(135deg,var(--coral),var(--orange));
+  --ease:cubic-bezier(.16,1,.3,1);
+  --bg:#fff;--card:#fff;--fg:var(--text);
+  --crit:var(--plum);--high:var(--coral);--med:var(--orange);--low:var(--ok);--rej:var(--light);
+  --add:#e9f7ef;--del:#fdecef;
+  --shadow:0 2px 10px rgba(221,65,117,.10);
+}
 *{box-sizing:border-box}
-body{margin:0;font:14px/1.5 -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+body{margin:0;font-family:Inter,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.65;background:#fff;color:var(--text);-webkit-font-smoothing:antialiased}
+header{position:sticky;top:0;z-index:10;background:rgba(255,255,255,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
 header,main{max-width:1400px;margin:0 auto;padding:16px}
-h1{font-size:20px;margin:0 0 4px}
-main>h2{font-size:15px;margin:24px 0 8px}
+h1{font-size:20px;margin:0 0 4px;font-weight:800;letter-spacing:-.025em;color:var(--heading)}
+.gt{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.kicker{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--coral);background:var(--peach);padding:3px 10px;border-radius:999px;margin-right:6px}
+main>h2{font-size:15px;margin:24px 0 8px;color:var(--heading)}
 .muted{color:var(--muted)}
+#level-banner:not(:empty){border-radius:14px;padding:14px 18px;margin:16px 0 0;background:var(--peach);border:1px solid var(--peach2);font-size:15px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
-.stat{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px}
-.stat b{display:block;font-size:22px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px;box-shadow:var(--shadow)}
+.stat b{display:block;font-size:22px;color:var(--heading)}
 #filter{width:100%;padding:8px 10px;margin:0 0 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:inherit;font:inherit}
+#filter:focus-visible{outline:3px solid var(--orange);outline-offset:1px}
 .board{display:grid;grid-template-columns:repeat(5,minmax(220px,1fr));gap:10px;overflow-x:auto}
-.col{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px;min-height:80px}
+.col{background:var(--peach);border:1px solid var(--line);border-radius:16px;padding:8px;min-height:80px;box-shadow:var(--shadow)}
 .col h3{font-size:13px;margin:0 0 8px;display:flex;justify-content:space-between}
 summary{cursor:pointer;list-style:none}
-.card{display:block;width:100%;text-align:left;background:var(--bg);color:inherit;font:inherit;border:1px solid var(--line);border-left:4px solid var(--c);border-radius:6px;padding:8px;margin-bottom:6px;cursor:pointer}
+.card{display:block;width:100%;text-align:left;background:#fff;color:inherit;font:inherit;border:1px solid var(--line);border-left:4px solid var(--c);border-radius:6px;padding:8px;margin-bottom:6px;cursor:pointer}
 .card:hover,.card:focus-visible{outline:2px solid var(--c)}
 .badge{display:inline-block;font-size:11px;padding:0 6px;border-radius:10px;border:1px solid var(--line);margin:4px 4px 0 0}
-#panel{position:fixed;top:0;right:0;height:100%;width:min(640px,100%);background:var(--card);border-left:1px solid var(--line);box-shadow:-4px 0 16px rgba(0,0,0,.15);transform:translateX(100%);transition:transform .2s;display:flex;flex-direction:column}
+#panel{position:fixed;top:0;right:0;height:100%;width:min(640px,100%);background:var(--card);border-left:1px solid var(--line);box-shadow:var(--shadow),-4px 0 16px rgba(24,27,49,.12);transform:translateX(100%);transition:transform .2s;display:flex;flex-direction:column}
 #panel.open{transform:none}
 .phead{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:16px}
-.phead h2{margin:0;font-size:16px}
+.phead h2{margin:0;font-size:16px;color:var(--heading)}
 .phead button{background:none;border:0;color:inherit;font-size:18px;cursor:pointer}
+.phead button:focus-visible{outline:3px solid var(--orange);outline-offset:2px}
 .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);padding:0 16px}
 .tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:8px;color:inherit;font:inherit;cursor:pointer}
-.tabs button[aria-selected=true]{border-color:var(--fg);font-weight:600}
+.tabs button[aria-selected=true]{border-bottom:2px solid transparent;border-image:var(--grad) 1;font-weight:600;color:var(--heading)}
+.tabs button:focus-visible{outline:3px solid var(--orange);outline-offset:2px}
 #content{padding:16px;overflow:auto}
-dt{font-weight:600;margin-top:12px}
+dt{font-weight:600;margin-top:12px;color:var(--heading)}
 dd{margin:2px 0 0;white-space:pre-wrap}
-pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px;overflow:auto;white-space:pre-wrap;margin:4px 0}
+pre{background:#fff;border:1px solid var(--line);border-radius:6px;padding:8px;overflow:auto;white-space:pre-wrap;margin:4px 0}
 .add{background:var(--add)}.del{background:var(--del)}
 @media (max-width:700px){.board{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
-<header><h1 id="title"></h1><div id="meta" class="muted"></div><div id="stages" class="muted"></div></header>
+<header><span id="kicker" class="kicker"></span><h1 id="title"></h1><div id="meta" class="muted"></div><div id="stages" class="muted"></div></header>
 <main>
 <div id="level-banner"></div>
 <section class="grid" id="stats"></section>
@@ -379,8 +395,9 @@ function openFromHash() {
 window.addEventListener('hashchange', openFromHash);
 
 document.title = 'Audit — ' + (m.repo_name || 'repo');
-document.getElementById('title').textContent = 'Audit de sécurité — ' + (m.repo_name || 'repo');
-document.getElementById('meta').textContent = [m.started_at, 'niveau ' + (m.level || '?'), 'Mantis ' + (m.mantis_commit || '?'), m.duration].filter(Boolean).join(' · ');
+document.getElementById('kicker').textContent = 'Niveau ' + (m.level || '?');
+document.getElementById('title').append('Audit de sécurité — ', el('span', {class: 'gt'}, m.repo_name || 'repo'));
+document.getElementById('meta').textContent = [m.started_at, 'Mantis ' + (m.mantis_commit || '?'), m.duration].filter(Boolean).join(' · ');
 if (m.stages.length) document.getElementById('stages').textContent = 'Étapes exécutées : ' + m.stages.join(', ');
 if (m.level_banner) document.getElementById('level-banner').textContent = m.level_banner;
 const tiles = [['Findings', s.total], ['Critical', s.by_bucket.CRITICAL], ['High', s.by_bucket.HIGH], ['Medium', s.by_bucket.MEDIUM], ['Low', s.by_bucket.LOW], ['Confirmés', s.confirmed], ['Reproduits', s.reproduced, !m.reproduce_done], ['Patchs vérifiés', s.patched, !m.reproduce_done], ['Écartés', s.by_bucket.REJECTED]];
