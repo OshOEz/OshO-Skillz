@@ -79,7 +79,7 @@ def estimate(inv):
     src = sum(l["files"] for l in inv["languages"].values()) or 1
     levels = {}
     for name, h, par in LEVELS:
-        h = min(h or src, src)
+        h = h if h else max(src, 1)
         c = calls(name, h)
         pct = sum(COST[k] * n for k, n in c.items())
         levels[name] = {"hypotheses": h, "parallel": par, "calls": c,

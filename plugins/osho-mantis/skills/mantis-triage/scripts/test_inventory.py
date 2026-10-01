@@ -49,7 +49,7 @@ def test_inventaire():
         assert inv["history"]["security_commits"][0].endswith("fix XSS in search")
         assert inv["repro"]["has_tests"] is True and inv["repro"]["has_dockerfile"] is False
         assert list(inv["levels"]) == ["Light", "Sharp", "Savage", "Overkill"]
-        assert inv["levels"]["Light"]["hypotheses"] == 3 and inv["levels"]["Overkill"]["hypotheses"] == 3
+        assert inv["levels"]["Light"]["hypotheses"] == 5 and inv["levels"]["Overkill"]["hypotheses"] == 3
         assert [inv["levels"][n]["parallel"] for n in inv["levels"]] == [2, 3, 4, 6]
         assert all(p in inv["levels"]["Sharp"]["subtitle"] for p in ("Pro :", "Max 5x :", "Max 20x :"))
         assert inv["recommended"] == "Light"
