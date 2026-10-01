@@ -60,6 +60,7 @@ def test_trois_findings():
         assert "Injection de commande" in readme and "<img src=x" not in readme
         assert "## Écartés" in readme and "Faux SQLi" in readme
         assert "non évalué à ce niveau" in readme
+        assert "**Résumé** : Clickjacking." in readme, "LOW has no executive_summary: README Résumé falls back to impact"
         assert "broken.json" in readme and "reproduce sauté : niveau Light" in readme
         assert "git apply osho-mantis/" in readme and ".._c1.diff" in readme
         if shutil.which("node"):

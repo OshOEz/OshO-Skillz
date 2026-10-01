@@ -78,6 +78,11 @@ def cell(value):
     return text(value).replace("|", "\\|").replace("\n", " ")
 
 
+def summary(f):
+    """executive_summary (set by calibrate) is absent in Light; fall back to impact"""
+    return f.get("executive_summary") or f.get("impact")
+
+
 def block(code, lang=""):
     longest = max((len(m) for m in re.findall(r"`+", code)), default=0)
     fence = "`" * max(3, longest + 1)
@@ -103,7 +108,7 @@ def readme(meta, findings, unreadable, st):
         out.append("")
         for f in kept:
             out += [f"### [{bucket(f)}] {text(f['title'])}", "",
-                    f"**Résumé** : {text(f.get('executive_summary'))}", "",
+                    f"**Résumé** : {text(summary(f))}", "",
                     f"**Emplacement** : {text(f.get('code_paths'))} · **CWE** : {text(f.get('cwe'))}", "",
                     f"**Problème** : {text(f.get('description'))}", "",
                     f"**Impact** : {text(f.get('impact'))}", "",
@@ -164,7 +169,7 @@ def render(audit_dir):
             (audit_dir / "patches").mkdir(exist_ok=True)
             (audit_dir / "patches" / f"{f['_file']}.diff").write_text(str(f["patch_diff"]).rstrip("\n") + "\n")
     payload = {"meta": meta, "stats": st,
-               "findings": [dict(f, _bucket=bucket(f)) for f in sorted(findings, key=sort_key)]}
+               "findings": [dict(f, _bucket=bucket(f), _summary=summary(f)) for f in sorted(findings, key=sort_key)]}
     (audit_dir / "dashboard.html").write_text(TEMPLATE.replace("__DATA__", safe_json(payload)))
 
 
@@ -269,7 +274,7 @@ function diff(f) {
   return el('div', {}, el('dt', {}, 'Diff'), p);
 }
 const TABS = [
-  ['Résumé', f => dl(f, [['Résumé', 'executive_summary'], ['Impact', 'impact'], ["Position de l'attaquant", 'attacker_position'], ['Privilèges requis', 'privileges_required'], ['Interaction utilisateur', 'user_interaction']])],
+  ['Résumé', f => dl(f, [['Résumé', '_summary'], ['Impact', 'impact'], ["Position de l'attaquant", 'attacker_position'], ['Privilèges requis', 'privileges_required'], ['Interaction utilisateur', 'user_interaction']])],
   ['Problème', f => dl(f, [['Description', 'description'], ['Emplacement', 'code_paths'], ['CWE', 'cwe'], ['Analyse du review', 'reasoning'], ['Analyse du critic', 'critic_reasoning']])],
   ['Cas testé', f => { const d = dl(f, [['Statut', 'repro_status'], ['Script', 'repro_file_path']]); d.append(pre(f, 'run_command', 'Commande'), pre(f, 'repro_output', 'Sortie')); return d; }],
   ['Correction', f => {
@@ -308,7 +313,7 @@ const critBox = document.getElementById('critical');
 if (!crit.length) critBox.append(el('p', {class: 'muted'}, D.findings.length ? 'Aucun point Critical ou High.' : 'Aucun finding.'));
 for (const f of crit) {
   const c = card(f);
-  if (f.executive_summary) c.append(el('div', {}, String(f.executive_summary)));
+  if (f._summary) c.append(el('div', {}, String(f._summary)));
   critBox.append(c);
 }
 const board = document.getElementById('board');
