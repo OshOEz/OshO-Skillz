@@ -11,7 +11,7 @@ Scripts: `T="${CLAUDE_PLUGIN_ROOT}/skills/mantis-triage/scripts"`.
 
 ## Steps
 
-1. **Target.** The repo path the user named, else the current directory, as an absolute path `REPO`. If `git -C "$REPO" rev-parse HEAD` fails, stop and ask the user whether to `git init` and commit; the inventory reads `git ls-files`.
+1. **Target.** The repo path the user named, else the current directory, as `REPO=$(git -C "<path>" rev-parse --show-toplevel)` (the canonical toplevel, so triage and `mantis-run` agree on `REPO` from a subdirectory or a symlinked path). If that fails, stop and ask the user whether to `git init` and commit; the inventory reads `git ls-files`.
 2. **Visibility.** If `REPO` is the current directory and the line above is exactly `local`, `private`, `public` or `unknown`, use it. Otherwise run `bash "$T/check-visibility.sh" "$REPO"`. Then:
    - `local` or `private` → `VERSIONING=versioned`, no question.
    - `public` → say: « ⚠️ Repo public : le dossier d'audit contiendra des vulnérabilités détaillées et des exploits, visibles de tous une fois poussés. » Then AskUserQuestion, header `Versionnement`, options `Non versionné (Recommandé)` / `Versionné quand même`.
