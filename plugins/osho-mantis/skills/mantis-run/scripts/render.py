@@ -228,6 +228,7 @@ main>h2{font-size:15px;margin:24px 0 8px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
 .stat{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px}
 .stat b{display:block;font-size:22px}
+#filter{width:100%;padding:8px 10px;margin:0 0 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:inherit;font:inherit}
 .board{display:grid;grid-template-columns:repeat(5,minmax(220px,1fr));gap:10px;overflow-x:auto}
 .col{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px;min-height:80px}
 .col h3{font-size:13px;margin:0 0 8px;display:flex;justify-content:space-between}
@@ -257,7 +258,9 @@ pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:
 <div id="level-banner"></div>
 <section class="grid" id="stats"></section>
 <h2>Points critiques</h2><section class="grid" id="critical"></section>
-<h2>Kanban</h2><section class="board" id="board"></section>
+<h2>Kanban</h2>
+<input id="filter" type="search" placeholder="Filtrer (titre, emplacement, CWE)…">
+<section class="board" id="board"></section>
 </main>
 <aside id="panel" aria-hidden="true">
 <div class="phead"><h2 id="ptitle"></h2><button id="close" aria-label="Fermer">✕</button></div>
@@ -379,14 +382,26 @@ for (const f of crit) {
   if (f._summary) c.append(el('div', {}, String(f._summary)));
   critBox.append(c);
 }
-const board = document.getElementById('board');
-for (const [key, label] of COLS) {
-  const items = D.findings.filter(f => f._bucket === key);
-  const head = el('h3', {}, el('span', {}, label), el('span', {class: 'muted'}, String(items.length)));
-  const col = key === 'REJECTED' ? el('details', {class: 'col'}, el('summary', {}, head)) : el('div', {class: 'col'}, head);
-  for (const f of items) col.append(card(f));
-  board.append(col);
+function matches(f, q) {
+  if (!q) return true;
+  q = q.toLowerCase();
+  const paths = Array.isArray(f.code_paths) ? f.code_paths.join(' ') : f.code_paths;
+  const hay = [f.title, paths, f.cwe].map(x => x == null ? '' : String(x)).join(' ').toLowerCase();
+  return hay.includes(q);
 }
+const board = document.getElementById('board');
+function renderBoard(q) {
+  board.replaceChildren();
+  for (const [key, label] of COLS) {
+    const items = D.findings.filter(f => f._bucket === key && matches(f, q));
+    const head = el('h3', {}, el('span', {}, label), el('span', {class: 'muted'}, String(items.length)));
+    const col = key === 'REJECTED' ? el('details', {class: 'col'}, el('summary', {}, head)) : el('div', {class: 'col'}, head);
+    for (const f of items) col.append(card(f));
+    board.append(col);
+  }
+}
+document.getElementById('filter').addEventListener('input', e => renderBoard(e.target.value));
+renderBoard('');
 </script>
 </body>
 </html>

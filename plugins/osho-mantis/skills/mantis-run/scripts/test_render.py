@@ -134,6 +134,32 @@ console.log('OK');
         assert r.returncode == 0 and "OK" in r.stdout, r.stderr + r.stdout
 
 
+def test_filtre():
+    """Text input hides cards whose title/code_paths/cwe don't match (case-insensitive); column counts follow."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp, [CRIT, LOW])
+        html, _ = data(d)
+        assert 'id="filter"' in html
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        m = re.search(r"function matches\(f, q\)\s*\{.*?\n\}", js, re.S)
+        assert m, "matches(f, q) not found in dashboard JS"
+        script = Path(tmp, "matches.js")
+        script.write_text(m.group(0) + """
+const assert = require('assert');
+const f = {title: 'Injection de commande', code_paths: ['app.py:76'], cwe: 'CWE-78'};
+assert.strictEqual(matches(f, ''), true);
+assert.strictEqual(matches(f, 'INJECTION'), true, 'case-insensitive title match');
+assert.strictEqual(matches(f, 'app.py'), true, 'code_paths match');
+assert.strictEqual(matches(f, 'cwe-78'), true, 'cwe match, case-insensitive');
+assert.strictEqual(matches(f, 'sqlite'), false);
+console.log('OK');
+""")
+        r = subprocess.run(["node", str(script)], capture_output=True, text=True)
+        assert r.returncode == 0 and "OK" in r.stdout, r.stderr + r.stdout
+
+
 def test_aucun_finding():
     with tempfile.TemporaryDirectory() as tmp:
         d = audit(tmp, [])
@@ -205,6 +231,7 @@ if __name__ == "__main__":
     test_niveau_banniere_et_reproduce()
     test_libelles_francais()
     test_description_longue()
+    test_filtre()
     test_aucun_finding()
     test_safe_id_collision()
     test_safe_id_triple_collision()
