@@ -77,14 +77,15 @@ You run the Mantis stage `<stage>` of a security audit.
 
 ### Patch + re-attack for reproduced findings (Sharp+)
 
-Upstream `mantis-patch/SKILL.md` only grants `VERIFIED_SECURE` once "a fresh, independent `@mantis-reproduce --reattack` sub-agent" confirms the patch holds — but a Claude Code subagent has no Agent tool, so it cannot launch that sub-agent itself, and point 4 of the common prompt forbids delegating anyway. mantis-run runs the re-attack itself, as two separate dispatches per finding, never one agent grading its own patch:
+Upstream `mantis-patch/SKILL.md` only grants `VERIFIED_SECURE` once "a fresh, independent `@mantis-reproduce --reattack` sub-agent" confirms the patch holds — but a Claude Code subagent has no Agent tool, so it cannot launch that sub-agent itself, and point 4 of the common prompt forbids delegating anyway. mantis-run applies the patch and runs the re-attack itself, never one agent grading its own patch — and never trusting that the agent applied the diff it wrote to the tree the re-attack then tests:
 
 For each finding with `repro_status: reproduced`, one at a time:
 1. Wipe and recopy the shadow (2.4) — a clean copy for this finding alone.
-2. Dispatch the patch agent (stage agent prompt, `mantis-patch`, opus, docker line, scope this one finding), with this level line instead of the ones above: `Write patch_diff as a unified diff relative to the repo root (a/<file>, b/<file>), apply it to <SHADOW>, then stop: set patch_status to VERIFICATION_INCOMPLETE. Do not run or request a re-attack yourself — mantis-run dispatches an independent re-attack agent next.`
-3. Dispatch a second, separate agent (stage agent prompt, Mantis dir `mantis-reproduce`, opus, docker line, scope this one finding), with this level line: `Follow mantis-reproduce in --reattack mode against the patched code at <SHADOW> (the patch from the previous agent is already applied there): attempt to reproduce the finding again and write reattack_status (failed_to_bypass or bypassed_patch).`
-4. mantis-run itself sets the finding's final `patch_status` from `reattack_status`: `failed_to_bypass` → `VERIFIED_SECURE`; `bypassed_patch` → `VERIFICATION_FAILED`; anything else (missing or unclear) → `VERIFICATION_INCOMPLETE`.
-5. Check: this finding has both `reattack_status` and `patch_status`.
+2. Dispatch the patch agent (stage agent prompt, `mantis-patch`, opus, docker line, scope this one finding), with this level line instead of the ones above: `Write patch_diff as a unified diff relative to the repo root (a/<file>, b/<file>) and set patch_status to VERIFICATION_INCOMPLETE. Do not apply the diff, run any code, or attempt a re-attack yourself — mantis-run applies it and dispatches an independent re-attack agent next.`
+3. mantis-run itself writes `patch_diff` to a temp file `F` and runs `(cd "$SHADOW" && git apply --check "$F" && git apply "$F")`. On failure: set `patch_status` to `VERIFICATION_FAILED`, add a note naming the finding, and skip steps 4–5 for it (no re-attack).
+4. Dispatch a second, separate agent (stage agent prompt, Mantis dir `mantis-reproduce`, opus, docker line, scope this one finding), with this level line: `Follow mantis-reproduce in --reattack mode against the patched code at <SHADOW> (the patch is already applied there by mantis-run): attempt to reproduce the finding again and write reattack_status (failed_to_bypass or bypassed_patch).`
+5. mantis-run itself sets the finding's final `patch_status` from `reattack_status`: `failed_to_bypass` → `VERIFIED_SECURE`; `bypassed_patch` → `VERIFICATION_FAILED`; anything else (missing or unclear) → `VERIFICATION_INCOMPLETE`.
+6. Check: this finding has `patch_status`, and also `reattack_status` unless step 3 skipped the re-attack.
 
 ## 4. Finish
 
