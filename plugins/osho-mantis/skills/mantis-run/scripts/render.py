@@ -306,6 +306,19 @@ function dl(f, rows) {
   for (const [label, k] of rows) d.append(el('dt', {}, label), dd(f, k));
   return d;
 }
+function leadOf(desc) {
+  const m = /\. (?=[A-ZÀ-Ý])/.exec(desc);
+  if (m) return desc.slice(0, m.index + 1);
+  return desc.length > 240 ? desc.slice(0, 240) + '…' : desc;
+}
+function descRow(f) {
+  const desc = f.description;
+  if (desc == null || desc === '') return el('div', {}, el('dt', {}, 'Description'), el('dd', {}, NA));
+  const full = String(desc), lead = leadOf(full);
+  if (lead.length >= full.length) return el('div', {}, el('dt', {}, 'Description'), el('dd', {}, full));
+  return el('div', {}, el('dt', {}, 'Description'), el('dd', {}, lead),
+    el('details', {}, el('summary', {}, 'Lire tout'), el('div', {}, full)));
+}
 function pre(f, k, label) {
   return el('div', {}, el('dt', {}, label), f[k] ? el('pre', {}, String(f[k])) : el('dd', {}, NA));
 }
@@ -320,7 +333,7 @@ function diff(f) {
 }
 const TABS = [
   ['Résumé', f => dl(f, [['Statut', 'status'], ['Résumé', '_summary'], ['Impact', 'impact'], ["Position de l'attaquant", 'attacker_position'], ['Privilèges requis', 'privileges_required'], ['Interaction utilisateur', 'user_interaction']])],
-  ['Problème', f => dl(f, [['Description', 'description'], ['Emplacement', 'code_paths'], ['CWE', 'cwe'], ['Analyse du review', 'reasoning'], ['Analyse du critic', 'critic_reasoning']])],
+  ['Problème', f => { const d = dl(f, [['Emplacement', 'code_paths'], ['CWE', 'cwe'], ['Analyse du review', 'reasoning'], ['Analyse du critic', 'critic_reasoning']]); d.prepend(descRow(f)); return d; }],
   ['Cas testé', f => { const d = dl(f, [['Viabilité en prod', 'production_viability'], ['Statut', 'repro_status'], ['Script', 'repro_file_path']]); d.append(pre(f, 'run_command', 'Commande'), pre(f, 'repro_output', 'Sortie')); return d; }],
   ['Correction', f => {
     const d = dl(f, [['Statut', 'patch_status'], ['Re-attaque', 'reattack_status'], ['Mitigation', 'mitigation']]);

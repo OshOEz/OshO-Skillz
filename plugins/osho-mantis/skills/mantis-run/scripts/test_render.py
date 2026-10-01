@@ -111,6 +111,29 @@ def test_libelles_francais():
             assert "D.labels" in js, "dashboard must read the labels table from the payload, not duplicate it"
 
 
+def test_description_longue():
+    """Problème tab: first-sentence lead line + full text under <details>."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp, [CRIT])
+        html, _ = data(d)
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        m = re.search(r"function leadOf\(desc\)\s*\{.*?\n\}", js, re.S)
+        assert m, "leadOf(desc) not found in dashboard JS"
+        script = Path(tmp, "lead.js")
+        two_sentences = "Premier point très clair. Deuxième point qui développe le contexte en long."
+        no_boundary = "x" * 300
+        script.write_text(m.group(0) + f"""
+const assert = require('assert');
+assert.strictEqual(leadOf({json.dumps(two_sentences)}), "Premier point très clair.");
+assert.strictEqual(leadOf({json.dumps(no_boundary)}).length, 241);
+console.log('OK');
+""")
+        r = subprocess.run(["node", str(script)], capture_output=True, text=True)
+        assert r.returncode == 0 and "OK" in r.stdout, r.stderr + r.stdout
+
+
 def test_aucun_finding():
     with tempfile.TemporaryDirectory() as tmp:
         d = audit(tmp, [])
@@ -181,6 +204,7 @@ if __name__ == "__main__":
     test_trois_findings()
     test_niveau_banniere_et_reproduce()
     test_libelles_francais()
+    test_description_longue()
     test_aucun_finding()
     test_safe_id_collision()
     test_safe_id_triple_collision()
