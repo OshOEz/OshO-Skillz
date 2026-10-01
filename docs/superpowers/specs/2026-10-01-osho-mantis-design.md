@@ -33,7 +33,7 @@ plugins/osho-mantis/
 
 - **Mantis est référencé, jamais copié** (règle `docs/decisions.md` ; Mantis est Apache-2.0, ce repo est MIT). Les skills clonent `google/mantis` dans `~/.local/share/mantis` au premier lancement, puis `git pull --ff-only` à chaque audit. Le hash utilisé est noté dans `campaign.json`.
 - Les 19 `SKILL.md` de Mantis ne sont pas installés comme skills : chaque sous-agent reçoit le chemin du `SKILL.md` de son étape et le lit. Leurs descriptions ne coûtent donc rien dans les autres sessions.
-- Plugin séparé d'`osho-core` : lourd, exécute du code généré, opt-in (`claude plugin install osho-mantis@osho-skillz`).
+- Plugin séparé d'`osho-core` : lourd, exécute du code généré. Installé par le bootstrap comme osho-core (`osho-mantis@osho-skillz`).
 
 ## Dossier d'audit
 

@@ -14,7 +14,7 @@
 
 ## osho-mantis
 
-Opt-in : `claude plugin install osho-mantis@osho-skillz`. Lance les skills [google/mantis](https://github.com/google/mantis) (référencés dans `~/.local/share/mantis`) avec l'abonnement Claude Code.
+Installé par le bootstrap (`osho-mantis@osho-skillz`). Lance les skills [google/mantis](https://github.com/google/mantis) (référencés dans `~/.local/share/mantis`) avec l'abonnement Claude Code.
 
 | Component | Type | What it does |
 |---|---|---|

@@ -25,6 +25,7 @@ Only want the plugin, without the toolchain?
 ```bash
 claude plugin marketplace add OshOEz/OshO-Skillz
 claude plugin install osho-core@osho-skillz
+claude plugin install osho-mantis@osho-skillz
 ```
 
 ## What you get
@@ -37,6 +38,7 @@ claude plugin install osho-core@osho-skillz
 | [i-have-adhd](https://github.com/ayghri/i-have-adhd) | its marketplace + `OSHO.md` | Action-first answers, always on |
 | [superpowers](https://github.com/obra/superpowers) | official marketplace | Planning, TDD and debugging skills, offered per session |
 | **osho-core** | this repo | Our own skills and hooks (below) |
+| **osho-mantis** | this repo | Security audits with google/mantis on your subscription (below) |
 
 Third-party plugins are **referenced, never copied**: they auto-update from upstream.
 
@@ -79,13 +81,9 @@ pre-commit: installed (.git/hooks/pre-commit)
 
 From then on the graph stays up to date on every edit and every commit.
 
-## osho-mantis (opt-in)
+## osho-mantis
 
-Security audits with [google/mantis](https://github.com/google/mantis), run on your Claude Code subscription (no Google or API key needed).
-
-```bash
-claude plugin install osho-mantis@osho-skillz
-```
+Security audits with [google/mantis](https://github.com/google/mantis), run on your Claude Code subscription (no Google or API key needed). Installed by the bootstrap; Mantis itself is cloned to `~/.local/share/mantis` on first use.
 
 In a repo, say *"mantis triage"*: a short pass recommends a level (**Light → Sharp → Savage → Overkill**) with a quota estimate for your subscription. Then *"mantis run"* runs the audit and writes `osho-mantis/audit-<date>/` (README report, suggested patches, HTML dashboard). Run it only on code you are allowed to test; reproduction runs in Docker without network.
 
