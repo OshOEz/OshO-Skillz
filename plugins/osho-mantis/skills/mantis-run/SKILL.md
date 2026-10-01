@@ -72,7 +72,7 @@ You run the Mantis stage `<stage>` of a security audit.
 - Level line, Light patch: `Light level: write patch_diff as a unified diff relative to the repo root (a/<file>, b/<file>) and set patch_status to MITIGATION_PROPOSED. Do not execute any code.`
 - Level line, plan: `Write at most <hypotheses_max> investigations. Prioritise these hypotheses: <focus>. Skip: <out_of_scope>.` For Overkill, instead: `One investigation per source file.`
 - Level line, otherwise: `Level <level>.`
-- Docker line: `Execute target code only with: docker run --rm --network=none <--runtime=runsc if inventory.json repro.runsc> -v "<AUDIT>/workspace/shadow":/src<:ro for reproduce> -w /src <official image for the stack, e.g. python:3.12-slim> <cmd>. Pulling the image is the only network access allowed. Never run target code on the host.`
+- Docker line: `Execute target code only with: docker run --rm --network=none <--runtime=runsc if inventory.json repro.runsc> -v "<SHADOW>":/src<:ro for reproduce> -w /src <official image for the stack, e.g. python:3.12-slim> <cmd>. Pulling the image is the only network access allowed. Never run target code on the host.`
 
 ## 4. Finish
 
