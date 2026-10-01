@@ -23,7 +23,7 @@ Paths: `T="${CLAUDE_PLUGIN_ROOT}/skills/mantis-triage/scripts"`, `R="${CLAUDE_PL
 1. Mantis source: `if [ -d "$M/.git" ]; then git -C "$M" pull --ff-only -q; else git clone -q https://github.com/google/mantis "$M"; fi`. If the pull fails (for example when offline), continue with the local copy and add a note. Write `git -C "$M" rev-parse --short HEAD` into `campaign.json` as `mantis_commit`.
 2. No `state.json` yet → write it with `stages` set to every stage of the level (table below) as `"pending"`, `round: 1`, `notes: []`, `finished: false`, and `git_status_before` set to the output of `git -C "$REPO" status --porcelain -- . ':(exclude)osho-mantis'`.
 3. If the level includes reproduce and `docker info` fails → set reproduce to `"skipped"` and add the note « reproduce sauté : Docker indisponible ».
-4. Shadow copy (used only by reproduce and patch): if `state.json` has no `shadow` key yet, create one with `mktemp -d` **outside `$REPO` and `$AUDIT`** and save its path there as `shadow`. Then (re)populate it from tracked files only, no symlinks — so a hostile repo's `.venv`/`node_modules` symlinks are never copied into a sandbox a patch agent can write through, and never land under the audit folder where the symlink guard above would (wrongly) block every resume: `git -C "$REPO" ls-files -z | rsync -a --delete --no-links --from0 --files-from=- "$REPO/" "$SHADOW/"` (`$SHADOW` = the path saved in `state.json`).
+4. Shadow copy (used only by reproduce and patch): if `state.json` has no `shadow` key yet, create one with `mktemp -d` **outside `$REPO` and `$AUDIT`** and save its path there as `shadow`. Then wipe and recopy it from tracked files only, no symlinks — never an incremental rsync, so nothing a previous patch wrote into the shadow (new files included) survives, and a hostile repo's `.venv`/`node_modules` symlinks are never copied into a sandbox a patch agent can write through, nor land under the audit folder where the symlink guard above would (wrongly) block every resume: `rm -rf "$SHADOW" && mkdir -p "$SHADOW" && git -C "$REPO" ls-files -z | rsync -a --no-links --from0 --files-from=- "$REPO/" "$SHADOW/"` (`$SHADOW` = the path saved in `state.json`).
 
 ## 3. Stages
 
@@ -42,7 +42,7 @@ Run the stages in this order, skipping those that are not in the level or are al
 | critic | mantis-critic | opus | Sharp+ | status `VALID` or `PROVISIONALLY_VALID` | each one has `production_viability` |
 | reproduce | mantis-reproduce | opus | Sharp+ | viable (`VIABLE`, `CONDITIONAL_VIABLE`); Sharp: only `CRITICAL` or `HIGH` | each one has `repro_status` |
 | chain | mantis-chain | opus | Savage, Overkill | findings with `repro_status` = `reproduced` (skip if fewer than 2) | agent replied |
-| patch | mantis-patch | opus | all | Light: status `VALID`/`PROVISIONALLY_VALID`. Sharp+: viable findings, split by `repro_status`: `reproduced` ones get the Docker treatment with re-attack; the rest (not reproduced, or reproduce was skipped) get the same mitigation-proposal treatment as Light. **One finding at a time**: rerun the rsync from 2.4 before each one | each one has `patch_status` |
+| patch | mantis-patch | opus | all | Light: status `VALID`/`PROVISIONALLY_VALID`. Sharp+: viable findings, split by `repro_status`: `reproduced` ones go through patch + independent re-attack (see below); the rest (not reproduced, or reproduce was skipped) get the same mitigation-proposal treatment as Light. **One finding at a time**: wipe and recopy the shadow from 2.4 before each one | each one has `patch_status`; reproduced findings also have `reattack_status` |
 | calibrate | mantis-calibrate | sonnet | Sharp+ | non-rejected findings, split into `parallel` groups | each one has `mantis_risk_score` |
 | reflect | mantis-reflect | sonnet | Savage, Overkill | whole workspace | agent replied |
 
@@ -71,10 +71,20 @@ You run the Mantis stage `<stage>` of a security audit.
 ```
 
 - Level line, patch for a finding without `repro_status: reproduced` (Light; or Sharp+ when that finding wasn't reproduced, including every finding when reproduce was `skipped` for lack of Docker): `This finding has no verified reproduction: write patch_diff as a unified diff relative to the repo root (a/<file>, b/<file>) and set patch_status to MITIGATION_PROPOSED. Do not execute any code or attempt a re-attack.`
-- Level line, patch for a `repro_status: reproduced` finding (Sharp+ only): `Level <level>.`
 - Level line, plan: `Write at most <hypotheses_max> investigations. Prioritise these hypotheses: <focus>. Skip: <out_of_scope>.` For Overkill, instead: `One investigation per source file.`
 - Level line, otherwise: `Level <level>.`
 - Docker line: `Execute target code only with: docker run --rm --network=none <--runtime=runsc if inventory.json repro.runsc> -v "<SHADOW>":/src<:ro for reproduce> -w /src <official image for the stack, e.g. python:3.12-slim> <cmd>. Pulling the image is the only network access allowed. Never run target code on the host.`
+
+### Patch + re-attack for reproduced findings (Sharp+)
+
+Upstream `mantis-patch/SKILL.md` only grants `VERIFIED_SECURE` once "a fresh, independent `@mantis-reproduce --reattack` sub-agent" confirms the patch holds — but a Claude Code subagent has no Agent tool, so it cannot launch that sub-agent itself, and point 4 of the common prompt forbids delegating anyway. mantis-run runs the re-attack itself, as two separate dispatches per finding, never one agent grading its own patch:
+
+For each finding with `repro_status: reproduced`, one at a time:
+1. Wipe and recopy the shadow (2.4) — a clean copy for this finding alone.
+2. Dispatch the patch agent (stage agent prompt, `mantis-patch`, opus, docker line, scope this one finding), with this level line instead of the ones above: `Write patch_diff as a unified diff relative to the repo root (a/<file>, b/<file>), apply it to <SHADOW>, then stop: set patch_status to VERIFICATION_INCOMPLETE. Do not run or request a re-attack yourself — mantis-run dispatches an independent re-attack agent next.`
+3. Dispatch a second, separate agent (stage agent prompt, Mantis dir `mantis-reproduce`, opus, docker line, scope this one finding), with this level line: `Follow mantis-reproduce in --reattack mode against the patched code at <SHADOW> (the patch from the previous agent is already applied there): attempt to reproduce the finding again and write reattack_status (failed_to_bypass or bypassed_patch).`
+4. mantis-run itself sets the finding's final `patch_status` from `reattack_status`: `failed_to_bypass` → `VERIFIED_SECURE`; `bypassed_patch` → `VERIFICATION_FAILED`; anything else (missing or unclear) → `VERIFICATION_INCOMPLETE`.
+5. Check: this finding has both `reattack_status` and `patch_status`.
 
 ## 4. Finish
 
