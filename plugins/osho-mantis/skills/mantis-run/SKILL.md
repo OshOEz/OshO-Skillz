@@ -73,7 +73,7 @@ You run the Mantis stage `<stage>` of a security audit.
 - Level line, patch for a finding without `repro_status: reproduced` (Light; or Sharp+ when that finding wasn't reproduced, including every finding when reproduce was `skipped` for lack of Docker): `This finding has no verified reproduction: write patch_diff as a unified diff relative to the repo root (a/<file>, b/<file>) and set patch_status to MITIGATION_PROPOSED. Do not execute any code or attempt a re-attack.`
 - Level line, plan: `Write at most <hypotheses_max> investigations. Prioritise these hypotheses: <focus>. Skip: <out_of_scope>.` For Overkill, instead: `One investigation per source file.`
 - Level line, otherwise: `Level <level>.`
-- Docker line: `Execute target code only with: docker run --rm --network=none <--runtime=runsc if inventory.json repro.runsc> -v "<SHADOW>":/src<:ro for reproduce> <-v "<AUDIT>/workspace/reproducers":/poc:ro for reproduce> -w /src <official image for the stack, e.g. python:3.12-slim> <cmd>. For reproduce, the PoC file you wrote under state_root/workspace/reproducers/ is mounted read-only at /poc — run it as /poc/<file>. Pulling the image is the only network access allowed. Never run target code on the host.`
+- Docker line: `Execute target code only with: docker run --rm --network=none <--runtime=runsc if inventory.json repro.runsc> -v "<SHADOW>":/src<:ro for reproduce and the re-attack> <-v "<AUDIT>/workspace/reproducers":/poc:ro for reproduce and the re-attack> -w /src <official image for the stack, e.g. python:3.12-slim> <cmd>. For reproduce and the re-attack, the PoC file you wrote under state_root/workspace/reproducers/ is mounted read-only at /poc — run it as /poc/<file>. Pulling the image is the only network access allowed. Never run target code on the host.`
 
 ### Patch + re-attack for reproduced findings (Sharp+)
 
@@ -81,11 +81,12 @@ Upstream `mantis-patch/SKILL.md` only grants `VERIFIED_SECURE` once "a fresh, in
 
 For each finding with `repro_status: reproduced`, one at a time:
 1. Wipe and recopy the shadow (2.4) — a clean copy for this finding alone.
-2. Dispatch the patch agent (stage agent prompt, `mantis-patch`, opus, docker line, scope this one finding), with this level line instead of the ones above: `Write patch_diff as a unified diff relative to the repo root (a/<file>, b/<file>) and set patch_status to VERIFICATION_INCOMPLETE. Do not apply the diff, run any code, or attempt a re-attack yourself — mantis-run applies it and dispatches an independent re-attack agent next.`
-3. mantis-run itself writes `patch_diff` to a temp file `F` and runs `(cd "$SHADOW" && git apply --check "$F" && git apply "$F")`. On failure: set `patch_status` to `VERIFICATION_FAILED`, add a note naming the finding, and skip steps 4–5 for it (no re-attack).
-4. Dispatch a second, separate agent (stage agent prompt, Mantis dir `mantis-reproduce`, opus, docker line, scope this one finding), with this level line: `Follow mantis-reproduce in --reattack mode against the patched code at <SHADOW> (the patch is already applied there by mantis-run): attempt to reproduce the finding again and write reattack_status (failed_to_bypass or bypassed_patch).`
-5. mantis-run itself sets the finding's final `patch_status` from `reattack_status`: `failed_to_bypass` → `VERIFIED_SECURE`; `bypassed_patch` → `VERIFICATION_FAILED`; anything else (missing or unclear) → `VERIFICATION_INCOMPLETE`.
-6. Check: this finding has `patch_status`, and also `reattack_status` unless step 3 skipped the re-attack.
+2. Dispatch the patch agent (stage agent prompt, `mantis-patch`, opus, **no docker line** — it must not execute any code, only write `patch_diff`, scope this one finding), with this level line instead of the ones above: `Write patch_diff as a unified diff relative to the repo root (a/<file>, b/<file>) and set patch_status to VERIFICATION_INCOMPLETE. Do not apply the diff, run any code, or attempt a re-attack yourself — mantis-run applies it and dispatches an independent re-attack agent next.`
+3. Wipe and recopy the shadow (2.4) again, immediately before applying — a clean tree for `git apply`, regardless of what happened between step 1 and now.
+4. mantis-run itself writes `patch_diff` to a temp file `F` and runs `(cd "$SHADOW" && git apply --check "$F" && git apply "$F")`. On failure: set `patch_status` to `VERIFICATION_FAILED`, add a note naming the finding, and skip steps 5–6 for it (no re-attack).
+5. Dispatch a second, separate agent (stage agent prompt, Mantis dir `mantis-reproduce`, opus, docker line, scope this one finding), with this level line: `Follow mantis-reproduce in --reattack mode against the patched code at <SHADOW> (the patch is already applied there by mantis-run): attempt to reproduce the finding again and write reattack_status (failed_to_bypass or bypassed_patch).`
+6. mantis-run itself sets the finding's final `patch_status` from `reattack_status`: `failed_to_bypass` → `VERIFIED_SECURE`; `bypassed_patch` → `VERIFICATION_FAILED`; anything else (missing or unclear) → `VERIFICATION_INCOMPLETE`.
+7. Check: this finding has `patch_status`, and also `reattack_status` unless step 4 skipped the re-attack.
 
 ## 4. Finish
 
