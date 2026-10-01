@@ -42,7 +42,7 @@ Run the stages in this order, skipping those that are not in the level or are al
 | critic | mantis-critic | opus | Sharp+ | status `VALID` or `PROVISIONALLY_VALID` | each one has `production_viability` |
 | reproduce | mantis-reproduce | opus | Sharp+ | viable (`VIABLE`, `CONDITIONAL_VIABLE`); Sharp: only `CRITICAL` or `HIGH` | each one has `repro_status` |
 | chain | mantis-chain | opus | Savage, Overkill | findings with `repro_status` = `reproduced` (skip if fewer than 2) | agent replied |
-| patch | mantis-patch | opus | all | Light: status `VALID`/`PROVISIONALLY_VALID`; Sharp+: viable findings. **One finding at a time**: rerun the rsync from 2.4 before each one | each one has `patch_status` |
+| patch | mantis-patch | opus | all | Light: status `VALID`/`PROVISIONALLY_VALID`. Sharp+: viable findings, split by `repro_status`: `reproduced` ones get the Docker treatment with re-attack; the rest (not reproduced, or reproduce was skipped) get the same mitigation-proposal treatment as Light. **One finding at a time**: rerun the rsync from 2.4 before each one | each one has `patch_status` |
 | calibrate | mantis-calibrate | sonnet | Sharp+ | non-rejected findings, split into `parallel` groups | each one has `mantis_risk_score` |
 | reflect | mantis-reflect | sonnet | Savage, Overkill | whole workspace | agent replied |
 
@@ -70,7 +70,8 @@ You run the Mantis stage `<stage>` of a security audit.
 8. Reply in 5 lines max: what you wrote (paths or finding ids), and any blocker.
 ```
 
-- Level line, Light patch: `Light level: write patch_diff as a unified diff relative to the repo root (a/<file>, b/<file>) and set patch_status to MITIGATION_PROPOSED. Do not execute any code.`
+- Level line, patch for a finding without `repro_status: reproduced` (Light; or Sharp+ when that finding wasn't reproduced, including every finding when reproduce was `skipped` for lack of Docker): `This finding has no verified reproduction: write patch_diff as a unified diff relative to the repo root (a/<file>, b/<file>) and set patch_status to MITIGATION_PROPOSED. Do not execute any code or attempt a re-attack.`
+- Level line, patch for a `repro_status: reproduced` finding (Sharp+ only): `Level <level>.`
 - Level line, plan: `Write at most <hypotheses_max> investigations. Prioritise these hypotheses: <focus>. Skip: <out_of_scope>.` For Overkill, instead: `One investigation per source file.`
 - Level line, otherwise: `Level <level>.`
 - Docker line: `Execute target code only with: docker run --rm --network=none <--runtime=runsc if inventory.json repro.runsc> -v "<SHADOW>":/src<:ro for reproduce> -w /src <official image for the stack, e.g. python:3.12-slim> <cmd>. Pulling the image is the only network access allowed. Never run target code on the host.`
