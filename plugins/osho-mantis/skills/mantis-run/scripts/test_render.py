@@ -160,6 +160,32 @@ console.log('OK');
         assert r.returncode == 0 and "OK" in r.stdout, r.stderr + r.stdout
 
 
+def test_lien_profond():
+    """Clicking a card sets location.hash to _file; on load a matching hash opens its panel; close/Escape clears it."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp, [CRIT, LOW])
+        html, _ = data(d)
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        m = re.search(r"function findingForHash\(findings, hash\)\s*\{.*?\n\}", js, re.S)
+        assert m, "findingForHash(findings, hash) not found in dashboard JS"
+        assert "location.hash = f._file" in js, "card click must set the deep link"
+        assert "hashchange" in js, "a hash set by another tab/back-nav must open its panel"
+        assert "history.replaceState" in js, "closing/Escape must clear the hash without a new history entry"
+        script = Path(tmp, "hash.js")
+        script.write_text(m.group(0) + """
+const assert = require('assert');
+const findings = [{_file: 'c1', title: 'A'}, {_file: 'c2', title: 'B'}];
+assert.strictEqual(findingForHash(findings, '#c2').title, 'B');
+assert.strictEqual(findingForHash(findings, ''), null);
+assert.strictEqual(findingForHash(findings, '#nope'), null);
+console.log('OK');
+""")
+        r = subprocess.run(["node", str(script)], capture_output=True, text=True)
+        assert r.returncode == 0 and "OK" in r.stdout, r.stderr + r.stdout
+
+
 def test_aucun_finding():
     with tempfile.TemporaryDirectory() as tmp:
         d = audit(tmp, [])
@@ -232,6 +258,7 @@ if __name__ == "__main__":
     test_libelles_francais()
     test_description_longue()
     test_filtre()
+    test_lien_profond()
     test_aucun_finding()
     test_safe_id_collision()
     test_safe_id_triple_collision()

@@ -358,10 +358,25 @@ function openPanel(f) {
   show(0);
   panel.classList.add('open');
   panel.setAttribute('aria-hidden', 'false');
+  location.hash = f._file;
 }
-function closePanel() { panel.classList.remove('open'); panel.setAttribute('aria-hidden', 'true'); }
+function closePanel() {
+  panel.classList.remove('open');
+  panel.setAttribute('aria-hidden', 'true');
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+}
 document.getElementById('close').addEventListener('click', closePanel);
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closePanel(); });
+function findingForHash(findings, hash) {
+  const id = decodeURIComponent((hash || '').replace(/^#/, ''));
+  if (!id) return null;
+  return findings.find(x => x._file === id) || null;
+}
+function openFromHash() {
+  const f = findingForHash(D.findings, location.hash);
+  if (f) openPanel(f);
+}
+window.addEventListener('hashchange', openFromHash);
 
 document.title = 'Audit — ' + (m.repo_name || 'repo');
 document.getElementById('title').textContent = 'Audit de sécurité — ' + (m.repo_name || 'repo');
@@ -402,6 +417,7 @@ function renderBoard(q) {
 }
 document.getElementById('filter').addEventListener('input', e => renderBoard(e.target.value));
 renderBoard('');
+openFromHash();
 </script>
 </body>
 </html>
