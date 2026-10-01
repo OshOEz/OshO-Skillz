@@ -27,7 +27,7 @@ Paths: `T="${CLAUDE_PLUGIN_ROOT}/skills/mantis-triage/scripts"`, `R="${CLAUDE_PL
 
 ## 3. Stages
 
-Run the stages in this order, skipping those that are not in the level or are already `done`. Before each stage, set it to `"pending"`. After it, run the check, then set it to `"done"`.
+Run the stages in this order, skipping those that are not in the level or are already `done`. Before each stage, set it to `"pending"`. After it, run the check, then set it to `"done"`. Before the reproduce stage specifically, wipe and recopy the shadow (2.4) first — a clean copy, since a prior patch run may have left its diff applied (matters most for Overkill rounds 2–3, where reproduce reruns after a patch round).
 
 | Stage | Mantis dir | Model | Levels | Scope | Check after |
 |---|---|---|---|---|---|
