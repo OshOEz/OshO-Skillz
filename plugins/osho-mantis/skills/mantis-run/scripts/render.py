@@ -114,14 +114,14 @@ def readme(meta, findings, unreadable, st):
             out += ["", f"**Correction** ({text(f.get('patch_status'))})", ""]
             if f.get("patch_diff"):
                 out += [block(str(f["patch_diff"]), "diff"), "",
-                        f"Appliquer depuis la racine du repo : `git apply osho-mantis/{meta['audit_name']}/patches/{safe_id(f)}.diff`"]
+                        f"Appliquer depuis la racine du repo : `git apply osho-mantis/{meta['audit_name']}/patches/{f['_file']}.diff`"]
             else:
                 out.append(text(f.get("mitigation")))
             out.append("")
     if rejected:
         out += ["## Écartés", ""]
         out += [f"- {text(f['title'])} — {text(f.get('status') or f.get('production_viability'))} : "
-                f"{text(f.get('critic_reasoning') or f.get('reasoning'))[:200]}" for f in rejected]
+                f"{text((f.get('critic_reasoning') or f.get('reasoning') or '')[:200])}" for f in rejected]
         out.append("")
     out += ["## Limites", ""] + [f"- {text(n)}" for n in meta["notes"]]
     if unreadable:
@@ -140,6 +140,16 @@ def render(audit_dir):
     campaign = load_json(audit_dir / "campaign.json", {})
     state = load_json(audit_dir / "state.json", {})
     findings, unreadable = load_findings(audit_dir / "workspace")
+    # Compute _file for each finding with deduplication
+    file_counts = {}
+    for f in findings:
+        base_file = safe_id(f)
+        if base_file not in file_counts:
+            f["_file"] = base_file
+            file_counts[base_file] = 1
+        else:
+            file_counts[base_file] += 1
+            f["_file"] = f"{base_file}-{file_counts[base_file]}"
     meta = {"repo_name": Path(campaign.get("repo") or audit_dir.parent.parent).name,
             "audit_name": audit_dir.name, "level": campaign.get("level"),
             "mantis_commit": campaign.get("mantis_commit"), "started_at": campaign.get("started_at"),
@@ -151,9 +161,9 @@ def render(audit_dir):
     for f in findings:
         if f.get("patch_diff") and bucket(f) != "REJECTED":
             (audit_dir / "patches").mkdir(exist_ok=True)
-            (audit_dir / "patches" / f"{safe_id(f)}.diff").write_text(str(f["patch_diff"]).rstrip("\n") + "\n")
+            (audit_dir / "patches" / f"{f['_file']}.diff").write_text(str(f["patch_diff"]).rstrip("\n") + "\n")
     payload = {"meta": meta, "stats": st,
-               "findings": [dict(f, _bucket=bucket(f), _file=safe_id(f)) for f in sorted(findings, key=sort_key)]}
+               "findings": [dict(f, _bucket=bucket(f)) for f in sorted(findings, key=sort_key)]}
     (audit_dir / "dashboard.html").write_text(TEMPLATE.replace("__DATA__", safe_json(payload)))
 
 

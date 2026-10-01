@@ -78,7 +78,33 @@ def test_aucun_finding():
         assert not (d / "patches").exists()
 
 
+def test_safe_id_collision():
+    """Two findings whose IDs differ only in sanitized chars (e.g., "a/b" and "a_b") get distinct files."""
+    COL1 = {"id": "a/b", "title": "Finding one", "severity": "CRITICAL", "status": "VALID",
+            "patch_diff": "DIFF-ONE\n"}
+    COL2 = {"id": "a_b", "title": "Finding two", "severity": "CRITICAL", "status": "VALID",
+            "patch_diff": "DIFF-TWO\n"}
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp, [COL1, COL2])
+        html, payload = data(d)
+        # Both findings should have distinct _file names
+        files = {f["id"]: f["_file"] for f in payload["findings"]}
+        assert files["a/b"] != files["a_b"], f"Collision: both map to {files['a/b']}"
+        # Both patch files should exist with correct content
+        patches = sorted(p.name for p in (d / "patches").iterdir())
+        assert len(patches) == 2, f"Expected 2 patch files, got {len(patches)}"
+        # Check patch file content matches
+        patch1_content = (d / "patches" / f"{files['a/b']}.diff").read_text()
+        patch2_content = (d / "patches" / f"{files['a_b']}.diff").read_text()
+        assert "DIFF-ONE" in patch1_content and "DIFF-TWO" not in patch1_content
+        assert "DIFF-TWO" in patch2_content and "DIFF-ONE" not in patch2_content
+        # README should reference both files
+        readme = (d / "README.md").read_text()
+        assert files["a/b"] in readme and files["a_b"] in readme
+
+
 if __name__ == "__main__":
     test_trois_findings()
     test_aucun_finding()
+    test_safe_id_collision()
     print("OK")
