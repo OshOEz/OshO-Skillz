@@ -26,7 +26,7 @@ Scripts: `T="${CLAUDE_PLUGIN_ROOT}/skills/mantis-triage/scripts"`.
    - `Savage` : + historique git, reproduction de tout le viable, chaînes d'exploits.
    - `Overkill` : + chaque fichier source, 2 tours de replanification.
 7. **campaign.json.** Merge into the file the agent wrote: `level`, `hypotheses_max` (= `levels.<level>.hypotheses` in `inventory.json`) and `parallel` (= `levels.<level>.parallel`), `versioning`, `visibility`, `repo` (`REPO`), `started_at` (`date +%Y-%m-%dT%H:%M:%S`).
-8. **Report**, 4 lines max: audit folder, top 3 risks from `triage.md`, chosen level, then « Lancer `/mantis-run` ? ».
+8. **Report**, 4 lines max: audit folder, top 3 risks from `triage.md`, chosen level, then « Lancer `/mantis-run "<AUDIT>"` ? » — name the folder explicitly, so mantis-run audits the one just created instead of auto-selecting among `$REPO/osho-mantis/audit-*`.
 
 ## Agent prompt
 
