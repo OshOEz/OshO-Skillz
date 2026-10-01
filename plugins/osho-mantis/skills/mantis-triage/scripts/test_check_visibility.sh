@@ -9,8 +9,12 @@ trap 'rm -rf "$t"' EXIT
 mkdir -p "$t/bin" "$t/mon repo"
 cat >"$t/bin/gh" <<'EOF'
 #!/bin/sh
-[ "$3" = "owner/repo" ] || exit 1
-echo "$FAKE_VIS"
+slug="$3"
+case "$slug" in
+  "owner/repo") echo "$FAKE_VIS" ;;
+  "owner/repo2") echo "$FAKE_VIS2" ;;
+  *) exit 1 ;;
+esac
 EOF
 chmod +x "$t/bin/gh"
 with_gh="$t/bin:/usr/bin:/bin"
@@ -33,4 +37,11 @@ git -C "$t/mon repo" remote set-url origin https://github.com/owner/repo
 check "$with_gh" public PUBLIC
 git -C "$t/mon repo" remote set-url origin https://gitlab.com/owner/repo.git
 check "$with_gh" unknown PUBLIC
+# Test multiple remotes: worst case precedence
+git -C "$t/mon repo" remote set-url origin git@github.com:owner/repo.git
+git -C "$t/mon repo" remote add upstream git@github.com:owner/repo2.git
+env FAKE_VIS=PRIVATE FAKE_VIS2=PUBLIC bash -c "PATH='$with_gh' bash '$script' '$t/mon repo'" | grep -q '^public$' || { echo "FAIL: two remotes (private+public) should return public"; exit 1; }
+# Test multiple remotes with non-GitHub: worst case unknown
+git -C "$t/mon repo" remote set-url upstream https://gitlab.com/owner/repo2.git
+env FAKE_VIS=PRIVATE FAKE_VIS2= bash -c "PATH='$with_gh' bash '$script' '$t/mon repo'" | grep -q '^unknown$' || { echo "FAIL: private+gitlab should return unknown"; exit 1; }
 echo OK
