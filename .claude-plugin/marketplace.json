@@ -7,6 +7,11 @@
       "name": "osho-core",
       "source": "./plugins/osho-core",
       "description": "Core hooks, skills and agents: repo-init, donnees-fictives, audit-loop (auditor agent), code-review-graph auto-update, per-session Superpowers offer."
+    },
+    {
+      "name": "osho-mantis",
+      "source": "./plugins/osho-mantis",
+      "description": "Mantis security audits from Claude Code, no API key: quick triage, Light→Overkill campaign, French report, suggested patches and HTML dashboard."
     }
   ]
 }

@@ -1,0 +1,448 @@
+#!/usr/bin/env python3
+"""Rapport osho-mantis : findings Mantis → README.md, patches/<id>.diff, dashboard.html
+  python3 render.py <dossier d'audit>
+"""
+import html
+import json
+import re
+import sys
+from datetime import datetime
+from pathlib import Path
+
+BUCKETS = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+REJECTED_STATUS = {"FALSE_POSITIVE", "DUPLICATE"}
+REJECTED_VIABILITY = {"NON_VIABLE", "SAMPLE_OR_TEST"}
+NA = "non évalué à ce niveau"
+LEVEL_BANNERS = {
+    "Light": "Analyse statique : pas de reproduction, correctifs proposés non vérifiés.",
+    "Sharp": "Reproduction Docker des High+ et correctifs vérifiés par re-attaque.",
+    "Savage": "Reproduction de tout le viable, chaînes d'exploits.",
+    "Overkill": "Revue exhaustive de chaque fichier, 3 tours.",
+}
+ENUM_LABELS = {
+    "status": {"VALID": "Confirmé", "PROVISIONALLY_VALID": "Probable", "FALSE_POSITIVE": "Faux positif",
+               "DUPLICATE": "Doublon", "NEEDS_RESEARCH": "À creuser"},
+    "repro_status": {"reproduced": "Reproduit", "statically_confirmed": "Confirmé statiquement",
+                     "not_attempted": "Non tenté", "failed_to_reproduce": "Non reproduit"},
+    "patch_status": {"VERIFIED_SECURE": "Vérifié par re-attaque", "MITIGATION_PROPOSED": "Correctif proposé, non vérifié",
+                     "VERIFICATION_INCOMPLETE": "Vérification incomplète",
+                     "VERIFICATION_FAILED": "Correctif contourné ou inapplicable", "ERROR": "Erreur"},
+    "reattack_status": {"failed_to_bypass": "Re-attaque échouée (correctif tient)",
+                        "bypassed_patch": "Correctif contourné", "inconclusive_baseline_changed": "Non concluant"},
+    "production_viability": {"VIABLE": "Exploitable en prod", "CONDITIONAL_VIABLE": "Exploitable sous conditions",
+                             "NON_VIABLE": "Non exploitable", "SAMPLE_OR_TEST": "Code d'exemple ou de test"},
+}
+
+
+def label(field, value):
+    """French label for an enum value; unknown values pass through unchanged."""
+    if value in (None, "", []):
+        return None
+    return ENUM_LABELS.get(field, {}).get(str(value), str(value))
+
+
+def load_json(path, default):
+    try:
+        return json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return default
+
+
+def load_findings(workspace):
+    findings, unreadable = [], []
+    for p in sorted(Path(workspace, "findings").glob("*.json")):
+        f = load_json(p, None)
+        if isinstance(f, dict) and f.get("title"):
+            f["id"] = str(f.get("id") or p.stem)
+            findings.append(f)
+        else:
+            unreadable.append(p.name)
+    return findings, unreadable
+
+
+def safe_id(f):
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", f["id"])
+
+
+def bucket(f):
+    if f.get("status") in REJECTED_STATUS or f.get("production_viability") in REJECTED_VIABILITY:
+        return "REJECTED"
+    level = str(f.get("priority") or f.get("severity") or "LOW").upper()
+    return level if level in BUCKETS else "LOW"
+
+
+def sort_key(f):
+    return (-(f.get("mantis_risk_score") or 0), str(f["title"]).lower())
+
+
+def stats(findings):
+    b = [bucket(f) for f in findings]
+    kept = [f for f, x in zip(findings, b) if x != "REJECTED"]
+    return {"by_bucket": {k: b.count(k) for k in BUCKETS + ["REJECTED"]}, "total": len(findings),
+            "confirmed": sum(f.get("status") == "VALID" for f in kept),
+            "reproduced": sum(f.get("repro_status") == "reproduced" for f in kept),
+            "patched": sum(f.get("patch_status") == "VERIFIED_SECURE" for f in kept)}
+
+
+def duration(start, end):
+    try:
+        minutes = int((datetime.fromisoformat(end) - datetime.fromisoformat(start)).total_seconds() // 60)
+    except (TypeError, ValueError):
+        return ""
+    return f"{minutes // 60} h {minutes % 60:02d} min"
+
+
+def text(value):
+    """Valeur de finding pour du Markdown : jamais de HTML actif"""
+    if value in (None, "", []):
+        return NA
+    value = ", ".join(map(str, value)) if isinstance(value, list) else str(value)
+    return html.escape(value, quote=False)
+
+
+def text_enum(field, value):
+    """Markdown-safe French label for an enum field's value."""
+    return text(label(field, value))
+
+
+def cell(value):
+    return text(value).replace("|", "\\|").replace("\n", " ")
+
+
+def summary(f):
+    """executive_summary (set by calibrate) is absent in Light; fall back to impact"""
+    return f.get("executive_summary") or f.get("impact")
+
+
+def block(code, lang=""):
+    longest = max((len(m) for m in re.findall(r"`+", code)), default=0)
+    fence = "`" * max(3, longest + 1)
+    return f"{fence}{lang}\n{code.rstrip()}\n{fence}"
+
+
+def readme(meta, findings, unreadable, st):
+    kept = sorted((f for f in findings if bucket(f) != "REJECTED"), key=lambda f: (BUCKETS.index(bucket(f)), sort_key(f)))
+    rejected = [f for f in findings if bucket(f) == "REJECTED"]
+    out = [f"# Audit de sécurité — {text(meta['repo_name'])}", "",
+           f"{meta['started_at'] or '?'} · niveau **{meta['level'] or '?'}** · Mantis `{meta['mantis_commit'] or '?'}`"
+           + (f" · durée {meta['duration']}" if meta["duration"] else ""), ""]
+    if meta["level_banner"]:
+        out += [text(meta["level_banner"]), ""]
+    out += ["[Ouvrir le dashboard](dashboard.html) : GitHub affiche le HTML en source, ouvrez le fichier en local.", "",
+           "| Critical | High | Medium | Low | Écartés |", "|---|---|---|---|---|",
+           "| " + " | ".join(str(st["by_bucket"][k]) for k in BUCKETS + ["REJECTED"]) + " |", ""]
+    if not findings:
+        out += ["**Aucun finding** : rien n'a été signalé à ce niveau d'audit.", ""]
+    if kept:
+        out += ["## Findings", "", "| Sévérité | Titre | Emplacement | Reproduit | Patch vérifié |", "|---|---|---|---|---|"]
+        out += [f"| {bucket(f)} | {cell(f['title'])} | {cell(f.get('code_paths'))} | "
+                f"{'oui' if f.get('repro_status') == 'reproduced' else 'non'} | "
+                f"{'oui' if f.get('patch_status') == 'VERIFIED_SECURE' else 'non'} |" for f in kept]
+        out.append("")
+        for f in kept:
+            out += [f"### [{bucket(f)}] {text(f['title'])}", "",
+                    f"**Résumé** : {text(summary(f))}", "",
+                    f"**Emplacement** : {text(f.get('code_paths'))} · **CWE** : {text(f.get('cwe'))}", "",
+                    f"**Problème** : {text(f.get('description'))}", "",
+                    f"**Impact** : {text(f.get('impact'))}", "",
+                    f"**Cas testé** : {text_enum('repro_status', f.get('repro_status'))}"]
+            for key in ("run_command", "repro_output"):
+                if f.get(key):
+                    out += ["", block(str(f[key]), "bash" if key == "run_command" else "")]
+            out += ["", f"**Correction** ({text_enum('patch_status', f.get('patch_status'))})", ""]
+            if f.get("patch_diff"):
+                out += [block(str(f["patch_diff"]), "diff"), "",
+                        f"Appliquer depuis la racine du repo : `git apply osho-mantis/{meta['audit_name']}/patches/{f['_file']}.diff`"]
+            else:
+                out.append(text(f.get("mitigation")))
+            out.append("")
+    if rejected:
+        out += ["## Écartés", ""]
+        for f in rejected:
+            field = "status" if f.get("status") else "production_viability"
+            out.append(f"- {text(f['title'])} — {text_enum(field, f.get(field))} : "
+                       f"{text((f.get('critic_reasoning') or f.get('reasoning') or '')[:200])}")
+        out.append("")
+    out += ["## Limites", ""] + [f"- {text(n)}" for n in meta["notes"]]
+    if unreadable:
+        out.append(f"- Fichiers de finding illisibles, ignorés : {', '.join(unreadable)}")
+    out += ["- Findings produits par IA : à vérifier par un humain avant tout signalement.", ""]
+    return "\n".join(out)
+
+
+def safe_json(obj):
+    return (json.dumps(obj, ensure_ascii=False)
+            .replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e"))
+
+
+def render(audit_dir):
+    audit_dir = Path(audit_dir).resolve()
+    campaign = load_json(audit_dir / "campaign.json", {})
+    state = load_json(audit_dir / "state.json", {})
+    findings, unreadable = load_findings(audit_dir / "workspace")
+    # Compute _file for each finding with deduplication against all used names
+    used = set()
+    for f in findings:
+        name = safe_id(f)
+        if name in used:
+            suffix = 2
+            while f"{name}-{suffix}" in used:
+                suffix += 1
+            name = f"{name}-{suffix}"
+        used.add(name)
+        f["_file"] = name
+    meta = {"repo_name": Path(campaign.get("repo") or audit_dir.parent.parent).name,
+            "audit_name": audit_dir.name, "level": campaign.get("level"),
+            "mantis_commit": campaign.get("mantis_commit"), "started_at": campaign.get("started_at"),
+            "duration": duration(campaign.get("started_at"), campaign.get("finished_at")),
+            "notes": state.get("notes", []),
+            "stages": [k for k, v in state.get("stages", {}).items() if v == "done"]}
+    meta["reproduce_done"] = "reproduce" in meta["stages"]
+    meta["level_banner"] = LEVEL_BANNERS.get(meta["level"], "")
+    st = stats(findings)
+    (audit_dir / "README.md").write_text(readme(meta, findings, unreadable, st))
+    for f in findings:
+        if f.get("patch_diff") and bucket(f) != "REJECTED":
+            (audit_dir / "patches").mkdir(exist_ok=True)
+            (audit_dir / "patches" / f"{f['_file']}.diff").write_text(str(f["patch_diff"]).rstrip("\n") + "\n")
+    payload = {"meta": meta, "stats": st, "labels": ENUM_LABELS,
+               "findings": [dict(f, _bucket=bucket(f), _summary=summary(f)) for f in sorted(findings, key=sort_key)]}
+    (audit_dir / "dashboard.html").write_text(TEMPLATE.replace("__DATA__", safe_json(payload)))
+
+
+TEMPLATE = r"""<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audit Mantis</title>
+<style>
+:root{
+  --coral:#dd4175;--orange:#ff9777;--plum:#7c0559;
+  --heading:#181b31;--text:#2e293b;--muted:#6c667b;--light:#a7a9b8;
+  --peach:#fff5f1;--peach2:#ffd4c4;--line:#f1e6e2;--ok:#1f9d63;
+  --grad:linear-gradient(135deg,var(--coral),var(--orange));
+  --ease:cubic-bezier(.16,1,.3,1);
+  --bg:#fff;--card:#fff;--fg:var(--text);
+  --crit:var(--plum);--high:var(--coral);--med:var(--orange);--low:var(--ok);--rej:var(--light);
+  --add:#e9f7ef;--del:#fdecef;
+  --shadow:0 2px 10px rgba(221,65,117,.10);
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.65;background:#fff;color:var(--text);-webkit-font-smoothing:antialiased}
+header{position:sticky;top:0;z-index:10;background:rgba(255,255,255,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+header,main{max-width:1400px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:0 0 4px;font-weight:800;letter-spacing:-.025em;color:var(--heading)}
+.gt{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.kicker{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--coral);background:var(--peach);padding:3px 10px;border-radius:999px;margin-right:6px}
+main>h2{font-size:15px;margin:24px 0 8px;color:var(--heading)}
+.muted{color:var(--muted)}
+#level-banner:not(:empty){border-radius:14px;padding:14px 18px;margin:16px 0 0;background:var(--peach);border:1px solid var(--peach2);font-size:15px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px;box-shadow:var(--shadow)}
+.stat b{display:block;font-size:22px;color:var(--heading)}
+#filter{width:100%;padding:8px 10px;margin:0 0 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:inherit;font:inherit}
+#filter:focus-visible{outline:3px solid var(--orange);outline-offset:1px}
+.board{display:grid;grid-template-columns:repeat(5,minmax(220px,1fr));gap:10px;overflow-x:auto}
+.col{background:var(--peach);border:1px solid var(--line);border-radius:16px;padding:8px;min-height:80px;box-shadow:var(--shadow)}
+.col h3{font-size:13px;margin:0 0 8px;display:flex;justify-content:space-between}
+summary{cursor:pointer;list-style:none}
+.card{display:block;width:100%;text-align:left;background:#fff;color:inherit;font:inherit;border:1px solid var(--line);border-left:4px solid var(--c);border-radius:6px;padding:8px;margin-bottom:6px;cursor:pointer}
+.card:hover,.card:focus-visible{outline:2px solid var(--c)}
+.badge{display:inline-block;font-size:11px;padding:0 6px;border-radius:10px;border:1px solid var(--line);margin:4px 4px 0 0}
+#panel{position:fixed;top:0;right:0;height:100%;width:min(640px,100%);background:var(--card);border-left:1px solid var(--line);box-shadow:var(--shadow),-4px 0 16px rgba(24,27,49,.12);transform:translateX(100%);transition:transform .2s;display:flex;flex-direction:column}
+#panel.open{transform:none}
+.phead{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:16px}
+.phead h2{margin:0;font-size:16px;color:var(--heading)}
+.phead button{background:none;border:0;color:inherit;font-size:18px;cursor:pointer}
+.phead button:focus-visible{outline:3px solid var(--orange);outline-offset:2px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);padding:0 16px}
+.tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:8px;color:inherit;font:inherit;cursor:pointer}
+.tabs button[aria-selected=true]{border-bottom:2px solid transparent;border-image:var(--grad) 1;font-weight:600;color:var(--heading)}
+.tabs button:focus-visible{outline:3px solid var(--orange);outline-offset:2px}
+#content{padding:16px;overflow:auto}
+dt{font-weight:600;margin-top:12px;color:var(--heading)}
+dd{margin:2px 0 0;white-space:pre-wrap}
+pre{background:#fff;border:1px solid var(--line);border-radius:6px;padding:8px;overflow:auto;white-space:pre-wrap;margin:4px 0}
+.add{background:var(--add)}.del{background:var(--del)}
+@media (max-width:700px){.board{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><span id="kicker" class="kicker"></span><h1 id="title"></h1><div id="meta" class="muted"></div><div id="stages" class="muted"></div></header>
+<main>
+<div id="level-banner"></div>
+<section class="grid" id="stats"></section>
+<h2>Points critiques</h2><section class="grid" id="critical"></section>
+<h2>Kanban</h2>
+<input id="filter" type="search" placeholder="Filtrer (titre, emplacement, CWE)…">
+<section class="board" id="board"></section>
+</main>
+<aside id="panel" aria-hidden="true">
+<div class="phead"><h2 id="ptitle"></h2><button id="close" aria-label="Fermer">✕</button></div>
+<nav class="tabs" role="tablist" id="tabs"></nav>
+<div id="content"></div>
+</aside>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+const D = JSON.parse(document.getElementById('data').textContent);
+const NA = 'non évalué à ce niveau';
+const COLS = [['CRITICAL', 'Critical', '--crit'], ['HIGH', 'High', '--high'], ['MEDIUM', 'Medium', '--med'], ['LOW', 'Low', '--low'], ['REJECTED', 'Écartés', '--rej']];
+const m = D.meta, s = D.stats;
+
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === 'class') e.className = v; else if (k === 'style') e.style.cssText = v; else e.setAttribute(k, v);
+  }
+  for (const k of kids) e.append(k);
+  return e;
+}
+function val(f, k) {
+  const x = f[k];
+  if (x == null || x === '' || (Array.isArray(x) && !x.length)) return NA;
+  return Array.isArray(x) ? x.join(', ') : String(x);
+}
+function dd(f, k) {
+  const table = D.labels[k];
+  if (!table) return el('dd', {}, val(f, k));
+  const raw = f[k];
+  if (raw == null || raw === '') return el('dd', {}, NA);
+  return el('dd', {title: String(raw)}, table[raw] || String(raw));
+}
+function card(f) {
+  const col = COLS.find(c => c[0] === f._bucket);
+  const b = el('button', {class: 'card', style: '--c:var(' + col[2] + ')'},
+    el('div', {}, el('strong', {}, String(f.title))), el('div', {class: 'muted'}, val(f, 'code_paths')));
+  if (f.cwe) b.append(el('span', {class: 'badge'}, String(f.cwe)));
+  if (f.repro_status === 'reproduced') b.append(el('span', {class: 'badge'}, 'reproduit'));
+  if (f.patch_status === 'VERIFIED_SECURE') b.append(el('span', {class: 'badge'}, 'patch vérifié'));
+  b.addEventListener('click', () => openPanel(f));
+  return b;
+}
+function dl(f, rows) {
+  const d = el('dl');
+  for (const [label, k] of rows) d.append(el('dt', {}, label), dd(f, k));
+  return d;
+}
+function leadOf(desc) {
+  const m = /\. (?=[A-ZÀ-Ý])/.exec(desc);
+  if (m) return desc.slice(0, m.index + 1);
+  return desc.length > 240 ? desc.slice(0, 240) + '…' : desc;
+}
+function descRow(f) {
+  const desc = f.description;
+  if (desc == null || desc === '') return el('div', {}, el('dt', {}, 'Description'), el('dd', {}, NA));
+  const full = String(desc), lead = leadOf(full);
+  if (lead.length >= full.length) return el('div', {}, el('dt', {}, 'Description'), el('dd', {}, full));
+  return el('div', {}, el('dt', {}, 'Description'), el('dd', {}, lead),
+    el('details', {}, el('summary', {}, 'Lire tout'), el('div', {}, full)));
+}
+function pre(f, k, label) {
+  return el('div', {}, el('dt', {}, label), f[k] ? el('pre', {}, String(f[k])) : el('dd', {}, NA));
+}
+function diff(f) {
+  if (!f.patch_diff) return el('div', {}, el('dt', {}, 'Diff'), el('dd', {}, NA));
+  const p = el('pre');
+  for (const line of String(f.patch_diff).split('\n')) {
+    const c = line.startsWith('+') && !line.startsWith('+++') ? 'add' : line.startsWith('-') && !line.startsWith('---') ? 'del' : '';
+    p.append(el('div', c ? {class: c} : {}, line || ' '));
+  }
+  return el('div', {}, el('dt', {}, 'Diff'), p);
+}
+const TABS = [
+  ['Résumé', f => dl(f, [['Statut', 'status'], ['Résumé', '_summary'], ['Impact', 'impact'], ["Position de l'attaquant", 'attacker_position'], ['Privilèges requis', 'privileges_required'], ['Interaction utilisateur', 'user_interaction']])],
+  ['Problème', f => { const d = dl(f, [['Emplacement', 'code_paths'], ['CWE', 'cwe'], ['Analyse du review', 'reasoning'], ['Analyse du critic', 'critic_reasoning']]); d.prepend(descRow(f)); return d; }],
+  ['Cas testé', f => { const d = dl(f, [['Viabilité en prod', 'production_viability'], ['Statut', 'repro_status'], ['Script', 'repro_file_path']]); d.append(pre(f, 'run_command', 'Commande'), pre(f, 'repro_output', 'Sortie')); return d; }],
+  ['Correction', f => {
+    const d = dl(f, [['Statut', 'patch_status'], ['Re-attaque', 'reattack_status'], ['Mitigation', 'mitigation']]);
+    d.append(diff(f));
+    if (f.patch_diff && f._bucket !== 'REJECTED') d.append(el('p', {}, 'Appliquer : ', el('code', {}, 'git apply osho-mantis/' + m.audit_name + '/patches/' + f._file + '.diff')));
+    return d;
+  }],
+];
+const panel = document.getElementById('panel'), tabs = document.getElementById('tabs'), content = document.getElementById('content');
+let current = null;
+function show(i) {
+  [...tabs.children].forEach((b, j) => b.setAttribute('aria-selected', String(i === j)));
+  content.replaceChildren(TABS[i][1](current));
+}
+function openPanel(f) {
+  current = f;
+  document.getElementById('ptitle').textContent = '[' + f._bucket + '] ' + f.title;
+  tabs.replaceChildren(...TABS.map(([label], i) => { const b = el('button', {role: 'tab'}, label); b.addEventListener('click', () => show(i)); return b; }));
+  show(0);
+  panel.classList.add('open');
+  panel.setAttribute('aria-hidden', 'false');
+  location.hash = f._file;
+}
+function closePanel() {
+  panel.classList.remove('open');
+  panel.setAttribute('aria-hidden', 'true');
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+}
+document.getElementById('close').addEventListener('click', closePanel);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePanel(); });
+function findingForHash(findings, hash) {
+  const id = decodeURIComponent((hash || '').replace(/^#/, ''));
+  if (!id) return null;
+  return findings.find(x => x._file === id) || null;
+}
+function openFromHash() {
+  const f = findingForHash(D.findings, location.hash);
+  if (f) openPanel(f);
+}
+window.addEventListener('hashchange', openFromHash);
+
+document.title = 'Audit — ' + (m.repo_name || 'repo');
+document.getElementById('kicker').textContent = 'Niveau ' + (m.level || '?');
+document.getElementById('title').append('Audit de sécurité — ', el('span', {class: 'gt'}, m.repo_name || 'repo'));
+document.getElementById('meta').textContent = [m.started_at, 'Mantis ' + (m.mantis_commit || '?'), m.duration].filter(Boolean).join(' · ');
+if (m.stages.length) document.getElementById('stages').textContent = 'Étapes exécutées : ' + m.stages.join(', ');
+if (m.level_banner) document.getElementById('level-banner').textContent = m.level_banner;
+const tiles = [['Findings', s.total], ['Critical', s.by_bucket.CRITICAL], ['High', s.by_bucket.HIGH], ['Medium', s.by_bucket.MEDIUM], ['Low', s.by_bucket.LOW], ['Confirmés', s.confirmed], ['Reproduits', s.reproduced, !m.reproduce_done], ['Patchs vérifiés', s.patched, !m.reproduce_done], ['Écartés', s.by_bucket.REJECTED]];
+for (const [label, n, na] of tiles) {
+  const t = na ? el('div', {class: 'stat'}, el('b', {}, '—'), label, el('div', {class: 'muted'}, NA))
+              : el('div', {class: 'stat'}, el('b', {}, String(n)), label);
+  document.getElementById('stats').append(t);
+}
+const crit = D.findings.filter(f => f._bucket === 'CRITICAL' || f._bucket === 'HIGH');
+const critBox = document.getElementById('critical');
+if (!crit.length) critBox.append(el('p', {class: 'muted'}, D.findings.length ? 'Aucun point Critical ou High.' : 'Aucun finding.'));
+for (const f of crit) {
+  const c = card(f);
+  if (f._summary) c.append(el('div', {}, String(f._summary)));
+  critBox.append(c);
+}
+function matches(f, q) {
+  if (!q) return true;
+  q = q.toLowerCase();
+  const paths = Array.isArray(f.code_paths) ? f.code_paths.join(' ') : f.code_paths;
+  const hay = [f.title, paths, f.cwe].map(x => x == null ? '' : String(x)).join(' ').toLowerCase();
+  return hay.includes(q);
+}
+const board = document.getElementById('board');
+function renderBoard(q) {
+  board.replaceChildren();
+  for (const [key, label] of COLS) {
+    const items = D.findings.filter(f => f._bucket === key && matches(f, q));
+    const head = el('h3', {}, el('span', {}, label), el('span', {class: 'muted'}, String(items.length)));
+    const col = key === 'REJECTED' ? el('details', {class: 'col'}, el('summary', {}, head)) : el('div', {class: 'col'}, head);
+    for (const f of items) col.append(card(f));
+    board.append(col);
+  }
+}
+document.getElementById('filter').addEventListener('input', e => renderBoard(e.target.value));
+renderBoard('');
+openFromHash();
+</script>
+</body>
+</html>
+"""
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        sys.exit(__doc__)
+    render(sys.argv[1])
+    print(f"README.md, dashboard.html écrits dans {Path(sys.argv[1]).resolve()}")
