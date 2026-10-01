@@ -95,6 +95,22 @@ def test_niveau_banniere_et_reproduce():
         assert payload["meta"]["level_banner"] == "Reproduction Docker des High+ et correctifs vérifiés par re-attaque."
 
 
+def test_libelles_francais():
+    """Enum values (status, repro_status, patch_status, ...) get a French label; README shows it, dashboard payload carries one shared table."""
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp, [CRIT, LOW])
+        html, payload = data(d)
+        readme = (d / "README.md").read_text()
+        assert "Vérifié par re-attaque" in readme, "CRIT patch_status=VERIFIED_SECURE -> French label"
+        assert "VERIFIED_SECURE" not in readme
+        assert payload["labels"]["status"]["VALID"] == "Confirmé"
+        assert payload["labels"]["patch_status"]["VERIFIED_SECURE"] == "Vérifié par re-attaque"
+        assert payload["labels"]["production_viability"]["VIABLE"] == "Exploitable en prod"
+        if shutil.which("node"):
+            js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+            assert "D.labels" in js, "dashboard must read the labels table from the payload, not duplicate it"
+
+
 def test_aucun_finding():
     with tempfile.TemporaryDirectory() as tmp:
         d = audit(tmp, [])
@@ -164,6 +180,7 @@ def test_safe_id_triple_collision():
 if __name__ == "__main__":
     test_trois_findings()
     test_niveau_banniere_et_reproduce()
+    test_libelles_francais()
     test_aucun_finding()
     test_safe_id_collision()
     test_safe_id_triple_collision()

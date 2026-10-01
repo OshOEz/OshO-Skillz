@@ -19,6 +19,26 @@ LEVEL_BANNERS = {
     "Savage": "Reproduction de tout le viable, chaînes d'exploits.",
     "Overkill": "Revue exhaustive de chaque fichier, 3 tours.",
 }
+ENUM_LABELS = {
+    "status": {"VALID": "Confirmé", "PROVISIONALLY_VALID": "Probable", "FALSE_POSITIVE": "Faux positif",
+               "DUPLICATE": "Doublon", "NEEDS_RESEARCH": "À creuser"},
+    "repro_status": {"reproduced": "Reproduit", "statically_confirmed": "Confirmé statiquement",
+                     "not_attempted": "Non tenté", "failed_to_reproduce": "Non reproduit"},
+    "patch_status": {"VERIFIED_SECURE": "Vérifié par re-attaque", "MITIGATION_PROPOSED": "Correctif proposé, non vérifié",
+                     "VERIFICATION_INCOMPLETE": "Vérification incomplète",
+                     "VERIFICATION_FAILED": "Correctif contourné ou inapplicable", "ERROR": "Erreur"},
+    "reattack_status": {"failed_to_bypass": "Re-attaque échouée (correctif tient)",
+                        "bypassed_patch": "Correctif contourné", "inconclusive_baseline_changed": "Non concluant"},
+    "production_viability": {"VIABLE": "Exploitable en prod", "CONDITIONAL_VIABLE": "Exploitable sous conditions",
+                             "NON_VIABLE": "Non exploitable", "SAMPLE_OR_TEST": "Code d'exemple ou de test"},
+}
+
+
+def label(field, value):
+    """French label for an enum value; unknown values pass through unchanged."""
+    if value in (None, "", []):
+        return None
+    return ENUM_LABELS.get(field, {}).get(str(value), str(value))
 
 
 def load_json(path, default):
@@ -80,6 +100,11 @@ def text(value):
     return html.escape(value, quote=False)
 
 
+def text_enum(field, value):
+    """Markdown-safe French label for an enum field's value."""
+    return text(label(field, value))
+
+
 def cell(value):
     return text(value).replace("|", "\\|").replace("\n", " ")
 
@@ -120,11 +145,11 @@ def readme(meta, findings, unreadable, st):
                     f"**Emplacement** : {text(f.get('code_paths'))} · **CWE** : {text(f.get('cwe'))}", "",
                     f"**Problème** : {text(f.get('description'))}", "",
                     f"**Impact** : {text(f.get('impact'))}", "",
-                    f"**Cas testé** : {text(f.get('repro_status'))}"]
+                    f"**Cas testé** : {text_enum('repro_status', f.get('repro_status'))}"]
             for key in ("run_command", "repro_output"):
                 if f.get(key):
                     out += ["", block(str(f[key]), "bash" if key == "run_command" else "")]
-            out += ["", f"**Correction** ({text(f.get('patch_status'))})", ""]
+            out += ["", f"**Correction** ({text_enum('patch_status', f.get('patch_status'))})", ""]
             if f.get("patch_diff"):
                 out += [block(str(f["patch_diff"]), "diff"), "",
                         f"Appliquer depuis la racine du repo : `git apply osho-mantis/{meta['audit_name']}/patches/{f['_file']}.diff`"]
@@ -133,8 +158,10 @@ def readme(meta, findings, unreadable, st):
             out.append("")
     if rejected:
         out += ["## Écartés", ""]
-        out += [f"- {text(f['title'])} — {text(f.get('status') or f.get('production_viability'))} : "
-                f"{text((f.get('critic_reasoning') or f.get('reasoning') or '')[:200])}" for f in rejected]
+        for f in rejected:
+            field = "status" if f.get("status") else "production_viability"
+            out.append(f"- {text(f['title'])} — {text_enum(field, f.get(field))} : "
+                       f"{text((f.get('critic_reasoning') or f.get('reasoning') or '')[:200])}")
         out.append("")
     out += ["## Limites", ""] + [f"- {text(n)}" for n in meta["notes"]]
     if unreadable:
@@ -178,7 +205,7 @@ def render(audit_dir):
         if f.get("patch_diff") and bucket(f) != "REJECTED":
             (audit_dir / "patches").mkdir(exist_ok=True)
             (audit_dir / "patches" / f"{f['_file']}.diff").write_text(str(f["patch_diff"]).rstrip("\n") + "\n")
-    payload = {"meta": meta, "stats": st,
+    payload = {"meta": meta, "stats": st, "labels": ENUM_LABELS,
                "findings": [dict(f, _bucket=bucket(f), _summary=summary(f)) for f in sorted(findings, key=sort_key)]}
     (audit_dir / "dashboard.html").write_text(TEMPLATE.replace("__DATA__", safe_json(payload)))
 
@@ -257,6 +284,13 @@ function val(f, k) {
   if (x == null || x === '' || (Array.isArray(x) && !x.length)) return NA;
   return Array.isArray(x) ? x.join(', ') : String(x);
 }
+function dd(f, k) {
+  const table = D.labels[k];
+  if (!table) return el('dd', {}, val(f, k));
+  const raw = f[k];
+  if (raw == null || raw === '') return el('dd', {}, NA);
+  return el('dd', {title: String(raw)}, table[raw] || String(raw));
+}
 function card(f) {
   const col = COLS.find(c => c[0] === f._bucket);
   const b = el('button', {class: 'card', style: '--c:var(' + col[2] + ')'},
@@ -269,7 +303,7 @@ function card(f) {
 }
 function dl(f, rows) {
   const d = el('dl');
-  for (const [label, k] of rows) d.append(el('dt', {}, label), el('dd', {}, val(f, k)));
+  for (const [label, k] of rows) d.append(el('dt', {}, label), dd(f, k));
   return d;
 }
 function pre(f, k, label) {
@@ -285,9 +319,9 @@ function diff(f) {
   return el('div', {}, el('dt', {}, 'Diff'), p);
 }
 const TABS = [
-  ['Résumé', f => dl(f, [['Résumé', '_summary'], ['Impact', 'impact'], ["Position de l'attaquant", 'attacker_position'], ['Privilèges requis', 'privileges_required'], ['Interaction utilisateur', 'user_interaction']])],
+  ['Résumé', f => dl(f, [['Statut', 'status'], ['Résumé', '_summary'], ['Impact', 'impact'], ["Position de l'attaquant", 'attacker_position'], ['Privilèges requis', 'privileges_required'], ['Interaction utilisateur', 'user_interaction']])],
   ['Problème', f => dl(f, [['Description', 'description'], ['Emplacement', 'code_paths'], ['CWE', 'cwe'], ['Analyse du review', 'reasoning'], ['Analyse du critic', 'critic_reasoning']])],
-  ['Cas testé', f => { const d = dl(f, [['Statut', 'repro_status'], ['Script', 'repro_file_path']]); d.append(pre(f, 'run_command', 'Commande'), pre(f, 'repro_output', 'Sortie')); return d; }],
+  ['Cas testé', f => { const d = dl(f, [['Viabilité en prod', 'production_viability'], ['Statut', 'repro_status'], ['Script', 'repro_file_path']]); d.append(pre(f, 'run_command', 'Commande'), pre(f, 'repro_output', 'Sortie')); return d; }],
   ['Correction', f => {
     const d = dl(f, [['Statut', 'patch_status'], ['Re-attaque', 'reattack_status'], ['Mitigation', 'mitigation']]);
     d.append(diff(f));
