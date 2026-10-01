@@ -3,6 +3,7 @@
   python3 test_inventory.py
 """
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -33,6 +34,9 @@ def test_inventaire():
         git(repo, "commit", "-qm", "init")
         (repo / "index.js").write_text(FICHIERS["index.js"] + "// escape\n")
         git(repo, "commit", "-qam", "fix XSS in search")
+        os.symlink("/dev/zero", str(repo / "evil.py"))
+        git(repo, "add", "evil.py")
+        git(repo, "commit", "-qm", "add symlink")
         sortie = Path(tmp, "inventory.json")
         r = subprocess.run(OUTIL + [str(repo), str(sortie)], capture_output=True, text=True)
         assert r.returncode == 0, r.stderr
@@ -41,7 +45,7 @@ def test_inventaire():
         assert inv["files"] == 3, "les audits versionnés dans osho-mantis/ sont exclus"
         assert inv["surface"]["http_route"] == {"count": 1, "files": ["app.py"]}
         assert inv["surface"]["command_exec"] == {"count": 1, "files": ["app.py"]}
-        assert inv["history"]["commits"] == 2 and inv["history"]["security_commit_count"] == 1
+        assert inv["history"]["commits"] == 3 and inv["history"]["security_commit_count"] == 1
         assert inv["history"]["security_commits"][0].endswith("fix XSS in search")
         assert inv["repro"]["has_tests"] is True and inv["repro"]["has_dockerfile"] is False
         assert list(inv["levels"]) == ["Light", "Sharp", "Savage", "Overkill"]

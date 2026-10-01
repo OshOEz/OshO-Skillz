@@ -4,6 +4,7 @@
 """
 import json
 import re
+import stat
 import subprocess
 import sys
 from collections import Counter, defaultdict
@@ -96,14 +97,17 @@ def inventory(repo):
     total_lines = 0
     for rel in files:
         path = repo / rel
+        lang = LANGS.get(path.suffix.lower())
+        if not lang:
+            continue
         try:
-            if path.stat().st_size > 1_000_000:
+            st = path.lstat()
+            if not stat.S_ISREG(st.st_mode):
+                continue
+            if st.st_size > 1_000_000:
                 continue
             text = path.read_text(errors="ignore")
         except OSError:
-            continue
-        lang = LANGS.get(path.suffix.lower())
-        if not lang:
             continue
         n = text.count("\n")
         langs[lang]["files"] += 1
