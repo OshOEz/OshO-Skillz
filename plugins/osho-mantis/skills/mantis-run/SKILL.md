@@ -61,12 +61,13 @@ You run the Mantis stage `<stage>` of a security audit.
    --state_root <AUDIT>      (state files live in <AUDIT>/workspace/)
    --target_root <CODE>      (<CODE> = <REPO>; for reproduce and patch, <SHADOW> — the path saved in state.json)
 2. <REPO> is read-only. Write only under <AUDIT>/workspace/.
-3. Do not delegate to sub-agents: you are one of <n> parallel workers.
-4. Scope: <scope>.            (e.g. "only investigations #4 to #6 of workspace/plan.json",
+3. Never build, install, run or test target code on the host; static reading only. Code execution is allowed only in reproduce/patch, via the docker line below.
+4. Do not delegate to sub-agents: you are one of <n> parallel workers.
+5. Scope: <scope>.            (e.g. "only investigations #4 to #6 of workspace/plan.json",
                                "only findings <id>, <id>", "the whole workspace")
-5. <level line>
-6. <docker line>              (reproduce and patch only)
-7. Reply in 5 lines max: what you wrote (paths or finding ids), and any blocker.
+6. <level line>
+7. <docker line>              (reproduce and patch only)
+8. Reply in 5 lines max: what you wrote (paths or finding ids), and any blocker.
 ```
 
 - Level line, Light patch: `Light level: write patch_diff as a unified diff relative to the repo root (a/<file>, b/<file>) and set patch_status to MITIGATION_PROPOSED. Do not execute any code.`
