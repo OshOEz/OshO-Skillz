@@ -12,6 +12,18 @@
 | `superpowers-offer.sh session` | SessionStart hook | Strips Superpowers' always-on bootstrap (re-applied after plugin updates) |
 | `crg.sh status` / `crg.sh update` | SessionStart / PostToolUse hooks | Shows and incrementally updates the code-review-graph, only in repos where it was built |
 
+## osho-mantis
+
+Opt-in : `claude plugin install osho-mantis@osho-skillz`. Lance les skills [google/mantis](https://github.com/google/mantis) (référencés dans `~/.local/share/mantis`) avec l'abonnement Claude Code.
+
+| Component | Type | What it does |
+|---|---|---|
+| `mantis-triage` | Skill | Triage court : inventaire, zones à risque, niveau recommandé (Light, Sharp, Savage, Overkill) avec estimation de quota, dossier `osho-mantis/audit-<date>_<heure>/` |
+| `mantis-run` | Skill | Campagne au niveau choisi, un sous-agent par étape Mantis, reprise après coupure, rapport `README.md`, `patches/`, `dashboard.html` |
+| `check-visibility.sh` | Script | `local` / `private` / `public` / `unknown` via `gh` ; self-test : `bash skills/mantis-triage/scripts/test_check_visibility.sh` |
+| `inventory.py` | Script | Inventaire zéro token et estimations ; self-test : `python3 skills/mantis-triage/scripts/test_inventory.py` |
+| `render.py` | Script | Findings → README, patchs, dashboard ; self-test : `python3 skills/mantis-run/scripts/test_render.py` |
+
 ## Adding a skill
 
 1. Create `plugins/<plugin>/skills/<skill-name>/SKILL.md` with `name` and `description` frontmatter ([Agent Skills format](https://code.claude.com/docs/en/skills)).

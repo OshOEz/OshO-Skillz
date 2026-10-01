@@ -79,6 +79,16 @@ pre-commit: installed (.git/hooks/pre-commit)
 
 From then on the graph stays up to date on every edit and every commit.
 
+## osho-mantis (opt-in)
+
+Security audits with [google/mantis](https://github.com/google/mantis), run on your Claude Code subscription (no Google or API key needed).
+
+```bash
+claude plugin install osho-mantis@osho-skillz
+```
+
+In a repo, say *"mantis triage"*: a short pass recommends a level (**Light → Sharp → Savage → Overkill**) with a quota estimate for your subscription. Then *"mantis run"* runs the audit and writes `osho-mantis/audit-<date>/` (README report, suggested patches, HTML dashboard). Run it only on code you are allowed to test; reproduction runs in Docker without network.
+
 ## Repository layout
 
 ```

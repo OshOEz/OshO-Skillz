@@ -9,3 +9,7 @@
 **Superpowers is installed but not injected.** Its SessionStart hook loads the full `using-superpowers` skill into every session. We empty that hook and instead offer Superpowers once per session when the task warrants it. The first session after a Superpowers update still gets the bootstrap once.
 
 **Homebrew Python and Node, first on PATH.** No pyenv/nvm; `uv tool` runs on Homebrew's Python.
+
+**Mantis is referenced in `~/.local/share/mantis`, not installed as skills.** Each osho-mantis subagent reads the `SKILL.md` of its stage. Its 19 descriptions cost nothing in other sessions, and Mantis (Apache-2.0) stays outside this MIT repo.
+
+**Audit folders are versioned by default, with a guard for public repos.** An audit contains detailed vulnerabilities and exploits. The skill checks visibility with `gh`, recommends not versioning when the repo is public, and asks when visibility is unknown.
