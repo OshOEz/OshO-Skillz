@@ -73,7 +73,7 @@ You run the Mantis stage `<stage>` of a security audit.
 - Level line, patch for a finding without `repro_status: reproduced` (Light; or Sharp+ when that finding wasn't reproduced, including every finding when reproduce was `skipped` for lack of Docker): `This finding has no verified reproduction: write patch_diff as a unified diff relative to the repo root (a/<file>, b/<file>) and set patch_status to MITIGATION_PROPOSED. Do not execute any code or attempt a re-attack.`
 - Level line, plan: `Write at most <hypotheses_max> investigations. Prioritise these hypotheses: <focus>. Skip: <out_of_scope>.` For Overkill, instead: `One investigation per source file.`
 - Level line, otherwise: `Level <level>.`
-- Docker line: `Execute target code only with: docker run --rm --network=none <--runtime=runsc if inventory.json repro.runsc> -v "<SHADOW>":/src<:ro for reproduce> -w /src <official image for the stack, e.g. python:3.12-slim> <cmd>. Pulling the image is the only network access allowed. Never run target code on the host.`
+- Docker line: `Execute target code only with: docker run --rm --network=none <--runtime=runsc if inventory.json repro.runsc> -v "<SHADOW>":/src<:ro for reproduce> <-v "<AUDIT>/workspace/reproducers":/poc:ro for reproduce> -w /src <official image for the stack, e.g. python:3.12-slim> <cmd>. For reproduce, the PoC file you wrote under state_root/workspace/reproducers/ is mounted read-only at /poc — run it as /poc/<file>. Pulling the image is the only network access allowed. Never run target code on the host.`
 
 ### Patch + re-attack for reproduced findings (Sharp+)
 
