@@ -63,6 +63,7 @@ Third-party plugins are **referenced, never copied**: they auto-update from upst
 | `repo-init` | Skill | After `git init` / `git clone`, or on request: builds the code-review-graph and installs its pre-commit hook |
 | `donnees-fictives` | Skill | Builds invented test data from confidential client documents, with an automatic leak check and purge |
 | `audit-loop` | Skill + agent | Say *"audit loop on PR #12"*: a senior auditor files issues for production-breaking problems only, a dev fixes them, repeat up to 3 rounds, then it proposes the merge |
+| `tache` | Skill | Paste *"/tache <id>"* from a card of Horizon's Kanban: the session starts from the card's context and leaves a session log on it when done. Needs the `horizon-kanban` MCP server (Horizon → Kanban → Accès Claude Code) and Tailscale |
 | `superpowers-offer` | Hooks | Removes Superpowers' always-on bootstrap; on substantial dev work, asks once per session whether to use it |
 | `crg` | Hooks | Shows the graph status at session start and updates it after each edit, only in repos where it was built |
 
