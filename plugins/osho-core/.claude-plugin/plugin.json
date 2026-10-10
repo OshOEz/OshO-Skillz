@@ -1,6 +1,6 @@
 {
   "name": "osho-core",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Core hooks, skills and agents: repo-init, donnees-fictives, audit-loop (auditor agent), tache (Horizon Kanban task ↔ Claude Code session), code-review-graph auto-update, per-session Superpowers offer.",
   "author": { "name": "OshOEz" },
   "repository": "https://github.com/OshOEz/OshO-Skillz",
