@@ -4,15 +4,27 @@
       {
         "matcher": "",
         "hooks": [
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/crg.sh\" status", "timeout": 10 },
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/superpowers-offer.sh\" session", "timeout": 10 }
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/crg.sh\" status",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/superpowers-offer.sh\" session",
+            "timeout": 10
+          }
         ]
       }
     ],
     "UserPromptSubmit": [
       {
         "hooks": [
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/superpowers-offer.sh\" prompt", "timeout": 10 }
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/superpowers-offer.sh\" prompt",
+            "timeout": 10
+          }
         ]
       }
     ],
@@ -20,7 +32,21 @@
       {
         "matcher": "Edit|Write",
         "hooks": [
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/crg.sh\" update", "timeout": 30 }
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/crg.sh\" update",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/revue-artefact.sh\"",
+            "timeout": 10
+          }
         ]
       }
     ]
