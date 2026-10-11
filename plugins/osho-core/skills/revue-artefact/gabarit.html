@@ -1,0 +1,144 @@
+<title>{{TITRE}}</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --fond:#f3f5f7; --surface:#ffffff; --encre:#18222d; --doux:#55636f; --trait:#d8dee4;
+  --accent:#1f5f8b; --accent-doux:#e3eef6; --ok:#2e7d4f; --ok-doux:#e4f2e9; --alerte:#9a5b00; --alerte-doux:#fbf0dc;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --fond:#11171d; --surface:#18212a; --encre:#e6ebf0; --doux:#9aa8b4; --trait:#2b3743;
+  --accent:#7fb6dd; --accent-doux:#1c3346; --ok:#7cc79a; --ok-doux:#183326; --alerte:#e2b45c; --alerte-doux:#3a2c12;
+  color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --fond:#11171d; --surface:#18212a; --encre:#e6ebf0; --doux:#9aa8b4; --trait:#2b3743;
+  --accent:#7fb6dd; --accent-doux:#1c3346; --ok:#7cc79a; --ok-doux:#183326; --alerte:#e2b45c; --alerte-doux:#3a2c12;
+  color-scheme:dark;}
+*{box-sizing:border-box}
+body{background:var(--fond);color:var(--encre);font:16px/1.55 "IBM Plex Sans",system-ui,sans-serif;margin:0}
+.page{max-width:760px;margin:0 auto;padding-inline:16px;padding-block:32px 64px;display:grid;gap:28px}
+h1{font-size:28px;line-height:1.2;margin:0;text-wrap:balance}
+h2{font-size:19px;margin:0 0 12px;text-wrap:balance}
+.sur{font:500 12px/1 "IBM Plex Mono",monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--doux);margin:0 0 8px}
+.chapo{color:var(--doux);margin:8px 0 0;max-width:62ch}
+.chiffres{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.puce{font:500 13px/1 "IBM Plex Mono",monospace;padding:7px 10px;border-radius:6px;background:var(--ok-doux);color:var(--ok)}
+.puce.alerte{background:var(--alerte-doux);color:var(--alerte)}
+section{background:var(--surface);border:1px solid var(--trait);border-radius:10px;padding:20px}
+section > p{margin:0 0 10px;max-width:62ch}
+ul.liste{margin:0;padding:0;list-style:none;display:grid;gap:10px}
+ul.liste li{display:grid;grid-template-columns:22px 1fr;gap:8px}
+ul.liste li::before{content:"✓";color:var(--ok);font-weight:700}
+ul.liste.alerte li::before{content:"!";color:var(--alerte)}
+ul.liste.neutre li::before{content:"·";color:var(--doux)}
+.q{border-top:1px solid var(--trait);padding-top:18px;margin-top:18px}
+.q:first-child{border-top:0;padding-top:0;margin-top:0}
+.q h3{font-size:16px;margin:0 0 6px}
+.q p{margin:0 0 12px;color:var(--doux);max-width:62ch}
+.choix{display:grid;gap:8px}
+.choix label{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--trait);border-radius:8px;cursor:pointer}
+.choix label:has(input:checked){border-color:var(--accent);background:var(--accent-doux)}
+.choix input{margin-top:4px;accent-color:var(--accent)}
+.choix small{display:block;color:var(--doux)}
+.reco{font:500 11px/1 "IBM Plex Mono",monospace;color:var(--accent);margin-left:6px;text-transform:uppercase;letter-spacing:.06em}
+textarea{width:100%;min-height:72px;font:inherit;color:var(--encre);background:var(--fond);border:1px solid var(--trait);border-radius:8px;padding:10px}
+button{font:600 15px/1 "IBM Plex Sans",sans-serif;background:var(--accent);color:var(--surface);border:0;border-radius:8px;padding:13px 18px;cursor:pointer}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.etat{margin-top:12px;font-weight:500}
+.etat.ok{color:var(--ok)} .etat.ko{color:var(--alerte)}
+pre{white-space:pre-wrap;background:var(--fond);border:1px solid var(--trait);border-radius:8px;padding:12px;font:13px/1.5 "IBM Plex Mono",monospace}
+</style>
+
+<!-- The only part to fill: the page renders from this JSON. -->
+<script type="application/json" id="contenu">
+{{CONTENU}}
+</script>
+
+<div class="page" id="page"></div>
+
+<script>
+const C = JSON.parse(document.getElementById('contenu').textContent);
+const page = document.getElementById('page');
+const el = (tag, attrs = {}, ...enfants) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') n.className = v; else if (k === 'text') n.textContent = v; else n.setAttribute(k, v);
+  }
+  for (const e of enfants) if (e) n.append(e);
+  return n;
+};
+
+// Header
+const tete = el('header');
+if (C.sur) tete.append(el('p', { class: 'sur', text: C.sur }));
+tete.append(el('h1', { text: C.titre }));
+if (C.chapo) tete.append(el('p', { class: 'chapo', text: C.chapo }));
+if (C.puces?.length) {
+  const box = el('div', { class: 'chiffres' });
+  for (const p of C.puces) box.append(el('span', { class: 'puce' + (p.ton === 'alerte' ? ' alerte' : ''), text: p.texte ?? p }));
+  tete.append(box);
+}
+page.append(tete);
+
+// Read-only sections
+for (const s of C.sections ?? []) {
+  const sec = el('section', {}, el('h2', { text: s.titre }));
+  for (const para of s.paragraphes ?? []) sec.append(el('p', { text: para }));
+  if (s.items?.length) {
+    const ul = el('ul', { class: 'liste' + (s.ton === 'alerte' ? ' alerte' : s.ton === 'neutre' ? ' neutre' : '') });
+    for (const i of s.items) ul.append(el('li', { text: i }));
+    sec.append(ul);
+  }
+  page.append(sec);
+}
+
+// Questions
+const form = el('form', { id: 'form' });
+for (const q of C.questions ?? []) {
+  const bloc = el('div', { class: 'q' }, el('h3', { text: q.titre }));
+  if (q.contexte) bloc.append(el('p', { text: q.contexte }));
+  if (q.choix?.length) {
+    const choix = el('div', { class: 'choix' });
+    q.choix.forEach((c, i) => {
+      const input = el('input', { type: 'radio', name: q.id, value: c.valeur, id: `${q.id}-${i}` });
+      if (c.reco) input.checked = true;
+      const texte = el('span', { text: c.libelle });
+      if (c.reco) texte.append(el('span', { class: 'reco', text: 'recommandé' }));
+      if (c.detail) texte.append(el('small', { text: c.detail }));
+      choix.append(el('label', { for: input.id }, input, texte));
+    });
+    bloc.append(choix);
+  } else {
+    bloc.append(el('textarea', { id: q.id, name: q.id, placeholder: q.placeholder ?? '' }));
+  }
+  form.append(bloc);
+}
+form.append(el('div', { class: 'q' }, el('h3', { text: 'Autre chose ?' }), el('textarea', { id: 'note', name: 'note', placeholder: 'Facultatif' })));
+const etat = el('p', { class: 'etat', id: 'etat', role: 'status' });
+const copie = el('pre', { id: 'copie' }); copie.hidden = true;
+form.append(el('p', { style: 'margin-top:18px' }, el('button', { type: 'submit', id: 'envoyer', text: 'Envoyer mes réponses' })), etat, copie);
+page.append(el('section', {}, el('h2', { text: C.titreQuestions ?? 'Tes réponses' }), form));
+
+// Saving: one document per review, read back by Claude with ArtifactData.
+let db = null;
+(async () => { try { db = await window.claude?.use?.('db'); } catch { db = null; } })();
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  const r = Object.fromEntries([...new FormData(form)].map(([k, v]) => [k, String(v).trim()]));
+  r.le = new Date().toISOString();
+  etat.className = 'etat'; etat.textContent = 'Envoi…';
+  if (db) {
+    try {
+      await db.doc('reponses/reponse').set(r);
+      etat.className = 'etat ok';
+      etat.textContent = 'Réponses enregistrées. Dis « c’est fait » à Claude dans le terminal.';
+      copie.hidden = true;
+      return;
+    } catch { /* falls back to copy below */ }
+  }
+  etat.className = 'etat ko';
+  etat.textContent = 'Enregistrement impossible ici. Copie ce texte dans le terminal :';
+  copie.textContent = JSON.stringify(r, null, 2);
+  copie.hidden = false;
+});
+</script>
