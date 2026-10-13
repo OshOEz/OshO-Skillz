@@ -8,6 +8,8 @@
 
 **Superpowers is installed but not injected.** Its SessionStart hook loads the full `using-superpowers` skill into every session. We empty that hook and instead offer Superpowers once per session when the task warrants it. The first session after a Superpowers update still gets the bootstrap once.
 
+**Escouade merges, the PR only audits.** An Escouade ticket lives on `ticket/<key>`, which the Kanban merges into the local base. Merging the audit PR on GitHub as well merged kata's tickets twice and split local `dev` from `origin/dev`. In an Escouade ticket, `audit-loop` opens the PR from the ticket branch, never merges it, and pulls the fixes back into the local branch.
+
 **Homebrew Python and Node, first on PATH.** No pyenv/nvm; `uv tool` runs on Homebrew's Python.
 
 **Mantis is referenced in `~/.local/share/mantis`, not installed as skills.** Each osho-mantis subagent reads the `SKILL.md` of its stage. Its 19 descriptions cost nothing in other sessions, and Mantis (Apache-2.0) stays outside this MIT repo.

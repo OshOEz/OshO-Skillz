@@ -7,6 +7,7 @@
 | `repo-init` | Skill | After `git init`/`git clone` or on request: builds the code-review-graph and installs its pre-commit hook. Script: `skills/repo-init/scripts/repo-init.sh [path]` |
 | `donnees-fictives` | Skill | Builds fully invented test data from confidential client documents, checks nothing leaks, then purges the copies. Tool: `uv run skills/donnees-fictives/scripts/donnees_fictives.py`, self-test: `python3 skills/donnees-fictives/scripts/test_donnees_fictives.py` |
 | `audit-loop` | Skill | Audit → fix loop on a PR until it is production-ready: the auditor opens GitHub issues for major problems only, a dev fixes them, the auditor verifies and closes; 3 rounds max, then proposes the merge |
+| `escouade` | Skill | How to work with Escouade (Kanban that runs one agent per ticket on `ticket/<key>`): one ticket per batch, sub-tasks via `TaskCreate`, merge from the Kanban only, PR for audit only. Script: `skills/escouade/scripts/contexte.sh [path] [base]`, self-test: `bash skills/escouade/scripts/test_contexte.sh` |
 | `auditor` | Agent | Strict senior reviewer used by `audit-loop`; no Edit/Write tools, writes only to GitHub |
 | `superpowers-offer.sh prompt` | UserPromptSubmit hook | On substantial dev work, asks once per session whether to use Superpowers, with a one-sentence reason |
 | `superpowers-offer.sh session` | SessionStart hook | Strips Superpowers' always-on bootstrap (re-applied after plugin updates) |

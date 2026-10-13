@@ -63,6 +63,7 @@ Third-party plugins are **referenced, never copied**: they auto-update from upst
 | `repo-init` | Skill | After `git init` / `git clone`, or on request: builds the code-review-graph and installs its pre-commit hook |
 | `donnees-fictives` | Skill | Builds invented test data from confidential client documents, with an automatic leak check and purge |
 | `audit-loop` | Skill + agent | Say *"audit loop on PR #12"*: a senior auditor files issues for production-breaking problems only, a dev fixes them, repeat up to 3 rounds, then it proposes the merge |
+| `escouade` | Skill | In an Escouade ticket: one ticket per batch, sub-tasks shown in the agent header, the PR only for the audit; the Kanban merges, never GitHub as well |
 | `superpowers-offer` | Hooks | Removes Superpowers' always-on bootstrap; on substantial dev work, asks once per session whether to use it |
 | `crg` | Hooks | Shows the graph status at session start and updates it after each edit, only in repos where it was built |
 
