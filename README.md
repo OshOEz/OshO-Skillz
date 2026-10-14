@@ -65,6 +65,7 @@ Third-party plugins are **referenced, never copied**: they auto-update from upst
 | `audit-loop` | Skill + agent | Say *"audit loop on PR #12"*: a senior auditor files issues for production-breaking problems only, a dev fixes them, repeat up to 3 rounds, then it proposes the merge |
 | `tache` | Skill | Paste *"/tache <id>"* from a card of Horizon's Kanban: the session starts from the card's context and leaves a session log on it when done. Needs the `horizon-kanban` MCP server (Horizon → Kanban → Accès Claude Code) and Tailscale |
 | `revue-artefact` | Skill + hook | Plans, specs, end-of-work reports and questions come as an artifact page: a plain-language summary, then the questions with Claude's recommendation pre-ticked. Tick, *Envoyer*, say *"c'est fait"*: Claude reads the answers back. The hook brings it up when a Superpowers skill starts that ends in a review or a decision |
+| `escouade` | Skill | In an Escouade ticket: one ticket per batch, sub-tasks shown in the agent header, the PR only for the audit; the Kanban merges, never GitHub as well |
 | `superpowers-offer` | Hooks | Removes Superpowers' always-on bootstrap; on substantial dev work, asks once per session whether to use it |
 | `crg` | Hooks | Shows the graph status at session start and updates it after each edit, only in repos where it was built |
 

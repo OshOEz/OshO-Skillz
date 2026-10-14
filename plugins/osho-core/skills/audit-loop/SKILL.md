@@ -18,7 +18,8 @@ Tu es le chef d'orchestre. Tu ne relis pas le code et tu ne corriges rien toi-m�
    - n° ou URL fourni → `gh pr view <n> --json number,headRefName,state,url`. PR introuvable ou `state` différent de `OPEN` → arrêt, le dire.
    - sub-agent de dev en cours → attendre sa notification de fin, puis `gh pr list --head <branche> --state all --json number,state`. PR trouvée mais pas `OPEN` → arrêt, le dire.
    - aucune PR : si le dev a fini et poussé sa branche, ouvrir la PR (`gh pr create --base dev --head <branche> --fill` ; si `dev` n'existe pas sur le remote, demander la branche cible). Sinon demander à l'utilisateur.
-4. Retenir : `<repo>`, n° PR, branche, identifiant du dev initial s'il existe, plan de référence **seulement** s'il n'existe que dans cette session (sinon l'auditeur le trouve seul).
+4. Mode Escouade : `bash "${CLAUDE_PLUGIN_ROOT}/skills/escouade/scripts/contexte.sh" <repo>` réussit (branche `ticket/<clé>`) → mode Escouade (skill `osho-core:escouade`). La PR part de la branche du ticket elle-même : `git -C <repo> push -u origin HEAD`, puis `gh pr create --base <base> --head ticket/<clé> --fill`, jamais une branche `feat/…` qui rejoue ses commits. C'est le Kanban qui fusionne, pas la PR.
+5. Retenir : mode Escouade ou non, `<repo>`, n° PR, branche, identifiant du dev initial s'il existe, plan de référence **seulement** s'il n'existe que dans cette session (sinon l'auditeur le trouve seul).
 
 Commande « issues ouvertes de la PR », source de vérité à chaque étape :
 
@@ -98,3 +99,5 @@ Afficher les issues encore ouvertes (n°, priorité, titre) et dire que les 3 to
 ## 5. Sortie
 
 En 3 à 5 lignes : nombre de tours, issues fermées, issues restantes, commits de correctifs. Puis les questions non bloquantes. Terminer par : « Merger la PR #<n> ? ». Ne jamais merger sans un oui explicite de l'utilisateur.
+
+Mode Escouade, à la place de la question : ramener les correctifs sur la branche locale du ticket, que le Kanban fusionne (`git -C <repo> pull --ff-only origin <branche>`), puis terminer par : « Prête : fusionne <CLÉ> depuis le Kanban d'Escouade, pousse la base, puis ferme la PR #<n> ». Ne jamais lancer `gh pr merge` : la PR fusionnée en plus du Kanban ferait fusionner le ticket deux fois.

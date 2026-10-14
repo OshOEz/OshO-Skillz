@@ -1,7 +1,7 @@
 {
   "name": "osho-core",
-  "version": "0.6.0",
-  "description": "Core hooks, skills and agents: repo-init, donnees-fictives, audit-loop (auditor agent), tache (Horizon Kanban task ↔ Claude Code session), code-review-graph auto-update, per-session Superpowers offer, revue-artefact (plans, specs, dev reports and questions as an artifact page the user ticks).",
+  "version": "0.7.0",
+  "description": "Core hooks, skills and agents: repo-init, donnees-fictives, audit-loop (auditor agent), escouade (Escouade ticket method), tache (Horizon Kanban task ↔ Claude Code session), code-review-graph auto-update, per-session Superpowers offer, revue-artefact (plans, specs, dev reports and questions as an artifact page the user ticks).",
   "author": {
     "name": "OshOEz"
   },
