@@ -243,6 +243,13 @@ def test_command_terminal():
         assert [json.loads(x)["id"] for x in cli("pending", d).stdout.splitlines()] == [cmd["id"]]
 
 
+def test_page_live_servie():
+    with server() as (d, out, port, key):
+        s, body, _ = req(port, "GET", f"/?key={key}")
+        raw = body.split('<script id="data" type="application/json">', 1)[1].split("</script>", 1)[0]
+        assert s == 200 and json.loads(raw)["mode"] == "live"
+
+
 def test_help():
     out = cli("--help").stdout
     for w in ("serve", "stop", "command", "pending", "apply", "ack"):

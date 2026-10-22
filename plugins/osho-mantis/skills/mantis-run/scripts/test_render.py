@@ -262,6 +262,33 @@ D = {mode: 'final', meta: {}, stages: [{key: 'patch', status: 'pending'}]};
 assert.strictEqual(naText('patch_status'), 'non évalué à ce niveau', 'fichier final');
 """)
 
+def test_conn_label():
+    """Indicateur de connexion : en direct < 15 s, reconnexion < 60 s, hors ligne sinon ou en mode final."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        node_ok(tmp, fn(js, "pad") + fn(js, "hhmm") + fn(js, "connLabel") + """
+const assert = require('assert');
+assert.ok(connLabel(3, 'live').startsWith('En direct'), connLabel(3, 'live'));
+assert.strictEqual(connLabel(3, 'live'), 'En direct, mis à jour il y a 3 s');
+assert.strictEqual(connLabel(30, 'live'), 'Reconnexion…');
+assert.ok(connLabel(90, 'live').startsWith('Hors ligne'));
+assert.ok(connLabel(0, 'final').startsWith('Hors ligne'));
+assert.ok(/^Hors ligne, données du \\d\\d:\\d\\d$/.test(connLabel(0, 'final')), connLabel(0, 'final'));
+""")
+
+
+def test_final_sans_eventsource():
+    """Le fichier final n'ouvre pas de flux : new EventSource est conditionné à D.mode === 'live'."""
+    with tempfile.TemporaryDirectory() as tmp:
+        html, payload = data(audit(tmp, [CRIT]))
+        assert payload["mode"] == "final"
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        assert js.count("new EventSource") == 1
+        assert re.search(r"if \(D\.mode === ['\"]live['\"]\) \{[^}]*new EventSource", js), "EventSource non conditionné"
+
 
 def test_pipeline_hooks():
     """Sélecteur de vue du pipeline : deux boutons-icônes avec aria-pressed."""
@@ -369,6 +396,8 @@ if __name__ == "__main__":
     test_themes_horizon()
     test_frise_etapes()
     test_pas_encore_evalue()
+    test_conn_label()
+    test_final_sans_eventsource()
     test_pipeline_hooks()
     test_stage_view()
     test_reduced_motion()
