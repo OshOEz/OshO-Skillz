@@ -93,7 +93,8 @@ def _finding_path(audit_dir, stem):
 
 
 def valid_stem(audit_dir, stem):
-    return not commands._bad(stem) and stem != "" and _finding_path(audit_dir, stem).is_file()
+    return (not commands._bad(stem) and stem != "" and stem.isprintable()
+            and _finding_path(audit_dir, stem).is_file())
 
 
 def safe_tmp(path):
@@ -129,20 +130,39 @@ def has_filter(repo, rev):
     return False
 
 
+def _worktrees(repo):
+    """{chemin réel: ref extraite ou None} des worktrees enregistrés"""
+    out, path = {}, None
+    for line in git(repo, "worktree", "list", "--porcelain", check=False).stdout.splitlines():
+        if line.startswith("worktree "):
+            path = os.path.realpath(line[9:])
+            out[path] = None
+        elif line.startswith("branch ") and path:
+            out[path] = line[7:]
+    return out
+
+
 def _cleanup(audit_dir, data, stem):
     e = data.get(stem)
     if not isinstance(e, dict):
         return
     repo, wt = repo_of(audit_dir), e.get("worktree")
-    if isinstance(wt, str) and wt and safe_tmp(Path(wt).parent):
-        git(repo, "worktree", "remove", "--force", wt, check=False)
-        with contextlib.suppress(OSError):
-            os.rmdir(Path(wt).parent)
-    git(repo, "worktree", "prune", check=False)
+    if isinstance(wt, str) and wt:
+        gone = not os.path.lexists(wt)
+        # dossier disparu : remove --force n'efface que notre enregistrement (jamais de prune global)
+        if gone or safe_tmp(Path(wt).parent):
+            git(repo, "worktree", "remove", "--force", os.path.realpath(wt), check=False)  # git enregistre le chemin réel
+        if not gone and safe_tmp(Path(wt).parent):
+            with contextlib.suppress(OSError):
+                os.rmdir(Path(wt).parent)
+        if os.path.lexists(wt) or os.path.realpath(wt) in _worktrees(repo):
+            e["cleanup_error"] = "worktree non supprimé (hors du dossier temporaire ou refus de git)"
+        else:
+            e["worktree"] = None
+            e.pop("cleanup_error", None)
     br = e.get("branch")
     if isinstance(br, str) and br.startswith(f"mantis/fix/{Path(audit_dir).name}/"):
         git(repo, "branch", "-D", br, check=False)
-    e["worktree"] = None
 
 
 def cleanup(audit_dir, stem):
@@ -161,9 +181,10 @@ def _with(audit_dir, *statuses):
 
 
 def launchable(audit_dir):
-    data = load(audit_dir)
-    queued = sorted(_with(audit_dir, "queued"), key=lambda s: str(data[s].get("at") or ""))
-    return queued[:max(0, FIX_LIMIT - len(_with(audit_dir, "running")))]
+    entries = [(s, e) for s, e in load(audit_dir).items() if isinstance(e, dict)]
+    queued = sorted((e for e in entries if e[1].get("status") == "queued"), key=lambda x: str(x[1].get("at") or ""))
+    running = sum(e.get("status") == "running" for _, e in entries)
+    return [s for s, _ in queued][:max(0, FIX_LIMIT - running)]
 
 
 def busy(audit_dir):
@@ -193,11 +214,19 @@ def start(audit_dir, stem):
             return dict(e)
         f = render.load_json(_finding_path(audit_dir, stem), {})
         f = f if isinstance(f, dict) else {}
-        title = " ".join(str(f.get("title") or stem).split())[:200]
+        title = re.sub(r"[\x00-\x1f\x7f]", "", " ".join(str(f.get("title") or stem).split()))[:200]
         (audit_dir / "fixes").mkdir(exist_ok=True)
         msg = audit_dir / "fixes" / f"{stem}.msg"
         commands.atomic_write(msg, f"fix(mantis): {title} [{stem}]\n")
         branch = fix_branch(audit_dir, stem)
+        if git(repo, "rev-parse", "--verify", "-q", "refs/heads/" + branch, check=False).returncode == 0:
+            holder = next((p for p, ref in _worktrees(repo).items() if ref == "refs/heads/" + branch), None)
+            if holder:
+                e = _set(data, stem, status="failed",
+                         error=f"la branche {branch} est encore extraite dans le worktree {holder}")
+                _save(audit_dir, data)
+                return dict(e)
+            git(repo, "branch", "-D", branch)  # reste d'un nettoyage raté : la branche est à nous (préfixe mantis/fix/<audit>/)
         tmp = tempfile.mkdtemp(prefix="tmp.")
         wt = str(Path(tmp) / "wt")
         try:

@@ -186,10 +186,11 @@ def test_filtre_refuse():
 
 def test_titre_hostile_message():
     with scratch() as tmp:
-        d, repo = git_audit(tmp, findings=(("f1", {"title": 'a"; $(id) `\nb', "severity": "LOW"}),))
+        d, repo = git_audit(tmp, findings=(("f1", {"title": 'a"; $(id) `\nb\x00\x1b[31m', "severity": "LOW"}),))
         e = fixes.start(d, "f1")
         msg = Path(e["msg_file"]).read_text()
         assert len(msg.splitlines()) == 1 and "$(id)" in msg and msg.rstrip("\n").endswith("[f1]")
+        assert "\x00" not in msg and "\x1b" not in msg
         agent_commit(e)
         assert git(Path(e["worktree"]), "log", "-1", "--format=%s") == msg.strip()
 
@@ -220,6 +221,63 @@ def test_repo_of_refuse():
             raise AssertionError("repo accepté")
         except ValueError as e:
             assert str(e) == "repo de l'audit introuvable"
+
+
+def test_stem_non_imprimable():
+    with scratch() as tmp:
+        d, repo = git_audit(tmp, findings=(("a\nb", F),))
+        assert (d / "workspace" / "findings" / "a\nb.json").is_file() and not fixes.valid_stem(d, "a\nb")
+
+
+def test_cleanup_garde_worktree_non_supprime():
+    with scratch() as tmp:
+        d, repo = git_audit(tmp)
+        wt = fixes.start(d, "f1")["worktree"]
+        real, fixes.safe_tmp = fixes.safe_tmp, lambda p: False  # $TMPDIR différent d'un processus à l'autre
+        try:
+            e = fixes.fail(d, "f1", "x")
+        finally:
+            fixes.safe_tmp = real
+        assert e["worktree"] == wt and Path(wt).is_dir() and e["cleanup_error"]
+        assert fixes.load(d)["f1"]["worktree"] == wt
+        fixes.cleanup(d, "f1")
+        e = fixes.load(d)["f1"]
+        assert e["worktree"] is None and "cleanup_error" not in e and not Path(wt).exists()
+        assert not has_ref(repo, "refs/heads/mantis/fix/audit-x/f1")
+
+
+def test_branche_restante():
+    with scratch() as tmp:
+        d, repo = git_audit(tmp, findings=(("f1", F), ("f2", F)))
+        git(repo, "branch", "mantis/fix/audit-x/f1")
+        assert fixes.start(d, "f1")["status"] == "running"
+        git(repo, "worktree", "add", "-q", "-b", "mantis/fix/audit-x/f2", str(Path(tmp) / "reste"))
+        e = fixes.start(d, "f2")
+        assert e["status"] == "failed" and "encore extraite" in e["error"]
+        assert (Path(tmp) / "reste").is_dir()
+
+
+def test_worktree_etranger_garde():
+    with scratch() as tmp:
+        d, repo = git_audit(tmp, findings=(("f1", F), ("f2", F)))
+        git(repo, "worktree", "add", "-q", "--detach", str(Path(tmp) / "etranger"))
+        shutil.rmtree(Path(tmp) / "etranger")  # disque démonté : enregistrement périmé de l'utilisateur
+        fixes.start(d, "f1")
+        fixes.finish(d, "f1")
+        shutil.rmtree(Path(fixes.start(d, "f2")["worktree"]).parent)
+        fixes.finish(d, "f2")
+        assert (repo / ".git" / "worktrees" / "etranger").is_dir()
+        assert len(git(repo, "worktree", "list").splitlines()) == 2
+
+
+def test_fix_branch_collision():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp) / "audit-x"
+        d.mkdir()
+        fixes.update(d, "abcdefgh1", branch="mantis/fix/audit-x/abcdefgh")
+        assert fixes.fix_branch(d, "abcdefgh1") == "mantis/fix/audit-x/abcdefgh"
+        assert fixes.fix_branch(d, "abcdefgh2") == "mantis/fix/audit-x/abcdefgh2"
+        assert fixes.fix_branch(d, "a.b") == "mantis/fix/audit-x/a_b"
 
 
 def test_cli():
