@@ -281,6 +281,13 @@ def test_fix_branch_collision():
         assert fixes.fix_branch(d, "a.b") == "mantis/fix/audit-x/a_b"
 
 
+def test_agent_unique_si_collision():
+    with scratch() as tmp:
+        d, repo = git_audit(tmp, findings=(("abcdefgh1", F), ("abcdefgh2", F)))
+        a, b = fixes.start(d, "abcdefgh1")["agent"], fixes.start(d, "abcdefgh2")["agent"]
+        assert a == "Correctif abcdefgh" and b == "Correctif abcdefgh2"
+
+
 def test_cli():
     run = lambda *a: subprocess.run([sys.executable, str(HERE / "fixes.py"), *a], capture_output=True, text=True)
     out = run("--help")

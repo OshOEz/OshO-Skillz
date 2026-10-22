@@ -255,7 +255,7 @@ def start(audit_dir, stem):
             _save(audit_dir, data)
             return dict(e)
         e = _set(data, stem, status="running", branch=branch, worktree=wt, base=head, commit=None,
-                 error=None, agent="Correctif " + short(stem))
+                 error=None, agent="Correctif " + branch.rsplit("/", 1)[-1])  # suffixe de la branche : unique même si short() collisionne
         _save(audit_dir, data)
     state = render.load_json(audit_dir / "state.json", {})
     return dict(e, prev_diff=prev_diff, msg_file=str(msg), title=title, bucket=render.bucket(f),

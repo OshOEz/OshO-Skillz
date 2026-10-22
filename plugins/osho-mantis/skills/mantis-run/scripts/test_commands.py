@@ -154,7 +154,6 @@ def test_refus_fix():
                 assert commands.validate({"action": "merge_fix", "finding": "f1"}, s)
     with tempfile.TemporaryDirectory() as tmp:
         s = build_snapshot(_fx(tmp, state={"finished": True}))
-        assert s["listening"] == "none" and commands.validate({"action": "fix", "finding": "f1"}, s)
         assert commands.validate({"action": "fix", "finding": "../x"}, s)
     with tempfile.TemporaryDirectory() as tmp:
         d = _fx(tmp)
@@ -171,6 +170,15 @@ def test_apply_fix_en_file():
         e = fixes.load(d)["f1"]
         assert e["status"] == "queued" and e["cmd"] == c["id"]
         assert commands.apply(d, c["id"]) == r
+
+
+def test_apply_fix_entre_etapes():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = _fx(tmp, state={"stages": {"review": "done", "critic": "pending"}})
+        assert build_snapshot(d)["listening"] == "none"
+        c = commands.append(d, {"action": "fix", "finding": "f1"}, "ui")
+        assert commands.apply(d, c["id"])["result"] == "applied"
+        assert fixes.load(d)["f1"]["status"] == "queued"
 
 
 def test_apply_merge():

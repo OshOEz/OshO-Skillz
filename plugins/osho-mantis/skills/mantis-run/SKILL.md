@@ -90,7 +90,7 @@ A request typed at any time in natural language (« mets en pause », « marque 
 
 For each stem printed by `python3 "$R/fixes.py" launchable "$AUDIT"` (queued fixes, at most 3 fix agents running at once):
 1. `python3 "$R/fixes.py" start "$AUDIT" <stem>` prints the entry as JSON (`status`, `branch`, `worktree`, `agent`, `title`, `bucket`, `msg_file`, `prev_diff`, `dirty`, `repo`, `audit`). Exit 2, or `status` is `failed` → say it in one line (the printed reason or `error`) and go to the next stem.
-2. Agent call with `run_in_background: true`, `subagent_type: general-purpose`, `description` = `agent` (`Correctif <stem court>`), model `opus` if `bucket` is `CRITICAL`, else `sonnet`, and the fix agent prompt below.
+2. Agent call with `run_in_background: true`, `subagent_type: general-purpose`, `description` = `agent` (`Correctif <stem court>`, unique within the audit), model `opus` if `bucket` is `CRITICAL`, else `sonnet`, and the fix agent prompt below.
 3. Say « Correction lancée : <title> » in one line, then carry on where you were, without waiting for the agent.
 
 ### Fix agent prompt

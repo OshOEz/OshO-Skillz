@@ -57,9 +57,7 @@ def validate(cmd, snap):
         if f["_bucket"] == "REJECTED":
             return "finding déjà écarté"
         st = (f["_fix"] or {}).get("status")
-        if action == "fix":
-            if snap["listening"] == "none":
-                return "Aucune session active : relance /mantis-run"
+        if action == "fix":  # session à l'écoute : contrôlée par le POST (409), mantis-run qui applique est la session
             if st not in (None, "failed", "conflict") and not (st == "queued" and f["_fix"].get("cmd") == cmd.get("id")):
                 return "déjà fusionné" if st == "merged" else "correction déjà demandée"
         elif action == "merge_fix":
