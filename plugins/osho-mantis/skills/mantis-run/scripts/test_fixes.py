@@ -531,6 +531,18 @@ def test_recorriger_garde_branche_conservee():
         assert git(repo, "rev-parse", "refs/heads/mantis/fix/audit-x/f1") == e["base"]
 
 
+def test_branche_gardee_hors_mantis_intacte():
+    with scratch() as tmp:
+        d, repo = git_audit(tmp)
+        sha = git(repo, "rev-parse", "HEAD")
+        git(repo, "update-ref", "refs/heads/feature", sha)
+        fixes.update(d, "f1", status="queued", branch="feature", commit=sha)  # fixes.json modifié à la main
+        assert fixes.start(d, "f1")["status"] == "running"
+        assert git(repo, "rev-parse", "refs/heads/feature") == sha
+        assert git(repo, "for-each-ref", "refs/heads/feature-ancien-*") == ""
+        assert "kept_branch" not in fixes.load(d)["f1"]
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

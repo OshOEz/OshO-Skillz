@@ -226,11 +226,12 @@ def active(audit_dir):
     return _with(audit_dir, "queued", "running")
 
 
-def _keep_old_branch(repo, data, stem):
+def _keep_old_branch(audit_dir, repo, data, stem):
     """Branche gardée après un merge raté : renommée en <branche>-ancien-<n> pour que son commit reste joignable"""
     e = data.get(stem) if isinstance(data.get(stem), dict) else {}
     br, sha = e.get("branch"), e.get("commit")
-    if not (isinstance(br, str) and isinstance(sha, str) and sha):  # commit seulement après ready ; queued à ce stade
+    if not (isinstance(br, str) and isinstance(sha, str) and sha  # commit seulement après ready ; queued à ce stade
+            and br.startswith(f"mantis/fix/{Path(audit_dir).name}/")):  # fixes.json n'est pas sûr : jamais une autre branche
         return
     old = "refs/heads/" + br
     if git(repo, "rev-parse", "--verify", "-q", old, check=False).stdout.strip() != sha \
@@ -240,8 +241,11 @@ def _keep_old_branch(repo, data, stem):
     while git(repo, "rev-parse", "--verify", "-q", f"{old}-ancien-{n}", check=False).returncode == 0:
         n += 1
     git(repo, "update-ref", f"{old}-ancien-{n}", sha, "")
-    git(repo, "update-ref", "-d", old, sha)
     _set(data, stem, kept_branch=f"{br}-ancien-{n}")
+    try:
+        git(repo, "update-ref", "-d", old, sha)
+    except RuntimeError as err:
+        raise ValueError(f"branche {br} non renommée : {err}") from None
 
 
 def start(audit_dir, stem):
@@ -256,11 +260,11 @@ def start(audit_dir, stem):
         prev_diff = str(diff) if diff.is_file() else None  # la commande fix a déjà remis l'entrée en queued
         try:
             head = ensure_audit_branch(audit_dir)
+            _keep_old_branch(audit_dir, repo, data, stem)
         except ValueError as err:
             e = _set(data, stem, status="failed", error=str(err))
             _save(audit_dir, data)
             return dict(e)
-        _keep_old_branch(repo, data, stem)
         _cleanup(audit_dir, data, stem)
         if has_filter(repo, head):
             e = _set(data, stem, status="failed",
