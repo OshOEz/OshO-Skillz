@@ -186,14 +186,23 @@ console.log('OK');
         assert r.returncode == 0 and "OK" in r.stdout, r.stderr + r.stdout
 
 
-def test_theme_clair():
-    """Light theme only: no dark-mode media query, new dust-formation-style tokens in place."""
+def test_themes_horizon():
+    """Gabarit Horizon : jetons sombre et clair, aucun innerHTML, aucun tiret cadratin, identifiants DOM attendus."""
     with tempfile.TemporaryDirectory() as tmp:
         d = audit(tmp, [CRIT, LOW])
         html, _ = data(d)
-        assert "prefers-color-scheme" not in html, "dashboard must be light-only, no dark variant"
-        assert "--coral:#dd4175" in html and "--plum:#7c0559" in html and "--ok:#1f9d63" in html
-        assert "--crit:var(--plum)" in html, "severity accents reuse the new palette tokens"
+        for token in ("--bg:#0b0d14", "--bg:#eff1f5", "--primary:#7ea6ff", "--primary:#0050d7", "data-theme"):
+            assert token in html, token
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        assert "innerHTML" not in js, "texte des findings via textContent / el() uniquement"
+        assert "\u2014" not in RENDER.with_name("dashboard.html").read_text(), "aucun tiret cadratin dans le gabarit"
+        for i in ("topbar", "conn", "theme-toggle", "banner", "kpis", "waiting-banner", "pipeline", "filter",
+                  "kb-view-toggle", "board", "actions", "activity", "peek", "live-region"):
+            assert f'id="{i}"' in html, i
+        assert html.count('class="kpi"') == 4
+        assert re.search(r'id="peek"[^>]*role="dialog"[^>]*aria-modal="true"', html)
+        assert re.search(r'id="live-region"[^>]*aria-live="polite"', html)
+        assert 'data-view="severity"' in html
 
 
 def test_aucun_finding():
@@ -269,7 +278,7 @@ if __name__ == "__main__":
     test_description_longue()
     test_filtre()
     test_lien_profond()
-    test_theme_clair()
+    test_themes_horizon()
     test_aucun_finding()
     test_safe_id_collision()
     test_safe_id_triple_collision()

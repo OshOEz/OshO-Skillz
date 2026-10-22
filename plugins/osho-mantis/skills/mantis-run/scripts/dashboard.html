@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audit Mantis</title>
+<style>
+/* Jetons Horizon OS (spec §6), recopiés sans dépendance */
+:root,[data-theme=dark]{
+  color-scheme:dark;
+  --bg:#0b0d14;--card:#12151f;--elev:#171b27;--fg:#e7ebf6;--muted:#a6aec8;--faint:#8c94ae;
+  --primary:#7ea6ff;--on-primary:#0b0d14;--border:#242a3b;--input:#2f364a;--sel:#1e2847;--sel-fg:#dfe6ff;
+  --banner:#18203d;--banner2:#10162b;--muted-bg:#1c2131;--hover:rgb(255 255 255 / .05);
+  --scrim:rgb(5 7 12 / .62);--lift:0 24px 80px rgb(0 0 0 / .5);--card-shadow:none;
+}
+[data-theme=light]{
+  color-scheme:light;
+  --bg:#eff1f5;--card:#fff;--elev:#f7f8fb;--fg:#0b1a4a;--muted:#46527c;--faint:#626c90;
+  --primary:#0050d7;--on-primary:#fff;--border:#e1e5ee;--input:#cfd5e3;--sel:#d5dbf1;--sel-fg:#00185e;
+  --banner:#d4daee;--banner2:#e7eaf5;--muted-bg:#eceff6;--hover:rgb(0 24 94 / .05);
+  --scrim:rgb(11 26 74 / .32);--lift:0 24px 80px rgb(11 26 74 / .18);--card-shadow:0 1px 2px rgb(0 24 94 / .04);
+}
+:root{
+  --ok:oklch(.72 .15 155);--warn:oklch(.80 .15 85);--bad:oklch(.65 .20 25);
+  --crit:oklch(.62 .22 20);--high:oklch(.70 .18 45);--med:oklch(.80 .15 85);--low:oklch(.72 .08 240);
+  --sans:"Source Sans 3","Source Sans Pro",system-ui,sans-serif;
+  --mono:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --ease:cubic-bezier(.16,1,.3,1);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg)}
+body{font:15px/1.5 var(--sans);font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+body.locked{overflow:hidden}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.mono{font-family:var(--mono)}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* Barre du haut */
+#topbar{position:sticky;top:0;z-index:4;height:48px;display:flex;align-items:center;gap:10px;padding:0 20px;background:var(--card);border-bottom:1px solid var(--border)}
+.logo{width:22px;height:22px;border-radius:7px;background:var(--primary);color:var(--on-primary);display:grid;place-items:center;font-weight:800;font-size:12px;flex:none}
+.crumb{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crumb .sl{color:var(--faint);margin:0 6px}
+.crumb #crumb-repo{color:var(--primary)}
+#conn{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);white-space:nowrap}
+#conn .d{width:8px;height:8px;border-radius:50%;background:var(--faint)}
+#conn .d.on{background:var(--ok);animation:blink 1.6s infinite}
+@keyframes blink{50%{opacity:.35}}
+.icon-btn{width:30px;height:30px;display:grid;place-items:center;border-radius:6px;border:1px solid transparent;background:none;color:var(--muted);cursor:pointer;flex:none}
+.icon-btn:hover{background:var(--hover);color:var(--fg)}
+.icon-btn{font-size:15px}
+.icon-btn svg{width:16px;height:16px}
+[data-theme=dark] .i-moon,[data-theme=light] .i-sun{display:none}
+
+/* Bannière à diagonale */
+#banner{position:relative;overflow:hidden;background:var(--banner);padding:22px 24px 20px;border-bottom:1px solid var(--border)}
+#banner::after{content:"";position:absolute;inset:0 0 0 auto;width:34%;background:var(--banner2);clip-path:polygon(14% 0,100% 0,100% 100%,0 100%)}
+#banner>*{position:relative;z-index:1}
+#banner h1{margin:0;font-size:24px;line-height:1.3;font-weight:600;letter-spacing:-.01em}
+#banner p{margin:2px 0 0;font-size:13px;color:var(--muted)}
+#banner #level-note{color:var(--faint)}
+#kpis{display:grid;grid-template-columns:repeat(4,minmax(0,170px));gap:28px;margin-top:18px}
+.kpi{border-left:2px solid var(--input);padding-left:12px}
+.kpi b{display:block;font:500 28px/1.1 var(--mono)}
+.kpi span{font-size:12px;color:var(--muted)}
+.kpi.hot{border-left-color:var(--high)}
+.kpi.na b{color:var(--faint)}
+
+/* Corps */
+main{padding:14px 20px 40px;display:grid;gap:12px}
+.tile{background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:var(--card-shadow);min-width:0}
+.tile-h{min-height:44px;display:flex;align-items:center;gap:8px;padding:6px 8px 6px 16px;font-size:13px;color:var(--muted);border-bottom:1px solid var(--border)}
+.tile-h h2{margin:0;font-size:13px;font-weight:600;color:var(--fg)}
+.tile-h .act{margin-left:auto;display:flex;gap:8px;align-items:center}
+#waiting-banner{background:var(--sel);color:var(--sel-fg);border:1px solid var(--primary);border-radius:10px;padding:12px 16px}
+#waiting-banner[hidden]{display:none}
+#pipeline{border-radius:10px;overflow:hidden}
+#pipeline:empty{display:none}
+.split{display:grid;grid-template-columns:minmax(0,1fr) 240px;gap:12px;align-items:start}
+.side{display:grid;gap:12px}
+#actions{display:grid;gap:8px;padding:12px}
+#activity{padding:10px 14px;font:11px/1.8 var(--mono);color:var(--faint);max-height:420px;overflow:auto}
+#actions:empty::after,#activity:empty::after{font:13px/1.5 var(--sans);color:var(--faint)}
+#actions:empty::after{content:"Aucune action disponible."}
+#activity:empty::after{content:"Le journal s'affiche ici pendant l'audit."}
+@media (max-width:1024px){.split{grid-template-columns:1fr}}
+
+/* Contrôles */
+.btn{font-size:13px;height:30px;padding:0 12px;border-radius:6px;border:1px solid var(--input);background:var(--elev);color:var(--fg);cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--faint)}
+.btn.pri{background:var(--primary);color:var(--on-primary);border-color:var(--primary);font-weight:600}
+#filter{height:30px;width:220px;padding:0 10px;border-radius:6px;border:1px solid var(--input);background:var(--bg);color:var(--fg);font:13px var(--sans)}
+#filter::placeholder{color:var(--faint)}
+.seg{display:inline-flex;padding:2px;border-radius:6px;border:1px solid var(--input);background:var(--bg)}
+.seg button{height:24px;padding:0 10px;border:0;border-radius:4px;background:none;color:var(--muted);font-size:12px;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--sel);color:var(--sel-fg);font-weight:600}
+
+/* Kanban */
+#board{display:grid;grid-template-columns:repeat(var(--n,4),minmax(0,1fr)) auto;gap:10px;padding:10px;align-items:start}
+.col{min-width:0}
+.col-h{font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;padding:2px 2px 8px;font-weight:600}
+.col-h i{font-style:normal;margin-left:auto;font:12px var(--mono);color:var(--faint)}
+.dot{width:7px;height:7px;border-radius:50%;flex:none}
+.empty{border:1px dashed var(--border);border-radius:6px;padding:10px;font-size:12px;color:var(--faint);text-align:center}
+details.col{width:128px}
+details.col[open]{width:220px}
+details.col summary{list-style:none;cursor:pointer;border-radius:6px}
+details.col summary::-webkit-details-marker{display:none}
+details.col summary::before{content:"▸";font-size:10px;color:var(--faint);transition:transform .15s var(--ease)}
+details.col[open] summary::before{transform:rotate(90deg)}
+.fc{display:block;width:100%;text-align:left;background:var(--elev);border:1px solid var(--border);border-radius:6px;padding:9px 10px;margin-bottom:8px;font-size:13px;cursor:pointer;transition:border-color .15s}
+.fc:hover{border-color:var(--input)}
+.fc .ttl{display:block;color:var(--fg);font-weight:600;line-height:1.3;margin-top:6px;overflow-wrap:anywhere}
+.fc .loc{display:block;color:var(--faint);font:11px var(--mono);margin-top:3px;overflow-wrap:anywhere}
+.sev{display:inline-flex;align-items:center;gap:5px;font:600 10px/16px var(--mono);letter-spacing:.05em;padding:0 7px;border-radius:99px;border:1px solid var(--border);color:var(--fg);white-space:nowrap}
+.sev::before{content:"";width:6px;height:6px;border-radius:50%}
+.c::before,.dot.c{background:var(--crit)} .h::before,.dot.h{background:var(--high)}
+.m::before,.dot.m{background:var(--med)} .l::before,.dot.l{background:var(--low)}
+.x::before,.dot.x{background:var(--faint)}
+.chips{display:flex;gap:4px;margin-top:7px;flex-wrap:wrap}
+.chip{font-size:11px;color:var(--muted);background:var(--muted-bg);border-radius:99px;padding:0 7px}
+.chip.ok::before{content:"✓ ";color:var(--ok)}
+
+/* Fiche façon Notion « peek » */
+#scrim{position:fixed;inset:0;z-index:10;background:var(--scrim);backdrop-filter:blur(2px);display:flex;align-items:flex-start;justify-content:center;padding:36px 20px;animation:fade .18s var(--ease)}
+#scrim[hidden]{display:none}
+@keyframes fade{from{opacity:0}}
+#peek{width:min(860px,100%);max-height:100%;overflow:auto;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:var(--lift);animation:rise .18s var(--ease)}
+@keyframes rise{from{transform:translateY(8px);opacity:0}}
+#scrim.full{padding:0}
+#scrim.full #peek{width:100%;height:100%;max-height:none;border-radius:0;border:0}
+#scrim.full .peek-in{max-width:1040px;margin:0 auto}
+.peek-bar{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:8px;height:44px;padding:0 10px 0 16px;background:var(--card);border-bottom:1px solid var(--border);font:12px var(--mono);color:var(--faint);white-space:nowrap}
+.peek-bar .file{overflow:hidden;text-overflow:ellipsis}
+.peek-bar .sp{margin-left:auto}
+.peek-bar .btn{height:28px;font-family:var(--sans)}
+.peek-in{padding:26px 36px 32px}
+.peek-in>h2{margin:10px 0 8px;font-size:26px;line-height:1.25;font-weight:600;letter-spacing:-.01em;overflow-wrap:anywhere}
+.stagebar{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.stagebar span{font:10px/18px var(--mono);padding:0 8px;border-radius:99px;border:1px solid var(--border);color:var(--faint)}
+.stagebar span.y{border-color:color-mix(in oklch,var(--ok) 50%,var(--border));color:var(--fg)}
+.stagebar span.y::before{content:"✓ ";color:var(--ok)}
+.stagebar span.rej{border-color:color-mix(in oklch,var(--bad) 50%,var(--border));color:var(--fg)}
+.stagebar span.rej::before{content:"✕ ";color:var(--bad)}
+.props{display:grid;grid-template-columns:150px 1fr;gap:7px 16px;margin:18px 0 6px;font-size:13px}
+.props dt{color:var(--faint)}
+.props dd{margin:0;color:var(--fg);overflow-wrap:anywhere}
+.props dd.mono{font-size:12px}
+.props dd span[aria-hidden]{margin-right:6px}
+.na{color:var(--faint)!important}
+.ok{color:var(--ok)} .wa{color:var(--warn)} .bad{color:var(--bad)}
+.sec{margin-top:24px;padding-top:18px;border-top:1px solid var(--border)}
+.sec>h3{margin:0 0 8px;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.sec h4{margin:14px 0 4px;font-size:13px;font-weight:600;color:var(--muted)}
+.sec p{margin:0;max-width:72ch;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+.sec details summary{cursor:pointer;margin-top:6px;font-size:13px;color:var(--primary)}
+.sec details div{margin-top:6px;white-space:pre-wrap;max-width:72ch;line-height:1.6;overflow-wrap:anywhere}
+.sec .props{margin:10px 0 0}
+pre{margin:8px 0 0;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px 14px;font:12px/1.6 var(--mono);color:var(--muted);overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+pre.diff{padding:8px 0;white-space:pre}
+pre.diff div{padding:0 14px}
+pre .a{background:color-mix(in oklch,var(--ok) 16%,transparent);color:var(--fg)}
+pre .r{background:color-mix(in oklch,var(--bad) 16%,transparent);color:var(--fg)}
+pre .hk{color:var(--primary)}
+code{font:12px var(--mono);background:var(--muted-bg);border-radius:4px;padding:1px 5px;overflow-wrap:anywhere}
+.hist{list-style:none;margin:0;padding:0;font-size:13px}
+.hist li{display:flex;gap:12px;padding:4px 0;border-bottom:1px solid var(--border)}
+.hist li:last-child{border-bottom:0}
+.hist time{font:12px/1.65 var(--mono);color:var(--faint);flex:none}
+.peek-act{display:flex;gap:8px;flex-wrap:wrap;margin-top:26px;padding-top:18px;border-top:1px solid var(--border)}
+
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header id="topbar">
+  <div class="logo" aria-hidden="true">M</div>
+  <nav class="crumb" aria-label="Fil d'Ariane">Mantis<span class="sl">/</span><span id="crumb-repo"></span><span class="sl">/</span><span id="crumb-audit"></span></nav>
+  <div id="conn"><span class="d"></span><span>Connexion…</span></div>
+  <button id="theme-toggle" class="icon-btn" type="button" aria-label="Changer de thème">
+    <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+  </button>
+</header>
+
+<section id="banner" aria-labelledby="banner-title">
+  <h1 id="banner-title">Audit</h1>
+  <p id="banner-sub"></p>
+  <p id="level-note"></p>
+  <div id="kpis">
+    <div class="kpi"><b>0</b><span>findings</span></div>
+    <div class="kpi"><b>0</b><span>critiques ou hautes</span></div>
+    <div class="kpi"><b>0</b><span>reproduits</span></div>
+    <div class="kpi"><b>0</b><span>patchs vérifiés</span></div>
+  </div>
+</section>
+
+<main>
+  <div id="waiting-banner" role="region" aria-label="Question en attente" hidden></div>
+  <section id="pipeline" class="tile" aria-label="Pipeline"></section>
+  <div class="split">
+    <section class="tile" aria-labelledby="kb-title">
+      <div class="tile-h"><h2 id="kb-title">Vulnérabilités</h2>
+        <div class="act">
+          <input id="filter" type="search" placeholder="Titre, chemin ou CWE" aria-label="Filtrer les findings">
+          <div id="kb-view-toggle" class="seg" role="group" aria-label="Vue du kanban" data-view="severity">
+            <button type="button" data-v="severity" aria-pressed="true">Sévérité</button>
+            <button type="button" data-v="progress" aria-pressed="false">Avancement</button>
+          </div>
+        </div>
+      </div>
+      <div id="board"></div>
+    </section>
+    <aside class="side">
+      <section class="tile" aria-labelledby="actions-title"><div class="tile-h"><h2 id="actions-title">Actions</h2></div><div id="actions"></div></section>
+      <section class="tile" aria-labelledby="activity-title"><div class="tile-h"><h2 id="activity-title">Activité</h2></div><div id="activity"></div></section>
+    </aside>
+  </div>
+</main>
+
+<div id="scrim" hidden>
+  <div id="peek" role="dialog" aria-modal="true" aria-labelledby="peek-title" tabindex="-1"></div>
+</div>
+<div id="live-region" class="sr-only" aria-live="polite"></div>
+
+<script id="data" type="application/json">__DATA__</script>
+<script>
+window.D = JSON.parse(document.getElementById('data').textContent);
+const NA = 'non évalué à ce niveau';
+const SEV = {CRITICAL: ['Critical', 'c'], HIGH: ['High', 'h'], MEDIUM: ['Medium', 'm'], LOW: ['Low', 'l'], REJECTED: ['Écartés', 'x']};
+const PROG = [['found', 'Trouvées', 'Trouvé'], ['reviewed', 'Revues', 'Revu'], ['evaluated', 'Évaluées', 'Évalué'],
+  ['reproduced', 'Reproduites', 'Reproduit'], ['fixed', 'Corrigées', 'Corrigé']];
+const PROPS = [['Statut', 'status'], ['Emplacement', 'code_paths'], ['CWE', 'cwe'], ['Exploitabilité', 'production_viability'],
+  ['Reproduction', 'repro_status'], ['Patch', 'patch_status'], ['Re-attaque', 'reattack_status'], ['Score de risque', 'mantis_risk_score']];
+const MONO = new Set(['code_paths', 'cwe', 'mantis_risk_score', 'repro_file_path']);
+const ICON = {
+  status: {VALID: ['✓', 'ok'], PROVISIONALLY_VALID: ['◐', 'wa'], NEEDS_RESEARCH: ['◐', 'wa'], FALSE_POSITIVE: ['✕', 'bad'], DUPLICATE: ['✕', 'bad']},
+  repro_status: {reproduced: ['✓', 'ok'], failed_to_reproduce: ['✕', 'bad']},
+  patch_status: {VERIFIED_SECURE: ['✓', 'ok'], MITIGATION_PROPOSED: ['◐', 'wa'], VERIFICATION_FAILED: ['✕', 'bad']},
+};
+const $ = id => document.getElementById(id);
+// état de l'interface, conservé d'un render(D) à l'autre
+const ui = {view: load('mantis.kbView') === 'progress' ? 'progress' : 'severity', peek: null, full: false, back: null};
+
+function load(k) {
+  try { return localStorage.getItem(k); } catch (e) { return null; }
+}
+function save(k, v) {
+  try { localStorage.setItem(k, v); } catch (e) { /* stockage indisponible : choix non mémorisé */ }
+}
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === 'class') e.className = v; else if (k === 'style') e.style.cssText = v; else e.setAttribute(k, v);
+  }
+  for (const k of kids) if (k != null && k !== false) e.append(k);
+  return e;
+}
+function val(f, k) {
+  const x = f[k];
+  if (x == null || x === '' || (Array.isArray(x) && !x.length)) return NA;
+  return Array.isArray(x) ? x.join(', ') : String(x);
+}
+function dd(f, k) {
+  const table = D.labels[k];
+  if (!table) return el('dd', {}, val(f, k));
+  const raw = f[k];
+  if (raw == null || raw === '') return el('dd', {}, NA);
+  return el('dd', {title: String(raw)}, table[raw] || String(raw));
+}
+function pad(n) {
+  return String(n).padStart(2, '0');
+}
+function hhmm(iso) {
+  const d = new Date(iso);
+  return isNaN(d) ? '' : pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+function frDate(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return null;
+  return d.toLocaleDateString('fr-FR', {day: 'numeric', month: 'long'}) + ' à ' + d.getHours() + ' h ' + pad(d.getMinutes());
+}
+function fileOf(f) {
+  const p = Array.isArray(f.code_paths) ? f.code_paths[0] : f.code_paths;
+  return p ? String(p).replace(/:\d.*$/, '') : '';
+}
+function sevPill(b) {
+  const s = SEV[b] || SEV.LOW;
+  return el('span', {class: 'sev ' + s[1]}, b === 'REJECTED' ? 'ÉCARTÉ' : b);
+}
+
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  $('theme-toggle').setAttribute('aria-label', t === 'dark' ? 'Passer au thème clair' : 'Passer au thème sombre');
+}
+function renderConn() {
+  if (D.mode !== 'final') return; // le direct (SSE) est géré par la tâche 7
+  $('conn').replaceChildren(el('span', {class: 'd'}), el('span', {}, 'Hors ligne, données du ' + (hhmm(D.generated_at) || '?')));
+}
+function bannerTitle() {
+  const m = D.meta, audit = 'Audit' + (m.level ? ' ' + m.level : '');
+  if (m.stopped) return audit + ' arrêté';
+  if (m.finished || D.mode === 'final') return audit + ' terminé';
+  if (m.paused) return audit + ' en pause';
+  const run = (D.stages || []).find(s => s.status === 'running');
+  if (!run) return audit + ' en cours';
+  return audit + ', ' + run.name.charAt(0).toLowerCase() + run.name.slice(1) + ' en cours';
+}
+function renderBanner() {
+  const m = D.meta, s = D.stats, b = s.by_bucket || {};
+  $('banner-title').textContent = bannerTitle();
+  const start = frDate(m.started_at), parts = [start ? 'Démarré le ' + start : 'Début inconnu'];
+  if (m.round) parts.push('tour ' + m.round);
+  if (m.duration) parts.push('durée ' + m.duration);
+  else if (start && !(m.finished || m.stopped || D.mode === 'final')) {
+    const min = Math.max(0, Math.floor((Date.now() - new Date(m.started_at)) / 60000));
+    parts.push('écoulé ' + Math.floor(min / 60) + ' h ' + pad(min % 60) + ' min');
+  }
+  $('banner-sub').textContent = parts.join(', ');
+  $('level-note').textContent = m.level_banner || '';
+  const rej = b.REJECTED || 0, na = !m.reproduce_done && m.level === 'Light';
+  const kpis = [
+    [s.total - rej, rej ? rej + (rej > 1 ? ' findings écartés non comptés' : ' finding écarté non compté') : ''],
+    [(b.CRITICAL || 0) + (b.HIGH || 0), ''],
+    na ? ['n/a', 'Pas de reproduction au niveau Light'] : [s.reproduced, ''],
+    na ? ['n/a', 'Pas de vérification par re-attaque au niveau Light'] : [s.patched, ''],
+  ];
+  [...$('kpis').children].forEach((k, i) => {
+    k.querySelector('b').textContent = String(kpis[i][0]);
+    k.title = kpis[i][1];
+    k.classList.toggle('na', kpis[i][0] === 'n/a');
+  });
+  $('kpis').children[1].classList.toggle('hot', kpis[1][0] > 0);
+}
+function renderPipeline(D) {
+  // rempli par la tâche 6 (vues Réseau et Matrice) dans #pipeline
+}
+function sendCommand(cmd) {
+  // rempli par la tâche 7 (POST /command) ; en mode final il n'y a pas de serveur
+  if (D.mode === 'final') return;
+}
+
+function matches(f, q) {
+  if (!q) return true;
+  q = q.toLowerCase();
+  const paths = Array.isArray(f.code_paths) ? f.code_paths.join(' ') : f.code_paths;
+  const hay = [f.title, paths, f.cwe].map(x => x == null ? '' : String(x)).join(' ').toLowerCase();
+  return hay.includes(q);
+}
+function card(f) {
+  const chips = el('span', {class: 'chips'});
+  if (f.status === 'VALID') chips.append(el('span', {class: 'chip'}, 'Confirmé'));
+  if (f.repro_status === 'reproduced') chips.append(el('span', {class: 'chip'}, 'Reproduit'));
+  if (f.patch_status === 'VERIFIED_SECURE') chips.append(el('span', {class: 'chip ok'}, 'Patch vérifié'));
+  const b = el('button', {class: 'fc', type: 'button', 'data-file': f._file}, sevPill(f._bucket),
+    el('span', {class: 'ttl'}, String(f.title)), el('span', {class: 'loc'}, val(f, 'code_paths')),
+    chips.children.length ? chips : null);
+  b.addEventListener('click', () => openPeek(f));
+  return b;
+}
+function column(box, head, items) {
+  box.append(head);
+  if (!items.length) box.append(el('div', {class: 'empty'}, 'Aucun finding'));
+  for (const f of items) box.append(card(f));
+  return box;
+}
+function colHead(tag, label, dot, n) {
+  return el(tag, {class: 'col-h'}, dot ? el('span', {class: 'dot ' + dot, 'aria-hidden': 'true'}) : null,
+    el('span', {}, label), el('i', {}, String(n)));
+}
+function progressColumn(f, keys) {
+  // un finding plus avancé qu'une colonne absente du niveau reste dans la dernière colonne présente
+  let i = PROG.findIndex(p => p[0] === f._progress);
+  while (i > 0 && !keys.includes(PROG[i][0])) i--;
+  return PROG[Math.max(i, 0)][0];
+}
+function renderBoard() {
+  const board = $('board'), q = $('filter').value;
+  const focused = board.contains(document.activeElement) ? document.activeElement.dataset.file : null;
+  const prevRej = board.querySelector('details.col');
+  const shown = D.findings.filter(f => matches(f, q)), kept = shown.filter(f => f._bucket !== 'REJECTED');
+  let cols;
+  if (ui.view === 'progress') {
+    const keys = (D.progress_columns || []).filter(k => PROG.some(p => p[0] === k));
+    cols = keys.map(k => [PROG.find(p => p[0] === k)[1], null, kept.filter(f => progressColumn(f, keys) === k)]);
+  } else {
+    cols = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map(k => [SEV[k][0], SEV[k][1], kept.filter(f => f._bucket === k)]);
+  }
+  const rej = shown.filter(f => f._bucket === 'REJECTED');
+  const rejCol = column(el('details', {class: 'col'}), colHead('summary', 'Écartés', 'x', rej.length), rej);
+  rejCol.open = !!(prevRej && prevRej.open);
+  board.style.setProperty('--n', cols.length);
+  board.replaceChildren(...cols.map(([label, dot, items]) => column(el('div', {class: 'col'}), colHead('div', label, dot, items.length), items)), rejCol);
+  const toggle = $('kb-view-toggle');
+  toggle.dataset.view = ui.view;
+  for (const b of toggle.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.v === ui.view));
+  if (focused) { const c = cardFor(focused); if (c) c.focus({preventScroll: true}); }
+}
+function cardFor(file) {
+  return [...$('board').querySelectorAll('.fc')].find(b => b.dataset.file === file) || null;
+}
+
+function leadOf(desc) {
+  const m = /\. (?=[A-ZÀ-Ý])/.exec(desc);
+  if (m) return desc.slice(0, m.index + 1);
+  return desc.length > 240 ? desc.slice(0, 240) + '…' : desc;
+}
+function para(f, k) {
+  return f[k] ? el('p', {}, String(f[k])) : el('p', {class: 'na'}, NA);
+}
+function sub(label, ...kids) {
+  return el('div', {}, el('h4', {}, label), ...kids);
+}
+function section(title, ...kids) {
+  return el('section', {class: 'sec'}, el('h3', {}, title), ...kids);
+}
+function props(f, rows) {
+  const d = el('dl', {class: 'props'});
+  for (const [label, k] of rows) {
+    const v = dd(f, k);
+    if (v.textContent === NA) v.classList.add('na'); else if (MONO.has(k)) v.classList.add('mono');
+    const ic = ICON[k] && ICON[k][f[k]];
+    if (ic) v.prepend(el('span', {class: ic[1], 'aria-hidden': 'true'}, ic[0]));
+    d.append(el('dt', {}, label), v);
+  }
+  return d;
+}
+function trail(f) {
+  const keys = D.progress_columns || [];
+  const reached = {found: true, reviewed: !!(f.reasoning || f.critic_reasoning), evaluated: !!f.production_viability,
+    reproduced: f.repro_status === 'reproduced', fixed: ['VERIFIED_SECURE', 'MITIGATION_PROPOSED'].includes(f.patch_status)};
+  const bar = el('div', {class: 'stagebar', role: 'list', 'aria-label': 'Étapes traversées'});
+  PROG.forEach(([k, , one]) => {
+    if (keys.includes(k)) bar.append(el('span', {class: reached[k] || f._progress === k ? 'y' : '', role: 'listitem'}, one));
+  });
+  if (f._bucket === 'REJECTED') bar.append(el('span', {class: 'rej', role: 'listitem'}, 'Écarté'));
+  return bar;
+}
+function problem(f) {
+  const s = section('Problème');
+  const desc = f.description == null || f.description === '' ? null : String(f.description);
+  if (!desc) s.append(el('p', {class: 'na'}, NA));
+  else {
+    const lead = leadOf(desc);
+    s.append(el('p', {}, lead));
+    if (lead.length < desc.length) s.append(el('details', {}, el('summary', {}, 'Lire tout'), el('div', {}, desc)));
+  }
+  if (f.reasoning) s.append(sub('Analyse de la revue', para(f, 'reasoning')));
+  if (f.critic_reasoning) s.append(sub('Analyse du critic', para(f, 'critic_reasoning')));
+  return s;
+}
+function impact(f) {
+  const s = section('Impact', para(f, 'impact'));
+  if (f._summary && f._summary !== f.impact) s.append(sub('Résumé', para(f, '_summary')));
+  const rows = [["Position de l'attaquant", 'attacker_position'], ['Privilèges requis', 'privileges_required'],
+    ['Interaction utilisateur', 'user_interaction']].filter(([, k]) => f[k]);
+  if (rows.length) s.append(props(f, rows));
+  return s;
+}
+function proof(f) {
+  const s = section('Preuve et reproduction');
+  if (f.repro_file_path) s.append(sub('Script', el('p', {class: 'mono'}, String(f.repro_file_path))));
+  if (f.run_command) s.append(sub('Commande', el('pre', {}, String(f.run_command))));
+  if (f.repro_output) s.append(sub('Sortie', el('pre', {}, String(f.repro_output))));
+  if (s.children.length === 1) s.append(el('p', {class: 'na'}, NA));
+  return s;
+}
+function diff(f) {
+  const p = el('pre', {class: 'diff'});
+  for (const line of String(f.patch_diff).replace(/\n$/, '').split('\n')) {
+    const c = line.startsWith('+') && !line.startsWith('+++') ? 'a' : line.startsWith('-') && !line.startsWith('---') ? 'r'
+      : line.startsWith('@@') ? 'hk' : '';
+    p.append(el('div', c ? {class: c} : {}, line || ' '));
+  }
+  return p;
+}
+function fix(f) {
+  const s = section('Correctif');
+  if (f.mitigation) s.append(para(f, 'mitigation'));
+  if (f.patch_diff) {
+    s.append(diff(f));
+    if (f._bucket !== 'REJECTED') s.append(el('p', {style: 'margin-top:8px'}, 'Appliquer : ',
+      el('code', {}, 'git apply osho-mantis/' + D.meta.audit_name + '/patches/' + f._file + '.diff')));
+  }
+  if (s.children.length === 1) s.append(el('p', {class: 'na'}, NA));
+  return s;
+}
+function historySection(f) {
+  const list = el('ol', {class: 'hist'});
+  for (const e of (D.activity || []).filter(e => e.finding === f._src).reverse()) {
+    list.append(el('li', {}, el('time', {}, hhmm(e.at)), el('span', {}, String(e.text || e.kind || ''))));
+  }
+  for (const h of Array.isArray(f.history) ? f.history : []) {
+    const txt = h && typeof h === 'object' ? Object.entries(h).map(([k, v]) => k + ' : ' + v).join(', ') : String(h);
+    list.append(el('li', {}, el('time', {}, ''), el('span', {}, txt)));
+  }
+  return section('Historique', list.children.length ? list : el('p', {class: 'na'}, 'Aucun événement enregistré.'));
+}
+function peekActions(f) {
+  const box = el('div', {class: 'peek-act'});
+  if (D.mode !== 'final' && f._bucket !== 'REJECTED') {
+    const by = Object.fromEntries((D.stages || []).map(s => [s.key, s.status]));
+    if ('reproduce' in by && by.reproduce !== 'done' && f.repro_status !== 'reproduced') {
+      const b = el('button', {class: 'btn pri', type: 'button'}, 'Prioriser la reproduction');
+      b.addEventListener('click', () => sendCommand({action: 'prioritize_repro', finding: f._src}));
+      box.append(b);
+    }
+    const fp = el('button', {class: 'btn', type: 'button'}, 'Marquer faux positif');
+    fp.addEventListener('click', () => sendCommand({action: 'false_positive', finding: f._src}));
+    box.append(fp);
+  }
+  if (f.patch_diff) { // copie locale, sans serveur : utile aussi dans le fichier final
+    const cp = el('button', {class: 'btn', type: 'button'}, 'Copier le diff');
+    cp.addEventListener('click', () => {
+      const done = t => { cp.textContent = t; setTimeout(() => { cp.textContent = 'Copier le diff'; }, 1500); };
+      if (!navigator.clipboard) return done('Copie impossible');
+      navigator.clipboard.writeText(String(f.patch_diff)).then(() => done('Diff copié'), () => done('Copie impossible'));
+    });
+    box.append(cp);
+  }
+  return box.children.length ? box : null;
+}
+function fillPeek(f) {
+  const full = el('button', {class: 'btn', type: 'button'}, ui.full ? 'Revenir à la fiche' : 'Ouvrir en pleine page');
+  full.addEventListener('click', () => openPeek(f, !ui.full));
+  const close = el('button', {class: 'icon-btn', type: 'button', id: 'peek-close', 'aria-label': 'Fermer la fiche'}, '✕');
+  close.addEventListener('click', closePeek);
+  const file = fileOf(f);
+  const bar = el('div', {class: 'peek-bar'}, el('span', {}, String(f._src)), file ? el('span', {'aria-hidden': 'true'}, '·') : null,
+    file ? el('span', {class: 'file'}, file) : null, el('span', {class: 'sp'}), full, close);
+  const inner = el('div', {class: 'peek-in'}, sevPill(f._bucket), el('h2', {id: 'peek-title'}, String(f.title)), trail(f),
+    props(f, PROPS), problem(f), impact(f), proof(f), fix(f), historySection(f), peekActions(f));
+  $('peek').replaceChildren(bar, inner);
+}
+function openPeek(f, full) {
+  full = !!full;
+  const same = ui.peek === f._file;
+  if (!ui.peek) ui.back = f._file;
+  ui.peek = f._file;
+  ui.full = full;
+  fillPeek(f);
+  $('scrim').classList.toggle('full', full);
+  $('scrim').hidden = false;
+  document.body.classList.add('locked');
+  if (!same) $('peek').scrollTop = 0;
+  if (location.hash !== '#' + f._file + (full ? '&full' : '')) location.hash = f._file + (full ? '&full' : '');
+  $('peek-close').focus({preventScroll: true});
+}
+function closePeek() {
+  if (!ui.peek) return;
+  ui.peek = null;
+  $('scrim').hidden = true;
+  document.body.classList.remove('locked');
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+  const c = cardFor(ui.back);
+  if (c) c.focus();
+}
+function findingForHash(findings, hash) {
+  let id;
+  try { id = decodeURIComponent((hash || '').replace(/^#/, '').replace(/&full$/, '')); } catch (e) { return null; }
+  if (!id) return null;
+  return findings.find(x => x._file === id) || null;
+}
+function openFromHash() {
+  const f = findingForHash(D.findings, location.hash), full = /&full$/.test(location.hash);
+  if (!f) return closePeek();
+  if (ui.peek !== f._file || ui.full !== full) openPeek(f, full);
+}
+function trapFocus(e) {
+  const items = [...$('peek').querySelectorAll('button, a[href], summary, input')].filter(x => !x.disabled && x.offsetParent !== null);
+  if (!items.length) return;
+  const first = items[0], last = items[items.length - 1], at = document.activeElement;
+  if (!$('peek').contains(at)) { e.preventDefault(); first.focus(); }
+  else if (e.shiftKey && at === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && at === last) { e.preventDefault(); first.focus(); }
+}
+
+function render(snap) {
+  window.D = snap;
+  const m = D.meta;
+  document.title = 'Mantis · ' + (m.repo_name || 'audit');
+  $('crumb-repo').textContent = m.repo_name || 'repo';
+  $('crumb-audit').textContent = m.audit_name || '';
+  renderConn();
+  renderBanner();
+  renderPipeline(D);
+  renderBoard();
+  if (ui.peek) {
+    const f = D.findings.find(x => x._file === ui.peek);
+    if (!f) return closePeek();
+    const pk = $('peek'), top = pk.scrollTop, inside = pk.contains(document.activeElement);
+    fillPeek(f);
+    pk.scrollTop = top;
+    if (inside) $('peek-close').focus({preventScroll: true});
+  }
+}
+
+const stored = load('mantis.theme');
+applyTheme(stored === 'light' || stored === 'dark' ? stored : matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+$('theme-toggle').addEventListener('click', () => {
+  const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  save('mantis.theme', t);
+  applyTheme(t);
+});
+$('kb-view-toggle').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b || b.dataset.v === ui.view) return;
+  ui.view = b.dataset.v;
+  save('mantis.kbView', ui.view);
+  renderBoard();
+});
+$('filter').addEventListener('input', renderBoard);
+$('scrim').addEventListener('click', e => { if (e.target === $('scrim')) closePeek(); });
+document.addEventListener('keydown', e => {
+  if (!ui.peek) return;
+  if (e.key === 'Escape') { e.preventDefault(); closePeek(); } else if (e.key === 'Tab') trapFocus(e);
+});
+window.addEventListener('hashchange', openFromHash);
+render(D);
+openFromHash();
+</script>
+</body>
+</html>

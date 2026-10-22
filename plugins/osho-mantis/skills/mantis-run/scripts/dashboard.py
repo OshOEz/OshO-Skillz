@@ -25,8 +25,6 @@ HERE = Path(__file__).resolve().parent
 POLL_S, PING_S = 0.5, 10
 END_GRACE_S, IDLE_S = 1800, 4 * 3600
 MAX_BODY = 4096  # validate() plafonne la commande à 1 Ko ; on coupe avant de tout lire
-FALLBACK = ('<!doctype html><meta charset="utf-8"><title>Mantis</title>'
-            '<script id="data" type="application/json">__DATA__</script>')
 USAGE = """usage: dashboard.py <commande> <AUDIT> [...]
   serve <AUDIT>                        démarre (ou réutilise) le serveur, affiche {"url", "reused"}
   stop <AUDIT>                         arrête le serveur
@@ -169,8 +167,7 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/health":
             self.send(200, {"ok": True})
         elif route == "/":
-            tpl = HERE / "dashboard.html"
-            page = tpl.read_text(encoding="utf-8") if tpl.exists() else FALLBACK
+            page = (HERE / "dashboard.html").read_text(encoding="utf-8")
             page = page.replace("__DATA__", render.safe_json(self.dash.fresh()), 1)
             cookie = f"mantis_key={self.dash.key}; HttpOnly; SameSite=Strict; Path=/"
             self.send(200, page, "text/html", [("Set-Cookie", cookie)] if via_query else [])
