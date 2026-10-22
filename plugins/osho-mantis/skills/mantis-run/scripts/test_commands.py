@@ -7,7 +7,9 @@ import tempfile
 from pathlib import Path
 
 import commands
+import fixes
 from snapshot import build_snapshot
+from test_fixes import git_audit, make_ready, scratch
 from test_snapshot import audit
 
 F = {"title": "Faille", "severity": "HIGH"}
@@ -121,6 +123,118 @@ def test_ack_copie_la_cible():
         by = {x["id"]: x for x in commands.done(d)}
         assert by[r["id"]]["stage"] == "plan" and "finding" not in by[r["id"]]
         assert by[f["id"]]["finding"] == "f1" and "stage" not in by[f["id"]]
+
+
+def _fx(tmp, fx=None, state=None, finding=F):
+    return audit(tmp, {"repo": "/x/demo", "level": "Sharp"}, fixes=fx, findings=[("f1", finding)],
+                 state=state or {"stages": {"review": "running"}})
+
+
+def test_valide_fix():
+    with tempfile.TemporaryDirectory() as tmp:
+        assert commands.validate({"action": "fix", "finding": "f1"}, build_snapshot(_fx(tmp))) is None
+    with tempfile.TemporaryDirectory() as tmp:
+        s = build_snapshot(_fx(tmp, {"f1": {"status": "conflict"}}))
+        assert commands.validate({"action": "fix", "finding": "f1"}, s) is None
+    with tempfile.TemporaryDirectory() as tmp:
+        s = build_snapshot(_fx(tmp, {"f1": {"status": "ready"}}))
+        assert commands.validate({"action": "merge_fix", "finding": "f1"}, s) is None
+
+
+def test_refus_fix():
+    with tempfile.TemporaryDirectory() as tmp:
+        s = build_snapshot(_fx(tmp, finding={"title": "x", "status": "FALSE_POSITIVE"}))
+        assert commands.validate({"action": "fix", "finding": "f1"}, s)
+    for st in ("running", "ready", "merged"):
+        with tempfile.TemporaryDirectory() as tmp:
+            s = build_snapshot(_fx(tmp, {"f1": {"status": st}}))
+            assert commands.validate({"action": "fix", "finding": "f1"}, s), st
+            assert commands.validate({"action": "end_fixes"}, s)
+            if st == "running":
+                assert commands.validate({"action": "merge_fix", "finding": "f1"}, s)
+    with tempfile.TemporaryDirectory() as tmp:
+        s = build_snapshot(_fx(tmp, state={"finished": True}))
+        assert commands.validate({"action": "fix", "finding": "../x"}, s)
+    with tempfile.TemporaryDirectory() as tmp:
+        d = _fx(tmp)
+        commands.append(d, {"action": "fix", "finding": "f1"}, "ui")
+        assert commands.validate({"action": "fix", "finding": "f1"}, build_snapshot(d))
+
+
+def test_apply_fix_en_file():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = _fx(tmp)
+        c = commands.append(d, {"action": "fix", "finding": "f1"}, "ui")
+        r = commands.apply(d, c["id"])
+        assert r["result"] == "applied"
+        e = fixes.load(d)["f1"]
+        assert e["status"] == "queued" and e["cmd"] == c["id"]
+        assert commands.apply(d, c["id"]) == r
+
+
+def test_apply_fix_entre_etapes():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = _fx(tmp, state={"stages": {"review": "done", "critic": "pending"}})
+        assert build_snapshot(d)["listening"] == "none"
+        c = commands.append(d, {"action": "fix", "finding": "f1"}, "ui")
+        assert commands.apply(d, c["id"])["result"] == "applied"
+        assert fixes.load(d)["f1"]["status"] == "queued"
+
+
+def test_apply_merge():
+    for fin in (False, True):
+        with scratch() as tmp:
+            d, repo = git_audit(tmp, state={"finished": True} if fin else None)
+            make_ready(d, "f1")
+            c = commands.append(d, {"action": "merge_fix", "finding": "f1"}, "ui")
+            assert commands.apply(d, c["id"])["result"] == "applied"
+            assert fixes.load(d)["f1"]["status"] == "merged"
+            assert (d / "README.md").exists() == fin
+
+
+def test_apply_merge_conflit_refuse():
+    with scratch() as tmp:
+        d, repo = git_audit(tmp, findings=(("f1", F), ("f2", F)))
+        make_ready(d, "f1", text="autre")
+        make_ready(d, "f2")
+        for stem in ("f1", "f2"):
+            r = commands.apply(d, commands.append(d, {"action": "merge_fix", "finding": stem}, "ui")["id"])
+        assert r["result"] == "refused" and r["reason"] == "conflit avec un autre correctif"
+
+
+def test_apply_merge_erreur_refusee():
+    with scratch() as tmp:
+        d, repo = git_audit(tmp)
+        make_ready(d, "f1")
+        data = fixes.load(d)
+        data["f1"].pop("base")
+        (d / "fixes.json").write_text(json.dumps(data))
+        c = commands.append(d, {"action": "merge_fix", "finding": "f1"}, "ui")
+        r = commands.apply(d, c["id"])
+        assert r["result"] == "refused" and "incomplète" in r["reason"]
+
+
+def test_apply_merge_rendu_en_echec():
+    import render
+    with scratch() as tmp:
+        d, repo = git_audit(tmp, state={"finished": True})
+        make_ready(d, "f1")
+        c = commands.append(d, {"action": "merge_fix", "finding": "f1"}, "ui")
+        orig, render.render = render.render, lambda *_: (_ for _ in ()).throw(RuntimeError("boum"))
+        try:
+            r = commands.apply(d, c["id"])
+        finally:
+            render.render = orig
+        assert r["result"] == "applied" and fixes.load(d)["f1"]["status"] == "merged"
+
+
+def test_apply_merge_deja_fusionne_sans_accuse():
+    with scratch() as tmp:
+        d, repo = git_audit(tmp)
+        make_ready(d, "f1")
+        c = commands.append(d, {"action": "merge_fix", "finding": "f1"}, "ui")
+        assert fixes.merge(d, "f1")[0] == "merged"  # plantage avant l'accusé
+        assert commands.apply(d, c["id"])["result"] == "applied"
 
 
 if __name__ == "__main__":

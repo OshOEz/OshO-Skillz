@@ -9,10 +9,11 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+import commands
 from snapshot import LEVEL_STAGES, append_activity, build_snapshot, diff_events, read_snapshot_safe
 
 
-def audit(tmp, campaign, state=None, findings=(), waiting=None, activity=()):
+def audit(tmp, campaign, state=None, findings=(), waiting=None, activity=(), fixes=None):
     d = Path(tmp)
     (d / "workspace" / "findings").mkdir(parents=True)
     (d / "campaign.json").write_text(json.dumps(campaign))
@@ -23,6 +24,8 @@ def audit(tmp, campaign, state=None, findings=(), waiting=None, activity=()):
         (d / "workspace" / "findings" / f"{name}.json").write_text(json.dumps(body))
     if waiting is not None:
         (d / "waiting.json").write_text(json.dumps(waiting))
+    if fixes is not None:
+        (d / "fixes.json").write_text(json.dumps(fixes))
     if activity:
         (d / "activity.jsonl").write_text("\n".join(json.dumps(a) for a in activity) + "\n")
     return d
@@ -75,10 +78,82 @@ def test_progress_colonnes():
           {"id": "fou", "title": "o"}]
     s = snap({"repo": "/x/demo", "level": "Sharp"}, state={}, findings=fs)
     got = {f["id"]: f["_progress"] for f in s["findings"]}
-    assert got == {"rej": "rejected", "fix": "fixed", "rep": "reproduced", "eva": "evaluated",
+    assert got == {"rej": "rejected", "fix": "proposed", "rep": "reproduced", "eva": "evaluated",
                    "rev": "reviewed", "fou": "found"}, got
-    assert s["progress_columns"] == ["found", "reviewed", "evaluated", "reproduced", "fixed"]
-    assert snap({"repo": "/x/demo", "level": "Light"})["progress_columns"] == ["found", "reviewed", "fixed"]
+    assert s["progress_columns"] == ["found", "reviewed", "evaluated", "reproduced", "proposed", "fixed"]
+    assert snap({"repo": "/x/demo", "level": "Light"})["progress_columns"] == [
+        "found", "reviewed", "proposed", "fixed"]
+
+
+def test_fix_colonnes():
+    fs = [("a", {"id": "a", "title": "A", "patch_status": "MITIGATION_PROPOSED"}), ("b", {"id": "b", "title": "B"}),
+          ("c", {"id": "c", "title": "C", "patch_status": "MITIGATION_PROPOSED"})]
+    s = snap({"repo": "/x/demo", "level": "Sharp"}, state={}, findings=fs,
+             fixes={"a": {"status": "merged"}, "c": {"status": "running", "worktree": "/tmp/x"}})
+    by = {f["_src"]: f for f in s["findings"]}
+    assert by["a"]["_progress"] == "fixed" and by["c"]["_progress"] == "proposed"
+    assert "worktree" not in by["c"]["_fix"] and by["c"]["_fix"]["status"] == "running"
+    assert by["b"]["_fix"] is None
+
+
+def test_fix_queued_derive():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp, {"repo": "/x/demo", "level": "Light"}, state={}, findings=[("f1", {"id": "a", "title": "A"})])
+        c = commands.append(d, {"action": "fix", "finding": "f1"}, "page")
+        assert build_snapshot(d)["findings"][0]["_fix"] == {"status": "queued", "cmd": c["id"]}
+        commands.ack(d, c["id"], "refused")
+        assert build_snapshot(d)["findings"][0]["_fix"] is None
+
+
+def test_listening_fixes():
+    c = {"repo": "/x/demo", "level": "Light"}
+    assert snap(c, state={"finished": True}, waiting={"kind": "fixes"})["listening"] == "fixes"
+    assert snap(c, state={"stages": {"plan": "running"}}, waiting={"kind": "fixes"})["listening"] == "fixes"
+    assert snap(c, state={"finished": True})["listening"] == "none"
+
+
+def test_meta_branche():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(Path(tmp) / "audit-x", {"repo": "/x/demo", "level": "Light"}, state={"git_status_before": " M app.py"},
+                  fixes={"a": {"status": "merged"}, "b": {"status": "ready"}})
+        m = build_snapshot(d)["meta"]
+        assert m["audit_branch"] == "mantis/" + d.name and m["fixes_merged"] == 1 and m["dirty_before"] is True
+        assert m["audit_branch_ok"] is True
+        (d / "state.json").write_text("{}")
+        assert build_snapshot(d)["meta"]["dirty_before"] is False
+
+
+def test_meta_branche_nom_invalide():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(Path(tmp) / "audit x", {"repo": "/x/demo", "level": "Light"}, state={})
+        m = build_snapshot(d)["meta"]
+        assert m["audit_branch"] == "mantis/audit x" and m["audit_branch_ok"] is False
+
+
+def test_fixes_tronque_ignore():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp, {"repo": "/x/demo", "level": "Light"}, state={},
+                  findings=[("a", {"id": "a", "title": "A", "patch_status": "MITIGATION_PROPOSED"})],
+                  fixes={"a": {"status": "merged"}})
+        prev = build_snapshot(d)
+        assert prev["findings"][0]["_progress"] == "fixed"
+        (d / "fixes.json").write_text('{"a": {"sta')
+        cur = read_snapshot_safe(d, prev)
+        assert cur is prev and diff_events(prev, cur, "t") == []
+
+
+def test_diff_fix_fusionne():
+    c = {"repo": "/x/demo", "level": "Light"}
+    fs = [("a", {"id": "a", "title": "Faille A"})]
+    s1 = snap(c, state={}, findings=fs, fixes={"a": {"status": "ready"}})
+    s2 = snap(c, state={}, findings=fs, fixes={"a": {"status": "merged"}})
+    e = [x for x in diff_events(s1, s2, "t") if x["kind"] == "fix"]
+    assert len(e) == 1 and (e[0]["finding"], e[0]["from"], e[0]["to"]) == ("a", "ready", "merged")
+    assert e[0]["text"] == "Correctif fusionné : Faille A" and "—" not in e[0]["text"]
+    s0 = snap(c, state={}, findings=fs)
+    assert [x["text"] for x in diff_events(s0, s1, "t") if x["kind"] == "fix"] == ["Correctif prêt : Faille A"]
+    s3 = snap(c, state={}, findings=fs, fixes={"a": {"status": "queued"}})
+    assert not [x for x in diff_events(s0, s3, "t") if x["kind"] == "fix"]
 
 
 def test_overkill_tour_2():
@@ -280,6 +355,13 @@ if __name__ == "__main__":
     test_snapshot_failed_et_waiting()
     test_snapshot_fini()
     test_progress_colonnes()
+    test_fix_colonnes()
+    test_fix_queued_derive()
+    test_listening_fixes()
+    test_meta_branche()
+    test_meta_branche_nom_invalide()
+    test_fixes_tronque_ignore()
+    test_diff_fix_fusionne()
     test_overkill_tour_2()
     test_src_et_file()
     test_durees()

@@ -31,7 +31,7 @@ USAGE = """usage: dashboard.py <commande> <AUDIT> [...]
   alive <AUDIT>                        code 0 si le serveur tourne et répond, 1 sinon
   command <AUDIT> '<json>'             ajoute une commande depuis le terminal (code 2 si refusée)
   pending <AUDIT>                      commandes en attente, une par ligne
-  apply <AUDIT> <id>                   applique une commande finding (false_positive, prioritize_repro)
+  apply <AUDIT> <id>                   applique une commande finding (false_positive, prioritize_repro, fix, merge_fix)
   ack <AUDIT> <id> applied|refused [raison]   accuse réception d'une commande"""
 
 
@@ -41,7 +41,7 @@ def now_iso():
 
 def signature(audit):
     paths = [audit / n for n in ("state.json", "campaign.json", "waiting.json", "commands.jsonl",
-                                 "commands-done.jsonl")]
+                                 "commands-done.jsonl", "fixes.json")]
     paths += sorted((audit / "workspace" / "findings").glob("*.json"))
     sig = []
     for p in paths:
@@ -89,7 +89,7 @@ class Dash:
                 except Exception as e:  # une erreur de tick ne doit jamais empêcher l'arrêt automatique ci-dessous
                     print(f"watch: {e!r}", file=sys.stderr, flush=True)
                 m, idle = self.snap["meta"], time.time() - last_change
-                if not (m["finished"] or m["stopped"]):
+                if self.snap["listening"] == "fixes" or not (m["finished"] or m["stopped"]):
                     end_seen = None
                 elif end_seen is None:
                     end_seen = time.time()
@@ -216,12 +216,35 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, RecursionError):
             return self.send(400, {"error": "commande illisible"})
         snap = self.dash.fresh()
-        if snap["listening"] == "none":
+        if snap["listening"] == "none" and not (isinstance(cmd, dict) and cmd.get("action") == "merge_fix"):  # merge_fix n'a pas besoin de Claude
             return self.send(409, {"error": "Aucune session active : relance /mantis-run"})
         reason = commands.validate(cmd, snap)
         if reason:
             return self.send(400, {"error": reason})
-        self.send(200, commands.append(self.dash.audit, cmd, "page"))
+        appended = None
+        try:
+            cmd = appended = commands.append(self.dash.audit, cmd, "page")
+            if cmd["action"] == "merge_fix":
+                cmd = commands.apply(self.dash.audit, cmd["id"])  # le serveur fusionne lui-même, sans attendre Claude
+        except Exception as e:
+            print(f"POST /command: {e!r}", file=sys.stderr, flush=True)
+            if appended:
+                ack_crash(self.dash.audit, appended)
+            return self.send(500, {"error": "erreur interne du serveur"})
+        self.send(200, cmd)
+
+
+def ack_crash(audit, cmd):
+    """Commande écrite puis plantage de apply : accusée pour que la page ne l'attende pas sans fin"""
+    import fixes
+    try:
+        e = fixes.load(audit).get(cmd.get("finding"))
+        if isinstance(e, dict) and e.get("status") == "merged":  # la fusion a eu lieu avant le plantage
+            commands.ack(audit, cmd["id"], "applied")
+        else:
+            commands.ack(audit, cmd["id"], "refused", "erreur interne du serveur")
+    except Exception as err:
+        print(f"accusé impossible : {err!r}", file=sys.stderr, flush=True)
 
 
 def run(audit):

@@ -310,10 +310,96 @@ def test_watch_arret_malgre_erreur():
         dashboard.POLL_S, dashboard.IDLE_S, dashboard.HARD_IDLE_S = saved
 
 
+def test_post_merge_fix_immediat():
+    import test_fixes
+    with test_fixes.scratch() as tmp:
+        d, repo = test_fixes.git_audit(tmp, state={"stages": {"review": "done"}, "finished": True})
+        test_fixes.make_ready(d, "f1")
+        try:
+            out = json.loads(cli("serve", d).stdout)
+            u = urlparse(out["url"])
+            port, key = u.port, parse_qs(u.query)["key"][0]
+            c, nxt = sse(port, key)
+            try:
+                nxt()
+                s, body, _ = post(port, key, {"action": "merge_fix", "finding": "f1"})
+                cmd = json.loads(body)
+                assert s == 200 and cmd["id"], body
+                done = [json.loads(x) for x in (d / "commands-done.jsonl").read_text().splitlines()]
+                assert [c_["result"] for c_ in done if c_["id"] == cmd["id"]] == ["applied"], done
+                assert json.loads((d / "fixes.json").read_text())["f1"]["status"] == "merged"
+                t0 = time.time()
+                while True:
+                    ev, data = nxt()
+                    f1 = next(f for f in json.loads(data)["findings"] if f["_src"] == "f1") if ev == "snapshot" else None
+                    if f1 and f1["_progress"] == "fixed":
+                        break
+                assert time.time() - t0 < 2
+            finally:
+                c.close()
+        finally:
+            cli("stop", d, check=False)
+
+
+def test_post_fix_409_sans_session():
+    import test_fixes
+    with test_fixes.scratch() as tmp:
+        d, repo = test_fixes.git_audit(tmp, state={"stages": {"review": "done"}, "finished": True})
+        try:
+            u = urlparse(json.loads(cli("serve", d).stdout)["url"])
+            assert post(u.port, parse_qs(u.query)["key"][0], {"action": "fix", "finding": "f1"})[0] == 409
+        finally:
+            cli("stop", d, check=False)
+
+
+def test_watch_garde_en_mode_corrections():
+    import dashboard
+
+    class Httpd:
+        def shutdown(self):
+            pass
+    saved = dashboard.POLL_S, dashboard.END_GRACE_S
+    dashboard.POLL_S, dashboard.END_GRACE_S = 0.01, 0
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            d = make_audit(tmp, {"stages": {"review": "done"}, "finished": True}).resolve()
+            (d / "waiting.json").write_text(json.dumps({"kind": "fixes"}))
+            dash = dashboard.Dash(d)
+            dash.httpd = Httpd()
+            t = threading.Thread(target=dash.watch, daemon=True)
+            t.start()
+            t.join(0.5)
+            assert t.is_alive(), "arrêté en mode Corrections"
+            (d / "waiting.json").unlink()
+            t.join(3)
+            assert not t.is_alive()
+    finally:
+        dashboard.POLL_S, dashboard.END_GRACE_S = saved
+
+
 def test_score_non_numerique():
     fs = [{"id": "a", "title": "A", "mantis_risk_score": "8"}, {"id": "b", "title": "B", "mantis_risk_score": "x"}]
     with server(findings=fs) as (d, out, port, key):
         assert req(port, "GET", f"/?key={key}")[0] == 200
+
+
+def test_ack_crash():
+    import commands
+    import dashboard
+    with tempfile.TemporaryDirectory() as tmp:
+        d = make_audit(tmp, findings=[{"id": "a"}])
+        result = lambda c: next(x for x in commands.done(d) if x["id"] == c["id"])
+        (d / "fixes.json").write_text(json.dumps({"f0": {"status": "ready"}}))
+        c = commands.append(d, {"action": "merge_fix", "finding": "f0"}, "page")
+        dashboard.ack_crash(d, c)
+        assert (result(c)["result"], result(c)["reason"]) == ("refused", "erreur interne du serveur")
+        (d / "fixes.json").write_text(json.dumps({"f0": {"status": "merged"}}))
+        c = commands.append(d, {"action": "merge_fix", "finding": "f0"}, "page")
+        dashboard.ack_crash(d, c)
+        assert result(c)["result"] == "applied"
+        (d / "fixes.json").write_text("[")  # illisible : pas d'exception
+        with redirect_stderr(io.StringIO()):
+            dashboard.ack_crash(d, {"id": "zz"})
 
 
 def test_help():

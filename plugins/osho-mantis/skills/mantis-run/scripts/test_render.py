@@ -24,9 +24,11 @@ LOW = {"id": "l1", "title": "En-tête de sécurité manquant", "severity": "LOW"
 REJ = {"id": "r1", "title": "Faux SQLi", "severity": "HIGH", "status": "FALSE_POSITIVE", "reasoning": "Requête paramétrée."}
 
 
-def audit(tmp, findings, broken=False):
+def audit(tmp, findings, broken=False, fixes=None):
     d = Path(tmp)
     (d / "workspace" / "findings").mkdir(parents=True)
+    if fixes is not None:
+        (d / "fixes.json").write_text(json.dumps(fixes))
     (d / "campaign.json").write_text(json.dumps({"repo": "/x/demo", "level": "Light", "mantis_commit": "47099ed",
                                                  "started_at": "2026-10-01T14:32:00", "finished_at": "2026-10-01T15:47:00"}))
     (d / "state.json").write_text(json.dumps({"stages": {"threat-model": "done", "reproduce": "skipped"},
@@ -229,10 +231,11 @@ def test_frise_etapes():
         node_ok(tmp, prog + fn(js, "trail") + """
 const assert = require('assert');
 function el(tag, attrs, ...kids) { return {cls: (attrs || {}).class || '', kids, append(...k) { this.kids.push(...k); }}; }
-const D = {progress_columns: ['found', 'reviewed', 'evaluated', 'reproduced', 'fixed']};
-const bar = trail({reasoning: 'x', patch_status: 'MITIGATION_PROPOSED', _progress: 'fixed', _bucket: 'CRITICAL'});
-const got = Object.fromEntries(bar.kids.map(k => [k.kids[0], k.cls === 'y']));
-assert.deepStrictEqual(got, {'Trouvé': true, 'Revu': true, 'Évalué': false, 'Reproduit': false, 'Corrigé': true});
+const D = {progress_columns: ['found', 'reviewed', 'evaluated', 'reproduced', 'proposed', 'fixed']};
+const steps = f => Object.fromEntries(trail(f).kids.map(k => [k.kids[0], k.cls === 'y']));
+assert.deepStrictEqual(steps({reasoning: 'x', patch_status: 'MITIGATION_PROPOSED', _progress: 'proposed', _bucket: 'CRITICAL'}),
+  {'Trouvé': true, 'Revu': true, 'Évalué': false, 'Reproduit': false, 'Correctif proposé': true, 'Corrigé': false});
+assert.strictEqual(steps({patch_status: 'MITIGATION_PROPOSED', _fix: {status: 'merged'}, _progress: 'fixed', _bucket: 'CRITICAL'})['Corrigé'], true);
 """)
 
 
@@ -353,6 +356,41 @@ def test_reduced_motion():
     with tempfile.TemporaryDirectory() as tmp:
         html, _ = data(audit(tmp, [CRIT]))
         assert "prefers-reduced-motion" in html
+
+
+def test_readme_corrections_fusionnees():
+    fixes = {"f0": {"status": "merged", "commit": "a" * 40, "merge_commit": "b" * 40}}
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp, [CRIT, LOW], fixes=fixes)
+        readme = (d / "README.md").read_text()
+        assert "## Corrections fusionnées" in readme
+        assert "1 correctif sur la branche" in readme and "git merge mantis/" in readme
+        assert "(`bbbbbbb`)" in readme
+        assert readme.index("## Corrections fusionnées") < readme.index("## Limites")
+
+
+def test_readme_nom_audit_invalide():
+    fixes = {"f0": {"status": "merged", "commit": "a" * 40, "merge_commit": "b" * 40}}
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(Path(tmp) / "audit x", [CRIT, LOW], fixes=fixes)
+        readme = (d / "README.md").read_text()
+        assert "## Corrections fusionnées" in readme and "git merge" not in readme
+        assert "copy-merge').hidden = !m.audit_branch_ok" in (d / "dashboard.html").read_text()
+
+
+def test_readme_sans_correction():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp, [CRIT, LOW])
+        assert "Corrections fusionnées" not in (d / "README.md").read_text()
+
+
+def test_readme_corrections_hostile():
+    hostile = dict(LOW, id="h1", title="<img src=x onerror=alert(1)>")
+    fixes = {"f0": {"status": "merged", "commit": "a" * 40, "merge_commit": "b" * 40}}
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp, [hostile], fixes=fixes)
+        readme = (d / "README.md").read_text()
+        assert "&lt;img" in readme and "<img src=x" not in readme
 
 
 def test_aucun_finding():
@@ -476,10 +514,10 @@ def test_etat_commande():
         html, _ = data(audit(tmp, [CRIT]))
         js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
         node_ok(tmp, "const inflight = new Set(), sent = new Map();" + "".join(
-            fn(js, n) for n in ("cmdKey", "cmdState", "blocked", "settleSent")) + """
+            fn(js, n) for n in ("sentText", "cmdKey", "cmdState", "blocked", "settleSent")) + """
 const assert = require('assert');
 const fp = JSON.stringify({action: 'false_positive', finding: 'f1'});
-let D = {commands: {pending: [], done: []}, waiting: null};
+let D = {commands: {pending: [], done: []}, waiting: null, listening: 'working'};
 inflight.add(fp); sent.set(fp, 'abc');
 assert.strictEqual(cmdState(fp).t, 'Envoyé, pris en compte à la fin du lot en cours');
 assert.ok(blocked({action: 'false_positive', finding: 'f1'}));
@@ -507,6 +545,103 @@ settleSent(); assert.ok(!sent.has(a));
 """)
 
 
+def test_fix_view():
+    """fixView() : état de correction d'une carte, en texte et en bouton (Corriger, Merger, Recorriger)."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        label = re.search(r"const FIX_LABEL = \{.*?\};", js, re.S).group(0)
+        node_ok(tmp, label + fn(js, "fixView") + """
+const assert = require('assert');
+const v = (st, extra) => fixView({_bucket: 'HIGH', _fix: st ? Object.assign({status: st}, extra) : null}, 'live');
+assert.strictEqual(fixView({_bucket: 'HIGH'}, 'final'), null);
+assert.strictEqual(fixView({_bucket: 'REJECTED'}, 'live'), null);
+assert.strictEqual(v('merged'), null);
+assert.deepStrictEqual([v(null).action, v(null).label], ['fix', 'Corriger']);
+assert.deepStrictEqual([v('failed', {error: 'tests rouges'}).text, v('failed').action, v('failed').label], ['Échec : tests rouges', 'fix', 'Corriger']);
+assert.strictEqual(v('failed').text, 'Échec : raison inconnue');
+assert.deepStrictEqual([v('queued').text, v('queued').action], ['En file…', undefined]);
+assert.deepStrictEqual([v('running').text, v('running').cls, v('running').action], ['Correction en cours', 'loading', undefined]);
+assert.deepStrictEqual([v('ready').action, v('ready').label, v('ready').cls], ['merge_fix', 'Merger', 'pri']);
+assert.deepStrictEqual([v('conflict').text, v('conflict').action, v('conflict').label], ['Conflit avec un autre correctif', 'fix', 'Recorriger']);
+assert.strictEqual(FIX_LABEL.merged, 'Corrigée');
+""")
+
+
+def test_fix_hooks():
+    """Bannière de branche, mode Corrections et grisage de Merger présents ; ni innerHTML ni tiret cadratin."""
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        for s in ('id="fix-branch"', 'id="copy-merge"', "Correctif proposé", "Claude attend tes demandes de correction",
+                  "cmd.action !== 'merge_fix'"):
+            assert s in html, s
+        assert "innerHTML" not in html and "\u2014" not in html
+
+
+def test_texte_envoye():
+    """Texte d'envoi : « Fusion en cours… » pour merge_fix, le long texte seulement quand Claude travaille, sinon « Envoyé »."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        node_ok(tmp, fn(js, "sentText") + """
+const assert = require('assert');
+let D = {listening: 'working'};
+assert.strictEqual(sentText({action: 'pause'}), 'Envoyé, pris en compte à la fin du lot en cours');
+assert.strictEqual(sentText({action: 'pause'}, true), 'en attente, prise en compte à la fin du lot en cours');
+assert.strictEqual(sentText({action: 'merge_fix', finding: 'a'}), 'Fusion en cours…');
+assert.strictEqual(sentText({action: 'merge_fix', finding: 'a'}, true), 'fusion en cours…');
+for (const l of ['fixes', 'waiting']) {
+  D = {listening: l};
+  assert.strictEqual(sentText({action: 'fix', finding: 'a'}), 'Envoyé');
+  assert.strictEqual(sentText({action: 'fix', finding: 'a'}, true), 'en attente');
+  assert.strictEqual(sentText({action: 'merge_fix', finding: 'a'}), 'Fusion en cours…');
+}
+""")
+
+
+def test_carte_correction():
+    """card() : enveloppe .fc-card, jamais de bouton dans button.fc ; Avancement en direct : rangée de correction ;
+    Sévérité : puce sans rangée ; mode final : ni rangée ni bouton."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        label = re.search(r"const FIX_LABEL = \{.*?\};", js, re.S).group(0)
+        node_ok(tmp, label + fn(js, "fixView") + fn(js, "card") + """
+const assert = require('assert');
+function el(tag, attrs, ...kids) {
+  return {tag, cls: (attrs || {}).class || '', kids: kids.filter(k => k != null && k !== false),
+    append(...k) { this.kids.push(...k); }, addEventListener() {}, get children() { return this.kids; }};
+}
+const cmdButton = (cmd, cls, label) => [el('button', {class: cls}, label)];
+const sevPill = () => el('span', {class: 'sev'}), val = () => 'app.py:1', openPeek = () => {};
+const all = n => [n, ...(n.kids || []).filter(k => typeof k === 'object').flatMap(all)];
+const row = c => c.kids.find(k => k.cls.startsWith('fc-fix'));
+const chip = c => all(c).find(k => k.cls.startsWith('chip fx-'));
+const f = {_src: 'a', _bucket: 'HIGH', title: 't', _fix: {status: 'ready'}};
+let ui = {view: 'progress'}, D = {mode: 'live'};
+for (const view of ['progress', 'severity']) for (const mode of ['live', 'final']) {
+  ui = {view}; D = {mode};
+  const c = card(f), btn = c.kids[0];
+  assert.strictEqual(c.cls, 'fc-card');
+  assert.strictEqual(btn.tag, 'button'); assert.strictEqual(btn.cls, 'fc');
+  assert.ok(!all(btn).slice(1).some(k => k.tag === 'button'), 'pas de bouton dans button.fc');
+  if (view === 'progress' && mode === 'live') {
+    assert.ok(row(c) && all(row(c)).some(k => k.tag === 'button' && k.cls.includes('pri')), 'Merger dans la rangée');
+    assert.ok(!chip(c));
+  } else {
+    assert.ok(!row(c), 'pas de rangée : ' + view + ' ' + mode);
+    assert.strictEqual(chip(c).kids[0], 'Correctif prêt');
+  }
+}
+""")
+
+
 if __name__ == "__main__":
     test_trois_findings()
     test_niveau_banniere_et_reproduce()
@@ -530,4 +665,12 @@ if __name__ == "__main__":
     test_cmd_text()
     test_etat_commande()
     test_carte_option()
+    test_readme_corrections_fusionnees()
+    test_readme_nom_audit_invalide()
+    test_readme_sans_correction()
+    test_readme_corrections_hostile()
+    test_fix_view()
+    test_fix_hooks()
+    test_texte_envoye()
+    test_carte_correction()
     print("OK")
