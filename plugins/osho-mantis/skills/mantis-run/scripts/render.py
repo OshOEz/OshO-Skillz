@@ -54,6 +54,7 @@ def load_findings(workspace):
         f = load_json(p, None)
         if isinstance(f, dict) and f.get("title"):
             f["id"] = str(f.get("id") or p.stem)
+            f["_src"] = p.stem
             findings.append(f)
         else:
             unreadable.append(p.name)
@@ -177,36 +178,15 @@ def safe_json(obj):
 
 def render(audit_dir):
     audit_dir = Path(audit_dir).resolve()
-    campaign = load_json(audit_dir / "campaign.json", {})
-    state = load_json(audit_dir / "state.json", {})
-    findings, unreadable = load_findings(audit_dir / "workspace")
-    # Compute _file for each finding with deduplication against all used names
-    used = set()
-    for f in findings:
-        name = safe_id(f)
-        if name in used:
-            suffix = 2
-            while f"{name}-{suffix}" in used:
-                suffix += 1
-            name = f"{name}-{suffix}"
-        used.add(name)
-        f["_file"] = name
-    meta = {"repo_name": Path(campaign.get("repo") or audit_dir.parent.parent).name,
-            "audit_name": audit_dir.name, "level": campaign.get("level"),
-            "mantis_commit": campaign.get("mantis_commit"), "started_at": campaign.get("started_at"),
-            "duration": duration(campaign.get("started_at"), campaign.get("finished_at")),
-            "notes": state.get("notes", []),
-            "stages": [k for k, v in state.get("stages", {}).items() if v == "done"]}
-    meta["reproduce_done"] = "reproduce" in meta["stages"]
-    meta["level_banner"] = LEVEL_BANNERS.get(meta["level"], "")
-    st = stats(findings)
+    from snapshot import build_snapshot  # import tardif : snapshot importe render
+    payload = build_snapshot(audit_dir, mode="final")
+    findings, meta, st = payload["findings"], payload["meta"], payload["stats"]
+    unreadable = load_findings(audit_dir / "workspace")[1]
     (audit_dir / "README.md").write_text(readme(meta, findings, unreadable, st))
     for f in findings:
         if f.get("patch_diff") and bucket(f) != "REJECTED":
             (audit_dir / "patches").mkdir(exist_ok=True)
             (audit_dir / "patches" / f"{f['_file']}.diff").write_text(str(f["patch_diff"]).rstrip("\n") + "\n")
-    payload = {"meta": meta, "stats": st, "labels": ENUM_LABELS,
-               "findings": [dict(f, _bucket=bucket(f), _summary=summary(f)) for f in sorted(findings, key=sort_key)]}
     (audit_dir / "dashboard.html").write_text(TEMPLATE.replace("__DATA__", safe_json(payload)))
 
 
