@@ -73,8 +73,69 @@ main{padding:14px 20px 40px;display:grid;gap:12px}
 .tile-h .act{margin-left:auto;display:flex;gap:8px;align-items:center}
 #waiting-banner{background:var(--sel);color:var(--sel-fg);border:1px solid var(--primary);border-radius:10px;padding:12px 16px}
 #waiting-banner[hidden]{display:none}
-#pipeline{border-radius:10px;overflow:hidden}
-#pipeline:empty{display:none}
+#pipeline{border-radius:10px;overflow:hidden;display:flex}
+
+/* Pipeline : sélecteur vertical, vues Réseau et Matrice */
+.pv-rail{flex:none;display:flex;flex-direction:column;gap:4px;padding:10px 7px;border-right:1px solid var(--border)}
+.pv-rail .icon-btn[aria-pressed=true]{background:var(--sel);color:var(--sel-fg);border-color:color-mix(in oklch,var(--primary) 40%,transparent)}
+#pv{flex:1;min-width:0;overflow-x:auto;padding:14px}
+.stg{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-align:inherit}
+.p1{position:relative;width:max-content;min-width:max(980px,100%);padding:26px 8px 8px;border:1px solid var(--border);border-radius:6px;
+  background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);
+  background-size:24px 24px;background-position:-1px -1px;mask-image:linear-gradient(90deg,transparent,#000 3%,#000 97%,transparent)}
+.p1 .row{display:flex;align-items:center;padding:0 6px}
+.node{position:relative;z-index:1;flex:none;width:84px;display:flex;flex-direction:column;align-items:center;gap:6px;border-radius:6px;padding:4px 0}
+.node:hover .c{border-color:var(--faint)}
+.node .c{position:relative;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--card);border:1.5px solid var(--input);font:600 10px var(--mono);color:var(--faint)}
+.node.done .c{border-color:var(--ok);color:var(--ok)}
+.node.running .c{border-color:var(--primary);color:var(--primary);box-shadow:0 0 0 4px color-mix(in oklch,var(--primary) 18%,transparent)}
+.node.running .c::after{content:"";position:absolute;inset:-1.5px;border-radius:50%;border:1.5px solid var(--primary);animation:ping 1.8s ease-out infinite}
+@keyframes ping{from{transform:scale(1);opacity:.8}to{transform:scale(2.1);opacity:0}}
+.node.skipped .c{border-style:dashed;opacity:.55}
+.node.failed .c{border-color:var(--bad);color:var(--bad);background:color-mix(in oklch,var(--bad) 12%,var(--card))}
+.node small{font:500 10px/1.25 var(--mono);color:var(--faint);text-transform:uppercase;letter-spacing:.04em;text-align:center;min-height:25px}
+.node.running small{color:var(--primary)} .node.failed small{color:var(--bad)}
+.node em{font:400 10px var(--mono);color:var(--faint);font-style:normal;height:12px;white-space:nowrap}
+.node.skipped small,.node.skipped em{text-decoration:line-through}
+.wire{flex:1;height:2px;background:var(--input);margin-bottom:46px;min-width:14px}
+.wire.done{background:var(--ok)}
+.wire.running{background:linear-gradient(90deg,var(--ok),var(--primary));position:relative;overflow:hidden}
+.wire.running::after{content:"";position:absolute;inset:0;width:30%;background:linear-gradient(90deg,transparent,color-mix(in oklch,var(--fg) 70%,transparent),transparent);animation:flow 1.4s linear infinite}
+@keyframes flow{from{transform:translateX(-100%)}to{transform:translateX(400%)}}
+.fork{flex:none;display:flex;flex-direction:column;gap:5px;padding:0 4px;margin-bottom:46px}
+.fork .lane{display:flex;align-items:center;gap:4px;font:500 10px/1 var(--mono);color:var(--primary)}
+.fork .lane i{width:18px;height:2px;background:var(--primary);opacity:.7}
+.pv-foot{display:flex;gap:28px;margin-top:14px;padding:10px 40px 2px;border-top:1px solid var(--border);font:12px var(--mono);color:var(--faint)}
+.pv-foot b{color:var(--fg);font-weight:500}
+.p3{min-width:980px;border:1px solid var(--border);border-radius:6px;background:var(--card);overflow:hidden}
+.p3-top{display:flex;align-items:center;gap:16px;height:34px;padding:0 12px;border-bottom:1px solid var(--border);font:11px var(--mono);color:var(--faint);text-transform:uppercase;letter-spacing:.1em}
+.p3-top b{color:var(--fg);font-weight:600}
+.p3-top .r{margin-left:auto}
+.mx{display:grid;grid-template-columns:repeat(var(--n,12),minmax(0,1fr));gap:1px;background:var(--border)}
+.cell{position:relative;overflow:hidden;background:var(--card);padding:10px 8px 9px;min-height:96px;display:flex;flex-direction:column;gap:4px}
+.cell:hover{background:var(--elev)}
+.cell .code{font:600 15px var(--mono);letter-spacing:.04em;color:var(--faint)}
+.cell .nm{font-size:11px;color:var(--faint);line-height:1.2}
+.cell .st{margin-top:auto;font:10px var(--mono);color:var(--faint)}
+.cell.done .code,.cell.done .nm{color:var(--fg)} .cell.done .st{color:var(--ok)}
+.cell.failed .code{color:var(--bad)} .cell.failed .st{color:var(--bad)}
+.cell.failed{box-shadow:inset 0 2px 0 var(--bad)}
+.cell.running{background:var(--sel)}
+.cell.running .code,.cell.running .nm{color:var(--sel-fg)} .cell.running .st{color:var(--primary)}
+.cell.running::before,.cell.running::after{content:"";position:absolute;width:10px;height:10px;border:1.5px solid var(--primary)}
+.cell.running::before{top:4px;left:4px;border-right:0;border-bottom:0}
+.cell.running::after{bottom:4px;right:4px;border-left:0;border-top:0}
+.cell .scan{position:absolute;left:0;right:0;top:8%;height:1px;background:var(--primary);opacity:.6;animation:scan 2.4s ease-in-out infinite}
+@keyframes scan{0%,100%{top:8%}50%{top:92%}}
+.cell.skipped{background:repeating-linear-gradient(135deg,var(--card) 0 5px,var(--bg) 5px 10px)}
+.cell.skipped .code{text-decoration:line-through}
+.bars{display:flex;gap:2px;height:6px;margin-top:2px}
+.bars i{flex:1;height:100%;background:var(--ok);opacity:.55;border-radius:1px}
+.cell.running .bars i{background:var(--primary);opacity:.9}
+.p3-log{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid var(--border);font:11px/1.6 var(--mono);color:var(--faint)}
+.p3-log div{padding:8px 12px;border-right:1px solid var(--border);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.p3-log div:last-child{border-right:0}
+.p3-log b{color:var(--muted);font-weight:500;margin-right:6px}
 .split{display:grid;grid-template-columns:minmax(0,1fr) 240px;gap:12px;align-items:start}
 .side{display:grid;gap:12px}
 #actions{display:grid;gap:8px;padding:12px}
@@ -196,7 +257,17 @@ code{font:12px var(--mono);background:var(--muted-bg);border-radius:4px;padding:
 
 <main>
   <div id="waiting-banner" role="region" aria-label="Question en attente" hidden></div>
-  <section id="pipeline" class="tile" aria-label="Pipeline"></section>
+  <section id="pipeline" class="tile" aria-label="Pipeline">
+    <div class="pv-rail" role="group" aria-label="Vue du pipeline">
+      <button id="view-reseau" class="icon-btn" type="button" data-v="reseau" aria-label="Vue réseau" aria-pressed="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="12" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="19" cy="18" r="2.5"/><path d="M7.3 11 16.7 7M7.3 13l9.4 4"/></svg>
+      </button>
+      <button id="view-matrice" class="icon-btn" type="button" data-v="matrice" aria-label="Vue matrice" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      </button>
+    </div>
+    <div id="pv"></div>
+  </section>
   <div class="split">
     <section class="tile" aria-labelledby="kb-title">
       <div class="tile-h"><h2 id="kb-title">Vulnérabilités</h2>
@@ -243,7 +314,8 @@ const ICON = {
 };
 const $ = id => document.getElementById(id);
 // état de l'interface, conservé d'un render(D) à l'autre
-const ui = {view: load('mantis.kbView') === 'progress' ? 'progress' : 'severity', peek: null, full: false, back: null};
+const ui = {view: load('mantis.kbView') === 'progress' ? 'progress' : 'severity', peek: null, full: false, back: null,
+  stage: null, stageView: stageView(new URLSearchParams(location.search).get('view') ?? load('mantis.stageView'))};
 
 function load(k) {
   try { return localStorage.getItem(k); } catch (e) { return null; }
@@ -340,8 +412,140 @@ function renderBanner() {
   });
   $('kpis').children[1].classList.toggle('hot', kpis[1][0] > 0);
 }
+const ST_LABEL = {pending: 'En attente', running: 'En cours', done: 'Terminé', failed: 'Échec', skipped: 'Sauté'};
+function stageView(stored) {
+  return stored === 'matrice' ? 'matrice' : 'reseau';
+}
+function dur(s) {
+  if (typeof s !== 'number' || s < 0) return '';
+  if (s < 60) return s + ' s';
+  const m = Math.floor(s / 60);
+  return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + pad(m % 60);
+}
+function clock(ms) {
+  const t = Math.floor(ms / 1000);
+  return pad(Math.floor(t / 3600)) + ':' + pad(Math.floor(t / 60) % 60) + ':' + pad(t % 60);
+}
+function elapsed() {
+  // T+ : depuis le début de l'audit ; hors direct, jusqu'au dernier changement connu
+  const start = Date.parse(D.meta.started_at);
+  if (isNaN(start)) return null;
+  const live = !(D.meta.finished || D.meta.stopped || D.mode === 'final');
+  const end = live ? Date.now() : Date.parse(D.generated_at) - (D.meta.audit_age_s || 0) * 1000;
+  return isNaN(end) ? null : clock(Math.max(0, end - start));
+}
+function roundText() {
+  const r = D.meta.round || 1;
+  return D.meta.level === 'Overkill' ? r + ' / 3' : String(r);
+}
+function curOf(s) {
+  return D.current && D.current.stage === s.key ? D.current : null;
+}
+function stageSub(s) {
+  const cur = curOf(s);
+  if (s.status === 'running') return cur && cur.batch ? 'lot ' + cur.batch : 'en cours';
+  if (s.status === 'skipped') return 'sauté';
+  if (s.status === 'failed') return 'échec';
+  return s.status === 'done' ? dur(s.duration_s) : '';
+}
+function stageButton(s, cls, ...kids) {
+  const b = el('button', {class: 'stg ' + cls + ' ' + s.status, type: 'button', 'data-key': s.key,
+    'aria-label': s.name + ', ' + (ST_LABEL[s.status] || s.status)}, ...kids);
+  b.addEventListener('click', () => openStage(s.key));
+  return b;
+}
+function stat(label, v) {
+  return el('span', {}, label + ' ', el('b', {}, v));
+}
+function reseau(stages) {
+  const row = el('div', {class: 'row'}), cur = D.current;
+  stages.forEach((s, i) => {
+    if (i) row.append(el('div', {class: 'wire ' + (s.status === 'running' ? 'running' : s.status === 'pending' ? '' : 'done')}));
+    if (s.status === 'running' && cur && cur.stage === s.key && cur.workers > 1) {
+      const fork = el('div', {class: 'fork', 'aria-hidden': 'true'});
+      for (let w = 1; w <= Math.min(cur.workers, 8); w++) fork.append(el('div', {class: 'lane'}, el('i'), 'W' + w));
+      row.append(fork);
+    }
+    row.append(stageButton(s, 'node', el('span', {class: 'c'}, s.code), el('small', {}, s.name), el('em', {}, stageSub(s))));
+  });
+  const run = stages.findIndex(s => s.status === 'running');
+  const i = run >= 0 ? run + 1 : stages.filter(s => s.status !== 'pending').length, t = elapsed();
+  const foot = el('div', {class: 'pv-foot'}, t ? stat('T+', t) : null, stat('Étape', i + ' / ' + stages.length),
+    D.meta.level === 'Overkill' ? stat('Tour', roundText()) : null,
+    cur && cur.workers ? stat('Workers actifs', String(cur.workers)) : null, cur && cur.model ? stat('Modèle', String(cur.model)) : null);
+  return el('div', {class: 'p1'}, row, foot);
+}
+function matrice(stages) {
+  const t = elapsed();
+  const top = el('div', {class: 'p3-top'}, stat('Opération', 'Mantis'), D.meta.level ? stat('Niveau', D.meta.level) : null,
+    stat('Tour', roundText()), t ? el('span', {class: 'r'}, 'T+ ', el('b', {}, t)) : null);
+  const mx = el('div', {class: 'mx', style: '--n:' + stages.length});
+  for (const s of stages) {
+    const cur = curOf(s), n = s.status === 'running' ? Math.max(1, Math.min((cur && cur.workers) || 1, 8)) : s.status === 'done' ? 1 : 0;
+    const bars = n ? el('div', {class: 'bars', 'aria-hidden': 'true'}) : null;
+    for (let k = 0; k < n; k++) bars.append(el('i'));
+    const st = s.status === 'done' ? ('OK ' + dur(s.duration_s)).trim() : s.status === 'running' && cur && cur.batch ? 'Lot ' + cur.batch : ST_LABEL[s.status] || s.status;
+    mx.append(stageButton(s, 'cell', s.status === 'running' ? el('span', {class: 'scan', 'aria-hidden': 'true'}) : null,
+      el('span', {class: 'code'}, s.code), el('span', {class: 'nm'}, s.name), bars, el('span', {class: 'st'}, st)));
+  }
+  const code = Object.fromEntries(stages.map(s => [s.key, s.code]));
+  const log = el('div', {class: 'p3-log'});
+  for (const e of (D.activity || []).slice(-3).reverse()) {
+    const d = new Date(e.at), at = isNaN(d) ? '' : hhmm(e.at) + ':' + pad(d.getSeconds());
+    log.append(el('div', {}, el('b', {}, at), (code[e.stage] ? code[e.stage] + ' ' : '') + String(e.text || e.kind || '')));
+  }
+  return el('div', {class: 'p3'}, top, mx, log.children.length ? log : null);
+}
 function renderPipeline(D) {
-  // rempli par la tâche 6 (vues Réseau et Matrice) dans #pipeline
+  const pv = $('pv'), stages = D.stages || [];
+  const focused = pv.contains(document.activeElement) ? document.activeElement.dataset.key : null;
+  pv.replaceChildren(ui.stageView === 'matrice' ? matrice(stages) : reseau(stages));
+  for (const b of $('pipeline').querySelectorAll('.pv-rail button')) b.setAttribute('aria-pressed', String(b.dataset.v === ui.stageView));
+  if (focused) { const b = stageFor(focused); if (b) b.focus({preventScroll: true}); }
+}
+function stageFor(key) {
+  return [...$('pv').querySelectorAll('[data-key]')].find(b => b.dataset.key === key) || null;
+}
+function fillStage(s) {
+  const close = el('button', {class: 'icon-btn', type: 'button', id: 'peek-close', 'aria-label': "Fermer le panneau de l'étape"}, '✕');
+  close.addEventListener('click', closePeek);
+  const bar = el('div', {class: 'peek-bar'}, el('span', {}, s.code), el('span', {'aria-hidden': 'true'}, '·'),
+    el('span', {class: 'file'}, s.key), el('span', {class: 'sp'}), close);
+  const cur = curOf(s), rows = [['État', ST_LABEL[s.status] || s.status], ['Début', frDate(s.started_at)],
+    ['Durée', dur(s.duration_s) || null]];
+  if (cur) rows.push(['Lot', cur.batch], ['Workers', cur.workers], ['Modèle', cur.model]);
+  const dl = el('dl', {class: 'props'});
+  for (const [k, v] of rows) {
+    const none = v == null || v === '';
+    dl.append(el('dt', {}, k), el('dd', none ? {class: 'na'} : {}, none ? (k !== 'Durée' ? 'inconnu' : s.status === 'running' ? 'en cours' : 'non mesurée') : String(v)));
+  }
+  const notes = (s.notes || []).map(n => el('li', {}, String(n)));
+  const inner = el('div', {class: 'peek-in'}, el('h2', {id: 'peek-title'}, s.name), dl,
+    section('Notes', notes.length ? el('ul', {class: 'hist'}, ...notes) : el('p', {class: 'na'}, 'Aucune note pour cette étape.')));
+  if (s.status === 'failed') {
+    const w = D.waiting && D.waiting.stage === s.key ? D.waiting.reason : null;
+    inner.append(section("Raison de l'échec", w ? el('p', {}, String(w)) : el('p', {class: 'na'}, 'Raison non communiquée.')));
+    if (D.mode !== 'final') {
+      const retry = el('button', {class: 'btn pri', type: 'button'}, 'Relancer');
+      retry.addEventListener('click', () => sendCommand({action: 'retry', stage: s.key}));
+      const stop = el('button', {class: 'btn', type: 'button'}, 'Arrêter');
+      stop.addEventListener('click', () => sendCommand({action: 'stop'}));
+      inner.append(el('div', {class: 'peek-act'}, retry, stop));
+    }
+  }
+  $('peek').replaceChildren(bar, inner);
+}
+function openStage(key) {
+  const s = (D.stages || []).find(x => x.key === key);
+  if (!s) return;
+  ui.peek = null;
+  ui.stage = key;
+  fillStage(s);
+  $('scrim').classList.remove('full');
+  $('scrim').hidden = false;
+  document.body.classList.add('locked');
+  $('peek').scrollTop = 0;
+  $('peek-close').focus({preventScroll: true});
 }
 function sendCommand(cmd) {
   // rempli par la tâche 7 (POST /command) ; en mode final il n'y a pas de serveur
@@ -545,6 +749,7 @@ function openPeek(f, full) {
   const same = ui.peek === f._file;
   if (!ui.peek) ui.back = f._file;
   ui.peek = f._file;
+  ui.stage = null;
   ui.full = full;
   fillPeek(f);
   $('scrim').classList.toggle('full', full);
@@ -555,10 +760,12 @@ function openPeek(f, full) {
   $('peek-close').focus({preventScroll: true});
 }
 function closePeek() {
-  if (!ui.peek) return;
-  ui.peek = null;
+  if (!ui.peek && !ui.stage) return;
+  const stage = ui.stage;
+  ui.peek = ui.stage = null;
   $('scrim').hidden = true;
   document.body.classList.remove('locked');
+  if (stage) return (stageFor(stage) || $('view-' + ui.stageView)).focus();
   if (location.hash) history.replaceState(null, '', location.pathname + location.search);
   (cardFor(ui.back) || $('filter')).focus(); // carte disparue (filtre, finding retiré) : retour au filtre
 }
@@ -570,7 +777,7 @@ function findingForHash(findings, hash) {
 }
 function openFromHash() {
   const f = findingForHash(D.findings, location.hash), full = /&full$/.test(location.hash);
-  if (!f) return closePeek();
+  if (!f) return ui.peek ? closePeek() : undefined; // un panneau d'étape n'a pas d'ancre
   if (ui.peek !== f._file || ui.full !== full) openPeek(f, full);
 }
 function trapFocus(e) {
@@ -600,6 +807,14 @@ function render(snap) {
     pk.scrollTop = top;
     if (inside) $('peek-close').focus({preventScroll: true});
   }
+  if (ui.stage) {
+    const s = (D.stages || []).find(x => x.key === ui.stage);
+    if (!s) return closePeek();
+    const pk = $('peek'), top = pk.scrollTop, inside = pk.contains(document.activeElement);
+    fillStage(s);
+    pk.scrollTop = top;
+    if (inside) $('peek-close').focus({preventScroll: true});
+  }
 }
 
 const stored = load('mantis.theme');
@@ -617,9 +832,16 @@ $('kb-view-toggle').addEventListener('click', e => {
   renderBoard();
 });
 $('filter').addEventListener('input', renderBoard);
+$('pipeline').querySelector('.pv-rail').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b || b.dataset.v === ui.stageView) return;
+  ui.stageView = b.dataset.v;
+  save('mantis.stageView', ui.stageView);
+  renderPipeline(D);
+});
 $('scrim').addEventListener('click', e => { if (e.target === $('scrim')) closePeek(); });
 document.addEventListener('keydown', e => {
-  if (!ui.peek) return;
+  if (!ui.peek && !ui.stage) return;
   if (e.key === 'Escape') { e.preventDefault(); closePeek(); } else if (e.key === 'Tab') trapFocus(e);
 });
 window.addEventListener('hashchange', openFromHash);

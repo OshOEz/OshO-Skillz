@@ -263,6 +263,36 @@ assert.strictEqual(naText('patch_status'), 'non évalué à ce niveau', 'fichier
 """)
 
 
+def test_pipeline_hooks():
+    """Sélecteur de vue du pipeline : deux boutons-icônes avec aria-pressed."""
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        for i in ("view-reseau", "view-matrice"):
+            assert re.search(r'id="' + i + r'"[^>]*aria-pressed=', html), i
+        assert 'aria-label="Vue réseau"' in html and 'aria-label="Vue matrice"' in html
+
+
+def test_stage_view():
+    """stageView : « reseau » par défaut et pour toute valeur inconnue."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        node_ok(tmp, fn(js, "stageView") + """
+const assert = require('assert');
+assert.strictEqual(stageView(null), 'reseau');
+assert.strictEqual(stageView('matrice'), 'matrice');
+assert.strictEqual(stageView('x'), 'reseau');
+""")
+
+
+def test_reduced_motion():
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        assert "prefers-reduced-motion" in html
+
+
 def test_aucun_finding():
     with tempfile.TemporaryDirectory() as tmp:
         d = audit(tmp, [])
@@ -339,6 +369,9 @@ if __name__ == "__main__":
     test_themes_horizon()
     test_frise_etapes()
     test_pas_encore_evalue()
+    test_pipeline_hooks()
+    test_stage_view()
+    test_reduced_motion()
     test_aucun_finding()
     test_safe_id_collision()
     test_safe_id_triple_collision()
