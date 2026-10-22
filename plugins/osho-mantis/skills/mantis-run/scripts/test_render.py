@@ -205,6 +205,64 @@ def test_themes_horizon():
         assert 'data-view="severity"' in html
 
 
+def fn(js, name):
+    m = re.search(r"function " + name + r"\(.*?\)\s*\{.*?\n\}", js, re.S)
+    assert m, f"{name} not found in dashboard JS"
+    return m.group(0)
+
+
+def node_ok(tmp, code):
+    script = Path(tmp, "t.js")
+    script.write_text(code + "\nconsole.log('OK');\n")
+    r = subprocess.run(["node", str(script)], capture_output=True, text=True)
+    assert r.returncode == 0 and "OK" in r.stdout, r.stderr + r.stdout
+
+
+def test_frise_etapes():
+    """trail() ne coche que les étapes prouvées par les champs : un correctif proposé ne vaut ni critic ni reproduction."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        prog = re.search(r"const PROG = \[.*?\];", js, re.S).group(0)
+        node_ok(tmp, prog + fn(js, "trail") + """
+const assert = require('assert');
+function el(tag, attrs, ...kids) { return {cls: (attrs || {}).class || '', kids, append(...k) { this.kids.push(...k); }}; }
+const D = {progress_columns: ['found', 'reviewed', 'evaluated', 'reproduced', 'fixed']};
+const bar = trail({reasoning: 'x', patch_status: 'MITIGATION_PROPOSED', _progress: 'fixed', _bucket: 'CRITICAL'});
+const got = Object.fromEntries(bar.kids.map(k => [k.kids[0], k.cls === 'y']));
+assert.deepStrictEqual(got, {'Trouvé': true, 'Revu': true, 'Évalué': false, 'Reproduit': false, 'Corrigé': true});
+""")
+
+
+def test_pas_encore_evalue():
+    """Audit en direct : une propriété dont l'étape est au niveau mais pas finie est « pas encore évalué »."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        consts = "".join(re.search(r"const " + c + r" = .*?;\n", js, re.S).group(0) for c in ("NA", "PENDING", "PRODUCER"))
+        node_ok(tmp, consts + fn(js, "naText") + """
+const assert = require('assert');
+let D = {mode: 'live', meta: {finished: false, stopped: false},
+         stages: [{key: 'critic', status: 'running'}, {key: 'reproduce', status: 'pending'}, {key: 'patch', status: 'done'},
+                  {key: 'calibrate', status: 'skipped'}]};
+assert.strictEqual(naText('production_viability'), 'pas encore évalué');
+assert.strictEqual(naText('repro_output'), 'pas encore évalué');
+assert.strictEqual(naText('patch_status'), 'non évalué à ce niveau', 'étape finie');
+assert.strictEqual(naText('mantis_risk_score'), 'non évalué à ce niveau', 'étape sautée');
+assert.strictEqual(naText('cwe'), 'non évalué à ce niveau', 'aucune étape productrice');
+D.stages = [{key: 'patch', status: 'pending'}];
+assert.strictEqual(naText('repro_status'), 'non évalué à ce niveau', 'reproduce absent du niveau');
+D.meta.finished = true;
+assert.strictEqual(naText('patch_status'), 'non évalué à ce niveau', 'audit terminé');
+D = {mode: 'final', meta: {}, stages: [{key: 'patch', status: 'pending'}]};
+assert.strictEqual(naText('patch_status'), 'non évalué à ce niveau', 'fichier final');
+""")
+
+
 def test_aucun_finding():
     with tempfile.TemporaryDirectory() as tmp:
         d = audit(tmp, [])
@@ -279,6 +337,8 @@ if __name__ == "__main__":
     test_filtre()
     test_lien_profond()
     test_themes_horizon()
+    test_frise_etapes()
+    test_pas_encore_evalue()
     test_aucun_finding()
     test_safe_id_collision()
     test_safe_id_triple_collision()

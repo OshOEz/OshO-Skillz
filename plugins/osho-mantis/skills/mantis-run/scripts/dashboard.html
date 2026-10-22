@@ -58,7 +58,6 @@ button{font:inherit;color:inherit}
 #banner>*{position:relative;z-index:1}
 #banner h1{margin:0;font-size:24px;line-height:1.3;font-weight:600;letter-spacing:-.01em}
 #banner p{margin:2px 0 0;font-size:13px;color:var(--muted)}
-#banner #level-note{color:var(--faint)}
 #kpis{display:grid;grid-template-columns:repeat(4,minmax(0,170px));gap:28px;margin-top:18px}
 .kpi{border-left:2px solid var(--input);padding-left:12px}
 .kpi b{display:block;font:500 28px/1.1 var(--mono)}
@@ -119,7 +118,7 @@ details.col[open] summary::before{transform:rotate(90deg)}
 .x::before,.dot.x{background:var(--faint)}
 .chips{display:flex;gap:4px;margin-top:7px;flex-wrap:wrap}
 .chip{font-size:11px;color:var(--muted);background:var(--muted-bg);border-radius:99px;padding:0 7px}
-.chip.ok::before{content:"✓ ";color:var(--ok)}
+.chip.verified::before{content:"✓ ";color:var(--ok)}
 
 /* Fiche façon Notion « peek » */
 #scrim{position:fixed;inset:0;z-index:10;background:var(--scrim);backdrop-filter:blur(2px);display:flex;align-items:flex-start;justify-content:center;padding:36px 20px;animation:fade .18s var(--ease)}
@@ -227,6 +226,10 @@ code{font:12px var(--mono);background:var(--muted-bg);border-radius:4px;padding:
 <script>
 window.D = JSON.parse(document.getElementById('data').textContent);
 const NA = 'non évalué à ce niveau';
+const PENDING = 'pas encore évalué';
+// étape qui produit chaque propriété : tant qu'elle n'a pas fini, la valeur manquante est « pas encore évalué »
+const PRODUCER = {production_viability: 'critic', repro_status: 'reproduce', run_command: 'reproduce', repro_output: 'reproduce',
+  patch_status: 'patch', patch_diff: 'patch', reattack_status: 'patch', mantis_risk_score: 'calibrate', executive_summary: 'calibrate'};
 const SEV = {CRITICAL: ['Critical', 'c'], HIGH: ['High', 'h'], MEDIUM: ['Medium', 'm'], LOW: ['Low', 'l'], REJECTED: ['Écartés', 'x']};
 const PROG = [['found', 'Trouvées', 'Trouvé'], ['reviewed', 'Revues', 'Revu'], ['evaluated', 'Évaluées', 'Évalué'],
   ['reproduced', 'Reproduites', 'Reproduit'], ['fixed', 'Corrigées', 'Corrigé']];
@@ -261,11 +264,16 @@ function val(f, k) {
   if (x == null || x === '' || (Array.isArray(x) && !x.length)) return NA;
   return Array.isArray(x) ? x.join(', ') : String(x);
 }
+function naText(k) {
+  const st = (D.stages || []).find(s => s.key === PRODUCER[k]);
+  const live = !(D.meta.finished || D.meta.stopped || D.mode === 'final');
+  return st && live && st.status !== 'done' && st.status !== 'skipped' ? PENDING : NA;
+}
 function dd(f, k) {
   const table = D.labels[k];
+  if (val(f, k) === NA) return el('dd', {class: 'na'}, naText(k));
   if (!table) return el('dd', {}, val(f, k));
   const raw = f[k];
-  if (raw == null || raw === '') return el('dd', {}, NA);
   return el('dd', {title: String(raw)}, table[raw] || String(raw));
 }
 function pad(n) {
@@ -351,7 +359,7 @@ function card(f) {
   const chips = el('span', {class: 'chips'});
   if (f.status === 'VALID') chips.append(el('span', {class: 'chip'}, 'Confirmé'));
   if (f.repro_status === 'reproduced') chips.append(el('span', {class: 'chip'}, 'Reproduit'));
-  if (f.patch_status === 'VERIFIED_SECURE') chips.append(el('span', {class: 'chip ok'}, 'Patch vérifié'));
+  if (f.patch_status === 'VERIFIED_SECURE') chips.append(el('span', {class: 'chip verified'}, 'Patch vérifié'));
   const b = el('button', {class: 'fc', type: 'button', 'data-file': f._file}, sevPill(f._bucket),
     el('span', {class: 'ttl'}, String(f.title)), el('span', {class: 'loc'}, val(f, 'code_paths')),
     chips.children.length ? chips : null);
@@ -406,7 +414,7 @@ function leadOf(desc) {
   return desc.length > 240 ? desc.slice(0, 240) + '…' : desc;
 }
 function para(f, k) {
-  return f[k] ? el('p', {}, String(f[k])) : el('p', {class: 'na'}, NA);
+  return f[k] ? el('p', {}, String(f[k])) : el('p', {class: 'na'}, naText(k));
 }
 function sub(label, ...kids) {
   return el('div', {}, el('h4', {}, label), ...kids);
@@ -418,7 +426,7 @@ function props(f, rows) {
   const d = el('dl', {class: 'props'});
   for (const [label, k] of rows) {
     const v = dd(f, k);
-    if (v.textContent === NA) v.classList.add('na'); else if (MONO.has(k)) v.classList.add('mono');
+    if (!v.classList.contains('na') && MONO.has(k)) v.classList.add('mono');
     const ic = ICON[k] && ICON[k][f[k]];
     if (ic) v.prepend(el('span', {class: ic[1], 'aria-hidden': 'true'}, ic[0]));
     d.append(el('dt', {}, label), v);
@@ -462,7 +470,7 @@ function proof(f) {
   if (f.repro_file_path) s.append(sub('Script', el('p', {class: 'mono'}, String(f.repro_file_path))));
   if (f.run_command) s.append(sub('Commande', el('pre', {}, String(f.run_command))));
   if (f.repro_output) s.append(sub('Sortie', el('pre', {}, String(f.repro_output))));
-  if (s.children.length === 1) s.append(el('p', {class: 'na'}, NA));
+  if (s.children.length === 1) s.append(el('p', {class: 'na'}, naText('repro_status')));
   return s;
 }
 function diff(f) {
@@ -482,7 +490,7 @@ function fix(f) {
     if (f._bucket !== 'REJECTED') s.append(el('p', {style: 'margin-top:8px'}, 'Appliquer : ',
       el('code', {}, 'git apply osho-mantis/' + D.meta.audit_name + '/patches/' + f._file + '.diff')));
   }
-  if (s.children.length === 1) s.append(el('p', {class: 'na'}, NA));
+  if (s.children.length === 1) s.append(el('p', {class: 'na'}, naText('patch_status')));
   return s;
 }
 function historySection(f) {
@@ -552,8 +560,7 @@ function closePeek() {
   $('scrim').hidden = true;
   document.body.classList.remove('locked');
   if (location.hash) history.replaceState(null, '', location.pathname + location.search);
-  const c = cardFor(ui.back);
-  if (c) c.focus();
+  (cardFor(ui.back) || $('filter')).focus(); // carte disparue (filtre, finding retiré) : retour au filtre
 }
 function findingForHash(findings, hash) {
   let id;
