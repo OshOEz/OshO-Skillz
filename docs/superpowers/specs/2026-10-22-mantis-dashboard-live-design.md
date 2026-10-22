@@ -75,7 +75,7 @@ Durées d'étapes et horodatages : déduits par le serveur des transitions obser
 
 État du triage, sans `state.json` : le serveur le déduit des fichiers. Triage en cours tant que `campaign.json` n'a pas de `recommended` ; en attente du niveau si `waiting.json` porte la question Volume ; terminé dès que `campaign.json` a `level`. Le triage n'écrit pas de `state.json`, et la règle « pas de `state.json` → l'initialiser » de mantis-run §2.2 reste inchangée.
 
-Identifiant d'un finding dans les commandes et dans l'URL : le **nom de son fichier sans `.json`** (unique par construction), et non le champ `id` (deux fichiers peuvent porter le même). Le snapshot expose ce nom pour chaque finding.
+Identifiant d'un finding dans les commandes : le **nom de son fichier sans `.json`** (unique par construction), et non le champ `id` (deux fichiers peuvent porter le même). Le snapshot expose ce nom pour chaque finding (`_src`). Le lien profond `#<id>` garde le `_file` actuel (nom déjà dédoublonné de `patches/`).
 
 ### 1.2 `dashboard.py` (nouveau, à côté de `render.py`)
 
