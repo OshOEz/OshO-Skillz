@@ -130,14 +130,23 @@ def ensure_audit_branch(audit_dir):
     return base
 
 
-def has_filter(repo, rev):
+def _attr_lines(repo, rev):
+    """Lignes non commentées de tous les .gitattributes de la révision"""
     names = git(repo, "ls-tree", "-r", "-z", "--name-only", rev).stdout.split("\0")
     for n in names:
         if n.rsplit("/", 1)[-1] == ".gitattributes":
             text = git(repo, "cat-file", "-p", f"{rev}:{n}", check=False).stdout
-            if any("filter=" in ln for ln in text.splitlines() if not ln.lstrip().startswith("#")):
-                return True
-    return False
+            yield from (ln for ln in text.splitlines() if not ln.lstrip().startswith("#"))
+
+
+def has_filter(repo, rev):
+    return any("filter=" in ln for ln in _attr_lines(repo, rev))
+
+
+def has_merge_driver(repo, rev):
+    """merge=<pilote> hors des pilotes intégrés : git lancerait la commande de merge.<pilote>.driver"""
+    return any(m not in ("text", "binary", "union")
+               for ln in _attr_lines(repo, rev) for m in re.findall(r"(?:^|\s)merge=(\S+)", ln))
 
 
 def _worktrees(repo):
@@ -152,7 +161,7 @@ def _worktrees(repo):
     return out
 
 
-def _cleanup(audit_dir, data, stem):
+def _cleanup(audit_dir, data, stem, keep_branch=False):
     e = data.get(stem)
     if not isinstance(e, dict):
         return
@@ -171,7 +180,7 @@ def _cleanup(audit_dir, data, stem):
             e["worktree"] = None
             e.pop("cleanup_error", None)
     br = e.get("branch")
-    if isinstance(br, str) and br.startswith(f"mantis/fix/{Path(audit_dir).name}/"):
+    if not keep_branch and isinstance(br, str) and br.startswith(f"mantis/fix/{Path(audit_dir).name}/"):
         git(repo, "branch", "-D", br, check=False)
 
 
@@ -313,23 +322,34 @@ def merge(audit_dir, stem):
         e = data.get(stem)
         if not isinstance(e, dict) or e.get("status") != "ready":
             return ("refused", "le correctif n'est pas prêt")
+        try:
+            base, fix = e["base"], e["commit"]
+        except KeyError:
+            raise RuntimeError("entrée de correction incomplète") from None
         repo, ref = repo_of(audit_dir), "refs/heads/" + audit_branch(audit_dir)
         r = git(repo, "rev-parse", "--verify", "-q", ref + "^{commit}", check=False)
-        if r.returncode:
-            res, why, fields = "failed", "branche de l'audit introuvable", {"status": "failed"}
+        old = r.stdout.strip()
+        why = ("branche de l'audit introuvable" if r.returncode
+               else "pilote de merge non autorisé dans .gitattributes"
+               if has_merge_driver(repo, old) or has_merge_driver(repo, fix) else None)
+        if why:  # la branche du correctif est gardée : l'utilisateur peut récupérer le correctif
+            _set(data, stem, status="failed", error=why)
+            _cleanup(audit_dir, data, stem, keep_branch=True)
+            _save(audit_dir, data)
+            return ("failed", why)
+        msg = f"Merge correctif Mantis : {_title(_finding(audit_dir, stem), stem)} [{stem}]"
+        res, new = merge_ref(repo, ref, old, fix, msg)
+        if res == "busy":
+            return ("busy", "branche de l'audit modifiée pendant la fusion, réessaie")
+        if res == "conflict":
+            why = "conflit avec un autre correctif"
+            diff = git(repo, "diff", "--no-color", "--no-ext-diff", "--no-textconv", base, fix).stdout
+            (audit_dir / "fixes").mkdir(exist_ok=True)
+            commands.atomic_write(audit_dir / "fixes" / f"{stem}.prev.diff", diff)
+            _set(data, stem, status="conflict", error=why)
         else:
-            msg = f"Merge correctif Mantis : {_title(_finding(audit_dir, stem), stem)} [{stem}]"
-            res, new = merge_ref(repo, ref, r.stdout.strip(), e["commit"], msg)
-            if res == "busy":
-                return ("busy", "branche de l'audit modifiée pendant la fusion, réessaie")
-            if res == "conflict":
-                why, fields = "conflit avec un autre correctif", {"status": "conflict"}
-                diff = git(repo, "diff", "--no-color", "--no-ext-diff", "--no-textconv", e["base"], e["commit"]).stdout
-                (audit_dir / "fixes").mkdir(exist_ok=True)
-                commands.atomic_write(audit_dir / "fixes" / f"{stem}.prev.diff", diff)
-            else:
-                why, fields = None, {"status": "merged", "merge_commit": new}
-        _set(data, stem, error=why, **fields)
+            _set(data, stem, status="merged", merge_commit=new, error=None)
+        _save(audit_dir, data)  # avant le nettoyage : un merge fait ne doit jamais rester ready
         _cleanup(audit_dir, data, stem)
         _save(audit_dir, data)
         return (res, why)

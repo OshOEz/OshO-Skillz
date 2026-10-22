@@ -393,6 +393,77 @@ def test_hooks_neutralises():
         assert not (Path(tmp) / "HOOKED").exists()
 
 
+def test_merge_sauve_avant_nettoyage():
+    with scratch() as tmp:
+        d, repo = git_audit(tmp)
+        make_ready(d, "f1")
+        real = fixes._cleanup
+        fixes._cleanup = lambda *a, **k: (_ for _ in ()).throw(OSError("panne"))
+        try:
+            fixes.merge(d, "f1")
+            raise AssertionError("pas d'erreur")
+        except OSError:
+            pass
+        finally:
+            fixes._cleanup = real
+        e = fixes.load(d)["f1"]
+        assert e["status"] == "merged" and e["merge_commit"] == git(repo, "rev-parse", "mantis/audit-x")
+        assert fixes.merge(d, "f1")[0] == "refused"
+
+
+def test_merge_echec_garde_branche():
+    with scratch() as tmp:
+        d, repo = git_audit(tmp)
+        e = make_ready(d, "f1")
+        git(repo, "update-ref", "-d", "refs/heads/mantis/audit-x")
+        fixes.merge(d, "f1")
+        assert git(repo, "rev-parse", "refs/heads/mantis/fix/audit-x/f1") == e["commit"]
+        assert not Path(e["worktree"]).exists() and fixes.load(d)["f1"]["worktree"] is None
+
+
+def test_merge_pilote_refuse():
+    with scratch() as tmp:
+        d, repo = git_audit(tmp)
+        commit_file(repo, ".gitattributes", "# merge=commentaire\n*.md merge=union\napp.py merge=evil\n")
+        git(repo, "config", "merge.evil.driver", f"touch '{tmp}/DRIVER'; false")
+        e = make_ready(d, "f1")
+        git(repo, "update-ref", "refs/heads/mantis/audit-x",
+            commit_file(repo, "app.py", "1\n2\nautre\n", "conflit"), e["base"])
+        why = "pilote de merge non autorisé dans .gitattributes"
+        assert fixes.merge(d, "f1") == ("failed", why)
+        assert fixes.load(d)["f1"]["status"] == "failed" and not (Path(tmp) / "DRIVER").exists()
+        assert has_ref(repo, "refs/heads/mantis/fix/audit-x/f1")
+
+
+def test_merge_busy_garde_tout():
+    with scratch() as tmp:
+        d, repo = git_audit(tmp)
+        e = make_ready(d, "f1")
+        real, fixes.merge_ref = fixes.merge_ref, lambda *a: ("busy", None)
+        try:
+            assert fixes.merge(d, "f1")[0] == "busy"
+        finally:
+            fixes.merge_ref = real
+        assert fixes.load(d)["f1"]["status"] == "ready" and Path(e["worktree"]).is_dir()
+        assert has_ref(repo, "refs/heads/mantis/fix/audit-x/f1")
+
+
+def test_merge_entree_incomplete():
+    with scratch() as tmp:
+        d, repo = git_audit(tmp)
+        fixes.start(d, "f1")
+        fixes.update(d, "f1", status="ready")
+        with fixes.locked(d):
+            data = fixes.load(d)
+            del data["f1"]["commit"]
+            fixes._save(d, data)
+        try:
+            fixes.merge(d, "f1")
+            raise AssertionError("accepté")
+        except RuntimeError as err:
+            assert str(err) == "entrée de correction incomplète"
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
