@@ -83,7 +83,7 @@ def _read(path):
 
 
 def _write_line(path, obj):
-    with open(path, "a") as fh:
+    with open(path, "a", encoding="utf-8", errors="replace") as fh:
         fh.write(json.dumps(obj, ensure_ascii=False) + "\n")
 
 

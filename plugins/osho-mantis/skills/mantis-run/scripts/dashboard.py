@@ -81,30 +81,44 @@ class Dash:
 
     def watch(self):
         sig, last_change, end_seen = signature(self.audit), time.time(), None
-        while not self.stop_evt.wait(POLL_S):
-            new = signature(self.audit)
-            if new != sig:
-                with self.lock:
-                    prev = self.snap
-                    cur = snapshot.read_snapshot_safe(self.audit, prev)
-                    if cur is not prev:  # sinon JSON en cours d'écriture : on réessaie au prochain tour
-                        sig, last_change = new, time.time()
-                        events = snapshot.diff_events(prev, cur, now_iso())
-                        if events:
-                            snapshot.append_activity(self.audit, events)
-                            cur = snapshot.build_snapshot(self.audit)
-                        self.snap = cur
-                        msg = ("snapshot", json.dumps(cur, ensure_ascii=False))
-                        for q in self.clients:
-                            q.put(msg)
-            m = self.snap["meta"]
-            if (m["finished"] or m["stopped"]) and end_seen is None:
-                end_seen = time.time()
-            if end_seen and time.time() - end_seen > END_GRACE_S:
-                break
-            if time.time() - last_change > IDLE_S and not self.clients:
-                break
-        self.shutdown()
+        try:
+            while not self.stop_evt.wait(POLL_S):
+                try:
+                    if not self.audit.is_dir():
+                        break
+                    sig, last_change = self.tick(sig, last_change)
+                    m = self.snap["meta"]
+                    if not (m["finished"] or m["stopped"]):
+                        end_seen = None
+                    elif end_seen is None:
+                        end_seen = time.time()
+                    if end_seen and time.time() - end_seen > END_GRACE_S:
+                        break
+                    if time.time() - last_change > IDLE_S and not self.clients:
+                        break
+                except Exception as e:  # le thread ne doit jamais mourir : l'arrêt automatique en dépend
+                    print(f"watch: {e!r}", file=sys.stderr, flush=True)
+        finally:
+            self.shutdown()
+
+    def tick(self, sig, last_change):
+        new = signature(self.audit)
+        if new == sig:
+            return sig, last_change
+        with self.lock:
+            prev = self.snap
+            cur = snapshot.read_snapshot_safe(self.audit, prev)
+            if cur is prev:  # JSON en cours d'écriture : on réessaie au prochain tour
+                return sig, last_change
+            events = snapshot.diff_events(prev, cur, now_iso())
+            if events:
+                snapshot.append_activity(self.audit, events)
+                cur = snapshot.build_snapshot(self.audit)
+            self.snap = cur
+            msg = ("snapshot", json.dumps(cur, ensure_ascii=False))
+            for q in self.clients:
+                q.put(msg)
+        return new, time.time()
 
     def shutdown(self):
         self.stop_evt.set()
@@ -122,7 +136,7 @@ class Handler(BaseHTTPRequestHandler):
         if isinstance(body, (dict, list)):
             body = json.dumps(body, ensure_ascii=False)
         if isinstance(body, str):
-            body = body.encode()
+            body = body.encode("utf-8", "replace")
         self.send_response(code)
         self.send_header("Content-Type", f"{ctype}; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -156,7 +170,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send(200, {"ok": True})
         elif route == "/":
             tpl = HERE / "dashboard.html"
-            page = tpl.read_text() if tpl.exists() else FALLBACK
+            page = tpl.read_text(encoding="utf-8") if tpl.exists() else FALLBACK
             page = page.replace("__DATA__", render.safe_json(self.dash.fresh()), 1)
             cookie = f"mantis_key={self.dash.key}; HttpOnly; SameSite=Strict; Path=/"
             self.send(200, page, "text/html", [("Set-Cookie", cookie)] if via_query else [])
@@ -179,7 +193,7 @@ class Handler(BaseHTTPRequestHandler):
                     ev, data = q.get(timeout=PING_S)
                 except queue.Empty:
                     ev, data = "ping", now_iso()
-                self.wfile.write(f"event: {ev}\ndata: {data}\n\n".encode())
+                self.wfile.write(f"event: {ev}\ndata: {data}\n\n".encode("utf-8", "replace"))
                 self.wfile.flush()
         except OSError:
             pass
@@ -187,14 +201,20 @@ class Handler(BaseHTTPRequestHandler):
             self.dash.unsubscribe(q)
 
     def do_POST(self):
+        self.close_connection = True  # corps éventuellement non lu : pas de réutilisation de la connexion
         if not self.authorized(need_origin=True)[0] or urlparse(self.path).path != "/command":
             return self.send(403, {"error": "accès refusé"})
-        n = int(self.headers.get("Content-Length") or 0)
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            n = -1
+        if n < 0:
+            return self.send(400, {"error": "Content-Length invalide"})
         if n > MAX_BODY:
             return self.send(413, {"error": "commande trop longue (1 Ko maximum)"})
         try:
             cmd = json.loads(self.rfile.read(n))
-        except ValueError:
+        except (ValueError, RecursionError):
             return self.send(400, {"error": "commande illisible"})
         snap = self.dash.fresh()
         if snap["listening"] == "none":
@@ -209,14 +229,15 @@ def run(audit):
     audit = Path(audit).resolve()
     dash = Dash(audit)
     Handler.dash = dash
-    ThreadingHTTPServer.daemon_threads = True
     httpd = dash.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     port = httpd.server_address[1]
     info = {"pid": os.getpid(), "port": port, "url": f"http://127.0.0.1:{port}/?key={dash.key}",
             "key": dash.key, "started_at": now_iso()}
     tmp = audit / "server.json.tmp"
-    tmp.write_text(json.dumps(info))
-    os.chmod(tmp, 0o600)  # la clé ouvre le dashboard
+    tmp.unlink(missing_ok=True)  # supprime un lien planté sans le suivre
+    fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)  # la clé ouvre le dashboard
+    with os.fdopen(fd, "w") as fh:
+        fh.write(json.dumps(info))
     os.replace(tmp, audit / "server.json")
     signal.signal(signal.SIGTERM, lambda *_: dash.shutdown())
     threading.Thread(target=dash.watch, daemon=True).start()
@@ -282,6 +303,9 @@ def main(argv):
         print(USAGE)
         return 0 if len(argv) < 2 or argv[1] in ("-h", "--help") else 2
     cmd, audit, rest = argv[1], argv[2], argv[3:]
+    if (cmd in ("command", "apply") and not rest) or (cmd == "ack" and len(rest) < 2):
+        print(USAGE)
+        return 2
     if cmd == "_run":
         run(audit)
     elif cmd == "serve":

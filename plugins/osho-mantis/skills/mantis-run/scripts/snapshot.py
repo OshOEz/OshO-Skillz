@@ -205,7 +205,7 @@ def diff_events(prev, cur, at):
 def append_activity(audit_dir, events):
     if not events:
         return
-    with open(Path(audit_dir) / "activity.jsonl", "a") as fh:
+    with open(Path(audit_dir) / "activity.jsonl", "a", encoding="utf-8", errors="replace") as fh:
         fh.write("".join(json.dumps(e, ensure_ascii=False) + "\n" for e in events))
 
 

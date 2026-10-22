@@ -5,6 +5,7 @@
 import http.client
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -93,6 +94,7 @@ def test_auth():
         assert "SameSite=Strict" in r.getheader("Set-Cookie")
         assert req(port, "GET", "/", {"Cookie": f"mantis_key={key}"})[0] == 200
         assert req(port, "GET", "/health")[0] == 403
+        assert req(port, "GET", "/events")[0] == 403
         assert req(port, "GET", f"/?key={key}", {"Host": "evil:80"})[0] == 403
         assert post(port, key, {"action": "pause"}, Origin="http://evil")[0] == 403
         assert post(port, key, {"action": "pause"}, Host=f"evil:{port}")[0] == 403
@@ -117,7 +119,7 @@ def test_post_400_puis_200():
         pend = [json.loads(x) for x in cli("pending", d).stdout.splitlines()]
         assert [c["id"] for c in pend] == [cmd["id"]]
         big = post(port, key, {"action": "pause", "x": "a" * 5000})
-        assert big[0] in (400, 413)
+        assert big[0] == 413
 
 
 def sse(port, key):
@@ -172,6 +174,50 @@ def test_sse_xss_inerte():
             assert json.loads(data)["findings"][0]["title"] == title and "\n" not in data
         finally:
             c.close()
+
+
+def test_surrogate_isole():
+    with server(findings=[{"id": "x", "title": "a\udc00b"}]) as (d, out, port, key):
+        assert req(port, "GET", f"/?key={key}")[0] == 200
+        c, nxt = sse(port, key)
+        try:
+            assert nxt()[0] == "snapshot"
+        finally:
+            c.close()
+        (d / "workspace" / "findings" / "y.json").write_text(json.dumps({"id": "y", "title": "\udc01"}))
+        time.sleep(1.5)  # le watcher survit (activité écrite avec un substitut) et le serveur répond
+        assert req(port, "GET", f"/health?key={key}")[0] == 200
+
+
+def test_audit_supprime_arrete_le_serveur():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = make_audit(tmp)
+        try:
+            pid = json.loads((json.loads(cli("serve", d).stdout) and (d / "server.json").read_text()))["pid"]
+            shutil.rmtree(d)
+            for _ in range(60):
+                try:
+                    os.kill(pid, 0)
+                except OSError:
+                    break
+                time.sleep(0.1)
+            else:
+                raise AssertionError("le serveur tourne encore")
+        finally:
+            cli("stop", d, check=False)
+
+
+def test_tmp_symlink_non_suivi():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = make_audit(tmp)
+        victim = Path(tmp) / "victime"
+        victim.write_text("intact")
+        (d / "server.json.tmp").symlink_to(victim)
+        try:
+            cli("serve", d)
+            assert victim.read_text() == "intact" and oct((d / "server.json").stat().st_mode & 0o777) == "0o600"
+        finally:
+            cli("stop", d, check=False)
 
 
 def test_stop():
