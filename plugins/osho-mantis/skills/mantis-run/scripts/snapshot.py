@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 import commands
+import fixes
 import render
 
 _ALL = ["history", "structural-index", "architecture", "threat-model", "plan", "researcher", "dedupe",
@@ -34,8 +35,10 @@ END = {"done", "failed", "skipped"}
 def progress(f):
     if render.bucket(f) == "REJECTED":
         return "rejected"
-    if f.get("patch_status") in ("VERIFIED_SECURE", "MITIGATION_PROPOSED"):
+    if (f.get("_fix") or {}).get("status") == "merged":
         return "fixed"
+    if f.get("patch_status"):
+        return "proposed"
     if f.get("repro_status") == "reproduced":
         return "reproduced"
     if f.get("production_viability"):
@@ -105,6 +108,19 @@ def build_snapshot(audit_dir, mode="live", now=None, loaded=None):
     notes = state.get("notes") if isinstance(state.get("notes"), list) else []
     findings, _ = render.load_findings(audit_dir / "workspace", loaded.get("carry"))
     assign_files(findings)
+    fix_entries = fixes.load(audit_dir)
+    pending_fix = {}
+    for c in commands.pending(audit_dir):
+        if c.get("action") == "fix":
+            pending_fix.setdefault(c.get("finding"), c.get("id"))
+    for f in findings:
+        e = fix_entries.get(f["_src"])
+        e = e if isinstance(e, dict) else {}
+        if e.get("status") not in ("queued", "running", "ready", "merged") and f["_src"] in pending_fix:
+            f["_fix"] = {"status": "queued", "cmd": pending_fix[f["_src"]]}  # relance après failed/conflict incluse
+        else:
+            f["_fix"] = {k: e[k] for k in ("status", "error", "branch", "commit", "merge_commit", "cmd", "at")
+                         if k in e} if e else None
     activity = read_activity(audit_dir / "activity.jsonl")
     done_stages = state.get("stages") if isinstance(state.get("stages"), dict) else {}
     level = campaign.get("level")
@@ -124,7 +140,9 @@ def build_snapshot(audit_dir, mode="live", now=None, loaded=None):
                        "status": status, "duration_s": dur, "started_at": started,
                        "notes": [n for n in notes if key in str(n)]})
     finished, stopped = bool(state.get("finished")), bool(state.get("stopped"))
-    if finished or stopped:
+    if waiting is not None and waiting.get("kind") == "fixes":
+        listening = "fixes"
+    elif finished or stopped:
         listening = "none"
     elif waiting is not None:
         listening = "waiting"
@@ -141,7 +159,10 @@ def build_snapshot(audit_dir, mode="live", now=None, loaded=None):
             "notes": notes,
             "stages": [k for k, v in done_stages.items() if v == "done"],
             "round": state.get("round"), "finished": finished, "stopped": stopped,
-            "paused": bool(state.get("paused")), "audit_age_s": age}
+            "paused": bool(state.get("paused")), "audit_age_s": age,
+            "audit_branch": fixes.audit_branch(audit_dir),
+            "fixes_merged": sum(1 for e in fix_entries.values() if isinstance(e, dict) and e.get("status") == "merged"),
+            "dirty_before": bool(state.get("git_status_before"))}
     meta["reproduce_done"] = "reproduce" in meta["stages"]
     meta["level_banner"] = render.LEVEL_BANNERS.get(level, "")
     return {"mode": mode, "generated_at": datetime.fromtimestamp(now).isoformat(timespec="seconds"),
@@ -150,14 +171,14 @@ def build_snapshot(audit_dir, mode="live", now=None, loaded=None):
             "stale": listening == "working" and age > STALE_S,
             "findings": [dict(f, _bucket=render.bucket(f), _summary=render.summary(f), _progress=progress(f))
                          for f in sorted(findings, key=render.sort_key)],
-            "progress_columns": (["found", "reviewed", "fixed"] if level == "Light"
-                                 else ["found", "reviewed", "evaluated", "reproduced", "fixed"]),
+            "progress_columns": (["found", "reviewed", "proposed", "fixed"] if level == "Light"
+                                 else ["found", "reviewed", "evaluated", "reproduced", "proposed", "fixed"]),
             "activity": activity[-200:], "commands": {"pending": commands.pending(audit_dir)[-50:],
                          "done": commands.done(audit_dir)[-50:]}}
 
 
 COLUMN_LABELS = {"found": "Trouvées", "reviewed": "Revues", "evaluated": "Évaluées", "reproduced": "Reproduites",
-                 "fixed": "Corrigées", "rejected": "Écartés"}
+                 "proposed": "Correctif proposé", "fixed": "Corrigées", "rejected": "Écartés"}
 
 
 def _secs(start, at):
@@ -168,7 +189,8 @@ def _secs(start, at):
 
 
 ACT_LABELS = {"pause": "Pause", "resume": "Reprise", "stop": "Arrêt", "retry": "Relance", "answer": "Réponse",
-              "false_positive": "Faux positif", "prioritize_repro": "Priorité de reproduction"}
+              "false_positive": "Faux positif", "prioritize_repro": "Priorité de reproduction",
+              "fix": "Correction", "merge_fix": "Fusion", "end_fixes": "Fin des corrections"}
 
 
 def cmd_text(c, snap):
@@ -211,6 +233,14 @@ def diff_events(prev, cur, at):
             a, b = o["_progress"], f["_progress"]
             ev.append({"at": at, "kind": "finding_progress", "finding": f["_src"], "from": a, "to": b,
                        "text": f"{title} : {COLUMN_LABELS.get(a, a)} → {COLUMN_LABELS.get(b, b)}"})
+    fix_texts = {"running": "Correction lancée", "ready": "Correctif prêt", "failed": "Correction en échec",
+                 "conflict": "Conflit sur le correctif", "merged": "Correctif fusionné"}
+    for f in cur["findings"]:
+        o = old_f.get(f["_src"])
+        a, b = ((o or {}).get("_fix") or {}).get("status", "none"), (f.get("_fix") or {}).get("status", "none")
+        if o is not None and a != b and b in fix_texts:
+            ev.append({"at": at, "kind": "fix", "finding": f["_src"], "from": a, "to": b,
+                       "text": f"{fix_texts[b]} : {f.get('title') or f['_src']}"})
     if cur["waiting"] is not None and prev["waiting"] is None:
         ev.append({"at": at, "kind": "waiting", "waiting_kind": cur["waiting"].get("kind"),
                    "text": "En attente de ta réponse"})
