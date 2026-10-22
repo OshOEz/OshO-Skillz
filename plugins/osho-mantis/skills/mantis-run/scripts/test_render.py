@@ -186,14 +186,173 @@ console.log('OK');
         assert r.returncode == 0 and "OK" in r.stdout, r.stderr + r.stdout
 
 
-def test_theme_clair():
-    """Light theme only: no dark-mode media query, new dust-formation-style tokens in place."""
+def test_themes_horizon():
+    """Gabarit Horizon : jetons sombre et clair, aucun innerHTML, aucun tiret cadratin, identifiants DOM attendus."""
     with tempfile.TemporaryDirectory() as tmp:
         d = audit(tmp, [CRIT, LOW])
         html, _ = data(d)
-        assert "prefers-color-scheme" not in html, "dashboard must be light-only, no dark variant"
-        assert "--coral:#dd4175" in html and "--plum:#7c0559" in html and "--ok:#1f9d63" in html
-        assert "--crit:var(--plum)" in html, "severity accents reuse the new palette tokens"
+        for token in ("--bg:#0b0d14", "--bg:#eff1f5", "--primary:#7ea6ff", "--primary:#0050d7", "data-theme"):
+            assert token in html, token
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        assert "innerHTML" not in js, "texte des findings via textContent / el() uniquement"
+        assert "\u2014" not in RENDER.with_name("dashboard.html").read_text(), "aucun tiret cadratin dans le gabarit"
+        for i in ("topbar", "conn", "theme-toggle", "banner", "kpis", "waiting-banner", "pipeline", "filter",
+                  "kb-view-toggle", "board", "actions", "activity", "peek", "live-region"):
+            assert f'id="{i}"' in html, i
+        assert html.count('class="kpi"') == 4
+        assert re.search(r'id="peek"[^>]*role="dialog"[^>]*aria-modal="true"', html)
+        assert re.search(r'id="live-region"[^>]*aria-live="polite"', html)
+        assert 'data-view="severity"' in html
+
+
+def fn(js, name):
+    m = re.search(r"function " + name + r"\(.*?\)\s*\{.*?\n\}", js, re.S)
+    assert m, f"{name} not found in dashboard JS"
+    return m.group(0)
+
+
+def node_ok(tmp, code):
+    script = Path(tmp, "t.js")
+    script.write_text(code + "\nconsole.log('OK');\n")
+    r = subprocess.run(["node", str(script)], capture_output=True, text=True)
+    assert r.returncode == 0 and "OK" in r.stdout, r.stderr + r.stdout
+
+
+def test_frise_etapes():
+    """trail() ne coche que les étapes prouvées par les champs : un correctif proposé ne vaut ni critic ni reproduction."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        prog = re.search(r"const PROG = \[.*?\];", js, re.S).group(0)
+        node_ok(tmp, prog + fn(js, "trail") + """
+const assert = require('assert');
+function el(tag, attrs, ...kids) { return {cls: (attrs || {}).class || '', kids, append(...k) { this.kids.push(...k); }}; }
+const D = {progress_columns: ['found', 'reviewed', 'evaluated', 'reproduced', 'fixed']};
+const bar = trail({reasoning: 'x', patch_status: 'MITIGATION_PROPOSED', _progress: 'fixed', _bucket: 'CRITICAL'});
+const got = Object.fromEntries(bar.kids.map(k => [k.kids[0], k.cls === 'y']));
+assert.deepStrictEqual(got, {'Trouvé': true, 'Revu': true, 'Évalué': false, 'Reproduit': false, 'Corrigé': true});
+""")
+
+
+def test_pas_encore_evalue():
+    """Audit en direct : une propriété dont l'étape est au niveau mais pas finie est « pas encore évalué »."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        consts = "".join(re.search(r"const " + c + r" = .*?;\n", js, re.S).group(0) for c in ("NA", "PENDING", "PRODUCER"))
+        node_ok(tmp, consts + fn(js, "naText") + """
+const assert = require('assert');
+let D = {mode: 'live', meta: {finished: false, stopped: false},
+         stages: [{key: 'critic', status: 'running'}, {key: 'reproduce', status: 'pending'}, {key: 'patch', status: 'done'},
+                  {key: 'calibrate', status: 'skipped'}]};
+assert.strictEqual(naText('production_viability'), 'pas encore évalué');
+assert.strictEqual(naText('repro_output'), 'pas encore évalué');
+assert.strictEqual(naText('patch_status'), 'non évalué à ce niveau', 'étape finie');
+assert.strictEqual(naText('mantis_risk_score'), 'non évalué à ce niveau', 'étape sautée');
+assert.strictEqual(naText('cwe'), 'non évalué à ce niveau', 'aucune étape productrice');
+D.stages = [{key: 'patch', status: 'pending'}];
+assert.strictEqual(naText('repro_status'), 'non évalué à ce niveau', 'reproduce absent du niveau');
+D.meta.finished = true;
+assert.strictEqual(naText('patch_status'), 'non évalué à ce niveau', 'audit terminé');
+D = {mode: 'final', meta: {}, stages: [{key: 'patch', status: 'pending'}]};
+assert.strictEqual(naText('patch_status'), 'non évalué à ce niveau', 'fichier final');
+""")
+
+def test_conn_label():
+    """Indicateur de connexion : en direct < 15 s, reconnexion < 60 s, hors ligne sinon ou en mode final."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        node_ok(tmp, fn(js, "pad") + fn(js, "hhmm") + fn(js, "connLabel") + """
+const assert = require('assert');
+assert.ok(connLabel(3, 'live').startsWith('En direct'), connLabel(3, 'live'));
+assert.strictEqual(connLabel(3, 'live'), 'En direct, mis à jour il y a 3 s');
+assert.strictEqual(connLabel(30, 'live'), 'Reconnexion…');
+assert.ok(connLabel(90, 'live').startsWith('Hors ligne'));
+assert.ok(connLabel(0, 'final').startsWith('Hors ligne'));
+assert.ok(/^Hors ligne, données du \\d\\d:\\d\\d$/.test(connLabel(0, 'final')), connLabel(0, 'final'));
+""")
+
+
+def test_final_sans_eventsource():
+    """Le fichier final n'ouvre pas de flux : new EventSource est conditionné à D.mode === 'live'."""
+    with tempfile.TemporaryDirectory() as tmp:
+        html, payload = data(audit(tmp, [CRIT]))
+        assert payload["mode"] == "final"
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        assert js.count("new EventSource") == 1
+        assert re.search(r"if \(D\.mode === ['\"]live['\"]\) \{[^}]*new EventSource", js), "EventSource non conditionné"
+
+
+def test_carte_option():
+    """Carte de choix : puce Recommandé et coût en lignes ; ancien waiting.json (sans summary) : label et description."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        node_ok(tmp, fn(js, "optionBody") + """
+const assert = require('assert');
+function el(tag, attrs, ...kids) { return {tag, cls: (attrs || {}).class || '', kids: kids.filter(k => k != null)}; }
+const txt = n => n == null ? '' : typeof n === 'string' ? n : n.kids.map(txt).join('|');
+const find = (n, c) => !n || typeof n === 'string' ? null : n.cls === c ? n : n.kids.map(k => find(k, c)).find(Boolean) || null;
+let r = optionBody({value: 'Light', label: 'Light (Recommandé)', summary: 'Statique : plan', recommended: true,
+  cost: 'Pro : ~1,0 fenêtres · Max 5x : ~20 %', description: 'x'});
+const root = {kids: r.kids};
+assert.strictEqual(r.rec, true);
+assert.strictEqual(txt(find(root, 'nm')), 'Light');
+assert.strictEqual(txt(find(root, 'rec-chip')), 'Recommandé');
+assert.strictEqual(txt(find(root, 'sum')), 'Statique : plan');
+assert.strictEqual(txt(find(root, 'cost')), 'Pro|~1,0 fenêtres|Max 5x|~20 %');
+r = optionBody({value: 'Sharp', label: 'Sharp', summary: 's', cost: 'c', recommended: false});
+assert.strictEqual(r.rec, false);
+assert.strictEqual(find({kids: r.kids}, 'rec-chip'), null);
+assert.strictEqual(find({kids: r.kids}, 'cost raw').kids[0], 'c');
+r = optionBody({value: 'Light', label: 'Light (Recommandé)', description: 'Statique : a : Pro : ~1'});
+assert.strictEqual(r.rec, true, 'ancien format : (Recommandé) dans le label');
+assert.strictEqual(txt(find({kids: r.kids}, 'nm')), 'Light');
+assert.strictEqual(txt(find({kids: r.kids}, 'sum')), 'Statique : a : Pro : ~1');
+assert.strictEqual(find({kids: r.kids}, 'cost'), null);
+r = optionBody({value: 'oui', label: 'Oui'});
+assert.strictEqual(txt(find({kids: r.kids}, 'nm')), 'Oui');
+assert.strictEqual(r.rec, false);
+""")
+
+
+def test_pipeline_hooks():
+    """Sélecteur de vue du pipeline : deux boutons-icônes avec aria-pressed."""
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        for i in ("view-reseau", "view-matrice"):
+            assert re.search(r'id="' + i + r'"[^>]*aria-pressed=', html), i
+        assert 'aria-label="Vue réseau"' in html and 'aria-label="Vue matrice"' in html
+
+
+def test_stage_view():
+    """stageView : « reseau » par défaut et pour toute valeur inconnue."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        node_ok(tmp, fn(js, "stageView") + """
+const assert = require('assert');
+assert.strictEqual(stageView(null), 'reseau');
+assert.strictEqual(stageView('matrice'), 'matrice');
+assert.strictEqual(stageView('x'), 'reseau');
+""")
+
+
+def test_reduced_motion():
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        assert "prefers-reduced-motion" in html
 
 
 def test_aucun_finding():
@@ -262,6 +421,92 @@ def test_safe_id_triple_collision():
             assert file_name in readme, f"README missing reference to {file_name}"
 
 
+def test_question_texte():
+    """La bannière d'attente affiche w.text (phrase) plutôt que w.question (identifiant)."""
+    triage = RENDER.parents[2] / "mantis-triage" / "SKILL.md"
+    assert '"text": "Quel niveau d\'audit ?"' in triage.read_text()
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        assert "waitText(w)" in fn(js, "renderWaiting")
+        node_ok(tmp, fn(js, "waitText") + """
+const assert = require('assert');
+assert.strictEqual(waitText({question: 'volume', text: "Quel niveau d'audit ?"}), "Quel niveau d'audit ?");
+assert.strictEqual(waitText({question: 'Q ?'}), 'Q ?');
+""")
+
+
+def test_cles_stables():
+    """Fiche ouverte et cartes déjà vues suivies par _src (stable) ; l'ancre d'URL reste _file."""
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        assert "ui.peek = f._src" in js and "seenFiles = new Set(D.findings.map(f => f._src))" in js
+        assert "x._file === ui.peek" not in js and "location.hash = f._file" in js
+
+
+def test_cmd_text():
+    """Tuile Actions : la cible est nommée (« Relance de Plan », « Faux positif <titre> »)."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        label = re.search(r"const ACT_LABEL = \{.*?\};", js, re.S).group(0)
+        node_ok(tmp, label + fn(js, "cmdText") + """
+const assert = require('assert');
+const D = {stages: [{key: 'plan', name: 'Plan'}], findings: [{_src: 'f1', title: 'Injection'}]};
+assert.strictEqual(cmdText({action: 'retry', stage: 'plan'}), 'Relance de Plan');
+assert.strictEqual(cmdText({action: 'false_positive', finding: 'f1'}), 'Faux positif Injection');
+assert.strictEqual(cmdText({action: 'false_positive', finding: 'zz'}), 'Faux positif zz');
+assert.strictEqual(cmdText({action: 'pause'}), 'Pause');
+""")
+
+
+
+def test_etat_commande():
+    """Retour d'action à côté du bouton : Envoyé tant que l'id n'est pas acquitté, puis Appliqué ou Refusé ;
+    le bouton reste bloqué (inflight) jusqu'à ce qu'un snapshot montre l'id ; une réponse envoyée bloque
+    toutes les options de la question jusqu'à la levée de l'attente."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        node_ok(tmp, "const inflight = new Set(), sent = new Map();" + "".join(
+            fn(js, n) for n in ("cmdKey", "cmdState", "blocked", "settleSent")) + """
+const assert = require('assert');
+const fp = JSON.stringify({action: 'false_positive', finding: 'f1'});
+let D = {commands: {pending: [], done: []}, waiting: null};
+inflight.add(fp); sent.set(fp, 'abc');
+assert.strictEqual(cmdState(fp).t, 'Envoyé, pris en compte à la fin du lot en cours');
+assert.ok(blocked({action: 'false_positive', finding: 'f1'}));
+settleSent(); assert.ok(inflight.has(fp)); // POST résolu, snapshot pas encore arrivé : toujours bloqué
+D = {commands: {pending: [{action: 'false_positive', finding: 'f1', id: 'abc', at: 't', source: 'page'}], done: []}, waiting: null};
+settleSent(); assert.ok(!inflight.has(fp) && blocked({action: 'false_positive', finding: 'f1'}));
+D = {commands: {pending: [], done: [{id: 'abc', result: 'applied'}]}, waiting: null};
+assert.strictEqual(cmdState(fp).t, 'Appliqué'); assert.ok(!blocked({action: 'false_positive', finding: 'f1'}));
+D = {commands: {pending: [], done: [{id: 'abc', result: 'refused', reason: 'non'}]}, waiting: null};
+assert.strictEqual(cmdState(fp).t, 'Refusé : non');
+// commande en file connue seulement du serveur (page rechargée) : bloquée aussi
+inflight.clear(); sent.clear();
+D = {commands: {pending: [{action: 'pause', id: 'p1', at: 't', source: 'page'}], done: []}, waiting: null};
+assert.ok(blocked({action: 'pause'}) && !blocked({action: 'stop'}));
+// question : une réponse envoyée bloque toutes les options, jusqu'à la levée de l'attente
+const w = {kind: 'question', question: 'volume', options: [{value: 'Light'}, {value: 'Sharp'}]};
+const a = JSON.stringify({action: 'answer', question: 'volume', value: 'Light'});
+sent.set(a, 'q1');
+D = {commands: {pending: [{action: 'answer', question: 'volume', value: 'Light', id: 'q1'}], done: []}, waiting: w};
+assert.ok(blocked({action: 'answer', question: 'volume', value: 'Sharp'}));
+D = {commands: {pending: [], done: [{id: 'q1', result: 'applied'}]}, waiting: w};
+assert.ok(blocked({action: 'answer', question: 'volume', value: 'Sharp'}));
+D = {commands: {pending: [], done: [{id: 'q1', result: 'applied'}]}, waiting: null};
+settleSent(); assert.ok(!sent.has(a));
+""")
+
+
 if __name__ == "__main__":
     test_trois_findings()
     test_niveau_banniere_et_reproduce()
@@ -269,8 +514,20 @@ if __name__ == "__main__":
     test_description_longue()
     test_filtre()
     test_lien_profond()
-    test_theme_clair()
+    test_themes_horizon()
+    test_frise_etapes()
+    test_pas_encore_evalue()
+    test_conn_label()
+    test_final_sans_eventsource()
+    test_pipeline_hooks()
+    test_stage_view()
+    test_reduced_motion()
     test_aucun_finding()
     test_safe_id_collision()
     test_safe_id_triple_collision()
+    test_question_texte()
+    test_cles_stables()
+    test_cmd_text()
+    test_etat_commande()
+    test_carte_option()
     print("OK")

@@ -1,7 +1,7 @@
 {
   "name": "osho-mantis",
-  "version": "0.1.0",
-  "description": "Mantis security audits from Claude Code, no API key: quick triage, Light→Overkill campaign, French report, suggested patches and HTML dashboard.",
+  "version": "0.2.0",
+  "description": "Mantis security audits from Claude Code, no API key: quick triage, Light→Overkill campaign, live dashboard (follow and steer the audit from the browser), French report, suggested patches and HTML dashboard.",
   "author": { "name": "OshOEz" },
   "repository": "https://github.com/OshOEz/OshO-Skillz",
   "license": "MIT"

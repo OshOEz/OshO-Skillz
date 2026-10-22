@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Mantis · pipeline et fiche</title>
+<style>
+  :root{
+    --bg:#0b0d14;--card:#12151f;--elev:#171b27;--fg:#e7ebf6;--muted:#a6aec8;--faint:#8c94ae;
+    --primary:#7ea6ff;--border:#242a3b;--input:#2f364a;--sel:#1e2847;--sel-fg:#dfe6ff;
+    --banner:#18203d;--banner2:#10162b;--muted-bg:#1c2131;
+    --ok:oklch(.72 .15 155);--warn:oklch(.80 .15 85);--bad:oklch(.65 .20 25);
+    --crit:oklch(.62 .22 20);--high:oklch(.70 .18 45);--med:oklch(.80 .15 85);--low:oklch(.72 .08 240);
+    --mono:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 "Source Sans 3","Source Sans Pro",system-ui,sans-serif;font-variant-numeric:tabular-nums;padding:28px 28px 80px}
+  .mono{font-family:var(--mono)}
+  h1{font-size:28px;line-height:36px;font-weight:600;letter-spacing:-.01em;margin:0 0 4px}
+  h3{font-size:17px;margin:36px 0 4px;font-weight:600}
+  .sub{color:var(--muted);margin:0 0 20px;max-width:75ch}
+  .opt{border:1px solid var(--border);border-radius:10px;background:var(--card);cursor:pointer;transition:border-color .15s;margin-bottom:16px}
+  .opt:hover{border-color:var(--input)}
+  .opt.selected{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
+  .opt-h{display:flex;align-items:center;gap:10px;height:44px;padding:0 16px;border-bottom:1px solid var(--border);font-size:13px;color:var(--muted)}
+  .opt-h b{color:var(--fg);font-size:15px}
+  .letter{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:6px;background:var(--sel);color:var(--sel-fg);font-weight:700;font-size:12px}
+  .pad{padding:18px 18px 20px;background:var(--bg);border-radius:0 0 10px 10px;overflow-x:auto}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important}}
+
+  /* ===== P1 : réseau de nœuds ===== */
+  .p1{position:relative;min-width:980px;padding:26px 8px 8px;
+      background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);
+      background-size:24px 24px;background-position:-1px -1px;border:1px solid var(--border);border-radius:6px;
+      mask-image:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent)}
+  .p1 .row{display:flex;align-items:center;position:relative}
+  .node{position:relative;z-index:1;flex:none;width:62px;display:flex;flex-direction:column;align-items:center;gap:6px}
+  .node .c{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--card);border:1.5px solid var(--input);font:600 10px var(--mono);color:var(--faint)}
+  .node.done .c{border-color:var(--ok);color:var(--ok)}
+  .node.run .c{border-color:var(--primary);color:var(--primary);box-shadow:0 0 0 4px color-mix(in oklch,var(--primary) 18%,transparent)}
+  .node.run .c::after{content:"";position:absolute;width:30px;height:30px;border-radius:50%;border:1.5px solid var(--primary);animation:ping 1.8s ease-out infinite}
+  @keyframes ping{from{transform:scale(1);opacity:.8}to{transform:scale(2.1);opacity:0}}
+  .node.skip .c{border-style:dashed;opacity:.5}
+  .node small{font:500 10px var(--mono);color:var(--faint);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+  .node.run small{color:var(--primary)}
+  .node em{font:400 10px var(--mono);color:var(--faint);font-style:normal;height:12px}
+  .wire{flex:1;height:2px;background:var(--input);margin-bottom:32px;min-width:14px}
+  .wire.done{background:var(--ok)}
+  .wire.run{background:linear-gradient(90deg,var(--ok),var(--primary));position:relative;overflow:hidden}
+  .wire.run::after{content:"";position:absolute;inset:0;width:30%;background:linear-gradient(90deg,transparent,#fff8,transparent);animation:flow 1.4s linear infinite}
+  @keyframes flow{from{transform:translateX(-100%)}to{transform:translateX(400%)}}
+  .fork{flex:none;display:flex;flex-direction:column;gap:6px;padding:0 4px;margin-bottom:22px}
+  .fork .lane{display:flex;align-items:center;gap:4px;font:500 10px var(--mono);color:var(--ok)}
+  .fork .lane i{width:18px;height:2px;background:var(--ok)}
+  .p1-foot{display:flex;gap:28px;margin-top:14px;padding:10px 8px 2px;border-top:1px solid var(--border);font:12px var(--mono);color:var(--faint)}
+  .p1-foot b{color:var(--fg);font-weight:500}
+
+  /* ===== P2 : bande de montage / timecode ===== */
+  .p2{min-width:980px}
+  .tc{display:flex;align-items:baseline;gap:14px;margin-bottom:10px}
+  .tc .big{font:500 30px var(--mono);letter-spacing:.02em}
+  .tc .big span{color:var(--faint)}
+  .tc .lbl{font:11px var(--mono);color:var(--faint);text-transform:uppercase;letter-spacing:.1em}
+  .ruler{position:relative;height:16px;background:repeating-linear-gradient(90deg,var(--input) 0 1px,transparent 1px 10px);opacity:.7;margin-bottom:2px;mask-image:linear-gradient(#000,transparent)}
+  .track{position:relative;display:flex;gap:2px;height:52px}
+  .seg{position:relative;border-radius:4px;background:var(--elev);border:1px solid var(--border);overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;padding:5px 7px;min-width:0}
+  .seg small{font:500 10px var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .seg em{font:10px var(--mono);color:var(--faint);font-style:normal}
+  .seg.done{background:color-mix(in oklch,var(--ok) 14%,var(--card));border-color:color-mix(in oklch,var(--ok) 40%,var(--border))}
+  .seg.done::before{content:"";position:absolute;top:0;left:0;right:0;height:2px;background:var(--ok)}
+  .seg.run{background:color-mix(in oklch,var(--primary) 16%,var(--card));border-color:var(--primary)}
+  .seg.run::before{content:"";position:absolute;top:0;left:0;width:61%;height:2px;background:var(--primary)}
+  .seg.run small{color:var(--sel-fg)}
+  .seg.skip{background:repeating-linear-gradient(135deg,var(--card) 0 5px,var(--muted-bg) 5px 10px);opacity:.6}
+  .seg.pend{border-style:dashed}
+  .head{position:absolute;top:-22px;bottom:-6px;width:0;border-left:1.5px solid var(--primary);z-index:2}
+  .head::before{content:"";position:absolute;top:0;left:-6px;border:6px solid transparent;border-top-color:var(--primary)}
+  .lanes{display:flex;gap:2px;margin-top:6px;height:20px}
+  .lanes div{border-radius:3px;font:9.5px/20px var(--mono);color:var(--faint);padding:0 6px;white-space:nowrap;overflow:hidden}
+  .lanes .w{background:var(--muted-bg)}
+  .lanes .w.on{background:var(--sel);color:var(--sel-fg)}
+
+  /* ===== P3 : matrice d'opération ===== */
+  .p3{min-width:980px;border:1px solid var(--border);border-radius:6px;background:var(--card)}
+  .p3-top{display:flex;align-items:center;gap:16px;height:34px;padding:0 12px;border-bottom:1px solid var(--border);font:11px var(--mono);color:var(--faint);text-transform:uppercase;letter-spacing:.1em}
+  .p3-top b{color:var(--fg);font-weight:600}
+  .p3-top .r{margin-left:auto}
+  .mx{display:grid;grid-template-columns:repeat(13,1fr);gap:1px;background:var(--border)}
+  .cell{position:relative;background:var(--card);padding:10px 8px 9px;min-height:96px;display:flex;flex-direction:column;gap:4px}
+  .cell .code{font:600 15px var(--mono);letter-spacing:.04em;color:var(--faint)}
+  .cell .nm{font-size:11px;color:var(--faint);line-height:1.2}
+  .cell .st{margin-top:auto;font:10px var(--mono);color:var(--faint)}
+  .cell.done .code{color:var(--fg)} .cell.done .st{color:var(--ok)}
+  .cell.run{background:var(--sel)}
+  .cell.run .code,.cell.run .nm{color:var(--sel-fg)} .cell.run .st{color:var(--primary)}
+  .cell.run::before,.cell.run::after{content:"";position:absolute;width:10px;height:10px;border:1.5px solid var(--primary)}
+  .cell.run::before{top:4px;left:4px;border-right:0;border-bottom:0}
+  .cell.run::after{bottom:4px;right:4px;border-left:0;border-top:0}
+  .cell.run .scan{position:absolute;left:0;right:0;height:1px;background:var(--primary);opacity:.6;animation:scan 2.4s ease-in-out infinite}
+  @keyframes scan{0%,100%{top:8%}50%{top:92%}}
+  .cell.skip{background:repeating-linear-gradient(135deg,var(--card) 0 5px,var(--bg) 5px 10px)}
+  .cell.skip .code{text-decoration:line-through}
+  .bars{display:flex;gap:2px;height:14px;align-items:flex-end}
+  .bars i{flex:1;background:var(--ok);opacity:.55;border-radius:1px}
+  .cell.run .bars i{background:var(--primary);opacity:.9}
+  .p3-log{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--border);font:11px/1.6 var(--mono);color:var(--faint)}
+  .p3-log div{padding:8px 12px;border-right:1px solid var(--border)} .p3-log b{color:var(--muted);font-weight:500}
+
+  /* ===== Dashboard + fiche ===== */
+  .shell{border:1px solid var(--border);border-radius:10px;overflow:hidden;position:relative}
+  .top{height:48px;display:flex;align-items:center;gap:10px;padding:0 16px;background:var(--card);border-bottom:1px solid var(--border)}
+  .logo{width:22px;height:22px;border-radius:7px;background:var(--primary);color:#0b0d14;display:grid;place-items:center;font-weight:800;font-size:12px}
+  .crumb{font-size:13px;color:var(--muted)} .crumb span{color:var(--primary)}
+  .live{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+  .live .d{width:8px;height:8px;border-radius:50%;background:var(--ok);animation:blink 1.6s infinite} @keyframes blink{50%{opacity:.35}}
+  .banner{position:relative;overflow:hidden;background:var(--banner);padding:20px 24px 18px;border-bottom:1px solid var(--border)}
+  .banner::after{content:"";position:absolute;inset:0 0 0 auto;width:34%;background:var(--banner2);clip-path:polygon(14% 0,100% 0,100% 100%,0 100%)}
+  .banner>*{position:relative;z-index:1}
+  .banner h2{margin:0;font-size:24px;font-weight:600;letter-spacing:-.01em}
+  .banner p{margin:2px 0 0;font-size:13px;color:var(--muted)}
+  .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,170px));gap:28px;margin-top:16px}
+  .kpi{border-left:2px solid var(--input);padding-left:12px}
+  .kpi b{display:block;font:500 28px/1.1 var(--mono)}
+  .kpi span{font-size:12px;color:var(--muted)}
+  .kpi.hot{border-left-color:var(--high)}
+  .body{padding:14px;display:grid;gap:12px}
+  .tile{background:var(--card);border:1px solid var(--border);border-radius:10px}
+  .tile-h{height:44px;display:flex;align-items:center;padding:0 8px 0 16px;font-size:13px;color:var(--muted);border-bottom:1px solid var(--border);gap:8px}
+  .tile-h .act{margin-left:auto;display:flex;gap:6px}
+  .btn{font:inherit;font-size:13px;height:30px;padding:0 12px;border-radius:6px;border:1px solid var(--input);background:var(--elev);color:var(--fg);cursor:pointer}
+  .btn:hover{border-color:var(--faint)}
+  .btn.pri{background:var(--primary);color:#0b0d14;border-color:var(--primary);font-weight:600}
+  .kb{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:10px}
+  .col-h{font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;padding:2px 2px 8px}
+  .col-h i{font-style:normal;margin-left:auto;font-family:var(--mono);color:var(--faint)}
+  .fc{background:var(--elev);border:1px solid var(--border);border-radius:6px;padding:9px 10px;margin-bottom:8px;font-size:13px;cursor:pointer;transition:border-color .15s}
+  .fc:hover{border-color:var(--input)}
+  .fc .ttl{color:var(--fg);font-weight:600;line-height:1.3;margin-top:4px}
+  .fc .loc{color:var(--faint);font:11px var(--mono);margin-top:2px}
+  .sev{display:inline-flex;align-items:center;gap:5px;font:600 10px var(--mono);letter-spacing:.05em;padding:1px 7px;border-radius:99px;border:1px solid var(--border)}
+  .sev::before{content:"";width:6px;height:6px;border-radius:50%}
+  .c::before{background:var(--crit)} .h::before{background:var(--high)} .m::before{background:var(--med)} .l::before{background:var(--low)}
+  .chips{display:flex;gap:4px;margin-top:6px;flex-wrap:wrap}
+  .chip{font-size:11px;color:var(--muted);background:var(--muted-bg);border-radius:4px;padding:0 6px}
+
+  /* peek Notion */
+  .scrim{position:absolute;inset:0;background:rgb(5 7 12 / .62);backdrop-filter:blur(2px);display:none;align-items:flex-start;justify-content:center;padding:36px 20px;z-index:5}
+  .scrim.open{display:flex;animation:fade .18s cubic-bezier(.16,1,.3,1)}
+  @keyframes fade{from{opacity:0}}
+  .peek{width:min(860px,100%);max-height:100%;overflow:auto;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:0 24px 80px rgb(0 0 0 / .5);animation:rise .22s cubic-bezier(.16,1,.3,1)}
+  @keyframes rise{from{transform:translateY(8px);opacity:0}}
+  .peek-bar{position:sticky;top:0;display:flex;align-items:center;gap:8px;height:44px;padding:0 10px 0 16px;background:var(--card);border-bottom:1px solid var(--border);font:12px var(--mono);color:var(--faint)}
+  .peek-bar .sp{margin-left:auto}
+  .x{width:30px;height:30px;border-radius:6px;border:1px solid transparent;background:none;color:var(--muted);cursor:pointer;font-size:16px}
+  .x:hover{background:var(--muted-bg)}
+  .peek-in{padding:26px 36px 32px}
+  .peek h2{margin:10px 0 6px;font-size:26px;line-height:1.25;font-weight:600;letter-spacing:-.01em}
+  .props{display:grid;grid-template-columns:150px 1fr;gap:7px 16px;margin:18px 0 22px;font-size:13px}
+  .props dt{color:var(--faint)} .props dd{margin:0;color:var(--fg)}
+  .props .ic{display:inline-flex;gap:6px;align-items:center}
+  .ok{color:var(--ok)} .wa{color:var(--warn)}
+  .peek h4{font-size:13px;color:var(--muted);font-weight:600;margin:22px 0 6px;text-transform:none}
+  .peek p{margin:0;color:var(--fg);max-width:70ch;line-height:1.6}
+  pre{margin:8px 0 0;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px 14px;font:12px/1.6 var(--mono);color:var(--muted);overflow:auto}
+  pre .a{color:var(--ok)} pre .r{color:var(--bad)}
+  .stagebar{display:flex;gap:4px;margin-top:6px}
+  .stagebar span{font:10px var(--mono);padding:2px 8px;border-radius:99px;border:1px solid var(--border);color:var(--faint)}
+  .stagebar span.y{border-color:color-mix(in oklch,var(--ok) 50%,var(--border));color:var(--ok)}
+  .stagebar span.n{border-color:var(--primary);color:var(--primary)}
+  .peek-act{display:flex;gap:8px;margin-top:26px;padding-top:18px;border-top:1px solid var(--border)}
+</style>
+</head>
+<body>
+
+<h1>Pipeline : trois propositions</h1>
+<p class="sub">Même audit (Sharp, étape review en cours). Trois manières de montrer où on en est. Clique sur celle que tu préfères. Tout en bas, le dashboard complet avec les stats. Clique sur une carte du kanban pour ouvrir sa fiche.</p>
+
+<!-- ========== P1 ========== -->
+<div class="opt" data-choice="pipeline-reseau">
+  <div class="opt-h"><span class="letter">1</span><b>Réseau</b> · des nœuds reliés par des fils, les workers parallèles en dérivation, sur fond de grille</div>
+  <div class="pad"><div class="p1">
+    <div class="row">
+      <div class="node done"><div class="c">TRI</div><small>Triage</small><em>2m</em></div><div class="wire done"></div>
+      <div class="node skip"><div class="c">HIS</div><small>History</small><em>sauté</em></div><div class="wire done"></div>
+      <div class="node done"><div class="c">IDX</div><small>Index</small><em>3m</em></div><div class="wire done"></div>
+      <div class="node done"><div class="c">ARC</div><small>Archi</small><em>6m</em></div><div class="wire done"></div>
+      <div class="node done"><div class="c">THR</div><small>Threat</small><em>5m</em></div><div class="wire done"></div>
+      <div class="node done"><div class="c">PLN</div><small>Plan</small><em>4m</em></div><div class="wire done"></div>
+      <div class="fork"><div class="lane"><i></i>W1</div><div class="lane"><i></i>W2</div><div class="lane"><i></i>W3</div></div>
+      <div class="node done"><div class="c">RSC</div><small>Research</small><em>12m</em></div><div class="wire done"></div>
+      <div class="node done"><div class="c">DDP</div><small>Dedupe</small><em>1m</em></div><div class="wire run"></div>
+      <div class="node run"><div class="c">REV</div><small>Review</small><em>14/23</em></div><div class="wire"></div>
+      <div class="node"><div class="c">CRT</div><small>Critic</small><em></em></div><div class="wire"></div>
+      <div class="node"><div class="c">REP</div><small>Repro</small><em></em></div><div class="wire"></div>
+      <div class="node"><div class="c">PAT</div><small>Patch</small><em></em></div><div class="wire"></div>
+      <div class="node"><div class="c">CAL</div><small>Calibrate</small><em></em></div>
+    </div>
+    <div class="p1-foot"><span>T+ <b>00:38:12</b></span><span>Étape <b>9 / 13</b></span><span>Workers actifs <b>2 / 3</b></span><span>Modèle <b>sonnet</b></span></div>
+  </div></div>
+</div>
+
+<!-- ========== P2 ========== -->
+<div class="opt" data-choice="pipeline-timecode">
+  <div class="opt-h"><span class="letter">2</span><b>Timecode</b> · une bande de montage : chaque étape est un bloc dont la largeur suit sa durée, avec une tête de lecture</div>
+  <div class="pad"><div class="p2">
+    <div class="tc"><div class="big">T+00:38:<span>12</span></div><div class="lbl">écoulé</div><div class="lbl" style="margin-left:auto">fin estimée 15:21</div></div>
+    <div class="ruler"></div>
+    <div class="track" style="position:relative">
+      <div class="seg done" style="flex:2"><small>Triage</small><em>2m</em></div>
+      <div class="seg skip" style="flex:1"><small>Hist</small></div>
+      <div class="seg done" style="flex:3"><small>Index</small><em>3m</em></div>
+      <div class="seg done" style="flex:6"><small>Architecture</small><em>6m</em></div>
+      <div class="seg done" style="flex:5"><small>Threat model</small><em>5m</em></div>
+      <div class="seg done" style="flex:4"><small>Plan</small><em>4m</em></div>
+      <div class="seg done" style="flex:12"><small>Researcher</small><em>12m</em></div>
+      <div class="seg done" style="flex:1.4"><small>Ddp</small></div>
+      <div class="seg run" style="flex:7"><small>Review</small><em>14/23</em><div class="head" style="left:61%"></div></div>
+      <div class="seg pend" style="flex:5"><small>Critic</small></div>
+      <div class="seg pend" style="flex:6"><small>Reproduce</small></div>
+      <div class="seg pend" style="flex:6"><small>Patch</small></div>
+      <div class="seg pend" style="flex:3"><small>Calib</small></div>
+    </div>
+    <div class="lanes">
+      <div style="flex:43.4"></div>
+      <div class="w on" style="flex:2.3">W1 sonnet</div>
+      <div class="w on" style="flex:2.3">W2 sonnet</div>
+      <div class="w" style="flex:2.4">W3 fini</div>
+      <div style="flex:20"></div>
+    </div>
+  </div></div>
+</div>
+
+<!-- ========== P3 ========== -->
+<div class="opt" data-choice="pipeline-matrice">
+  <div class="opt-h"><span class="letter">3</span><b>Matrice</b> · une case par étape, codes en trois lettres, l'étape active encadrée et balayée</div>
+  <div class="pad"><div class="p3">
+    <div class="p3-top"><span>Opération <b>Mantis</b></span><span>Niveau <b>Sharp</b></span><span>Tour <b>1</b></span><span class="r">T+ <b>00:38:12</b></span></div>
+    <div class="mx">
+      <div class="cell done"><div class="code">TRI</div><div class="nm">Triage</div><div class="bars"><i style="height:100%"></i></div><div class="st">OK 2m</div></div>
+      <div class="cell skip"><div class="code">HIS</div><div class="nm">History</div><div class="st">Sauté</div></div>
+      <div class="cell done"><div class="code">IDX</div><div class="nm">Structural index</div><div class="bars"><i style="height:100%"></i></div><div class="st">OK 3m</div></div>
+      <div class="cell done"><div class="code">ARC</div><div class="nm">Architecture</div><div class="bars"><i style="height:100%"></i></div><div class="st">OK 6m</div></div>
+      <div class="cell done"><div class="code">THR</div><div class="nm">Threat model</div><div class="bars"><i style="height:100%"></i></div><div class="st">OK 5m</div></div>
+      <div class="cell done"><div class="code">PLN</div><div class="nm">Plan</div><div class="bars"><i style="height:100%"></i></div><div class="st">OK 4m</div></div>
+      <div class="cell done"><div class="code">RSC</div><div class="nm">Researcher</div><div class="bars"><i style="height:100%"></i><i style="height:100%"></i><i style="height:100%"></i></div><div class="st">OK 12m</div></div>
+      <div class="cell done"><div class="code">DDP</div><div class="nm">Dedupe</div><div class="bars"><i style="height:100%"></i></div><div class="st">26 → 23</div></div>
+      <div class="cell run"><div class="scan"></div><div class="code">REV</div><div class="nm">Review</div><div class="bars"><i style="height:70%"></i><i style="height:55%"></i><i style="height:100%"></i></div><div class="st">14 / 23</div></div>
+      <div class="cell"><div class="code">CRT</div><div class="nm">Critic</div><div class="st">En attente</div></div>
+      <div class="cell"><div class="code">REP</div><div class="nm">Reproduce</div><div class="st">En attente</div></div>
+      <div class="cell"><div class="code">PAT</div><div class="nm">Patch</div><div class="st">En attente</div></div>
+      <div class="cell"><div class="code">CAL</div><div class="nm">Calibrate</div><div class="st">En attente</div></div>
+    </div>
+    <div class="p3-log"><div><b>14:43:12</b> REV f-014 confirmé</div><div><b>14:42:50</b> REV lot 2/3 lancé</div><div><b>14:41:05</b> DDP 26 → 23 findings</div></div>
+  </div></div>
+</div>
+
+<h3>Le dashboard complet, avec stats et fiche</h3>
+<p class="sub">Ici le pipeline est la proposition 2 en version compacte, juste pour montrer l'assemblage. Clique sur une carte du kanban.</p>
+
+<div class="shell" id="shell">
+  <div class="top"><div class="logo">M</div><div class="crumb">Mantis / <span>mon-repo</span> / audit-2026-10-22_14h05</div>
+    <div class="live"><span class="d"></span>En direct, mis à jour il y a 2 s</div></div>
+  <div class="banner">
+    <h2>Audit Sharp, review en cours</h2>
+    <p>Démarré à 14 h 05, tour 1, fin estimée vers 15 h 20</p>
+    <div class="kpis">
+      <div class="kpi"><b>23</b><span>findings</span></div>
+      <div class="kpi hot"><b>4</b><span>critiques ou hautes</span></div>
+      <div class="kpi"><b>2</b><span>reproduits</span></div>
+      <div class="kpi"><b>0</b><span>patchs vérifiés</span></div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="tile"><div style="padding:16px 16px 12px"><div class="p2" style="min-width:0">
+      <div class="track" style="height:40px">
+        <div class="seg done" style="flex:2"><small>Tri</small></div><div class="seg skip" style="flex:1"><small></small></div>
+        <div class="seg done" style="flex:3"><small>Idx</small></div><div class="seg done" style="flex:6"><small>Archi</small></div>
+        <div class="seg done" style="flex:5"><small>Threat</small></div><div class="seg done" style="flex:4"><small>Plan</small></div>
+        <div class="seg done" style="flex:12"><small>Researcher</small></div><div class="seg done" style="flex:1.4"><small></small></div>
+        <div class="seg run" style="flex:7"><small>Review</small><div class="head" style="left:61%;top:-6px"></div></div>
+        <div class="seg pend" style="flex:5"><small>Critic</small></div><div class="seg pend" style="flex:6"><small>Repro</small></div>
+        <div class="seg pend" style="flex:6"><small>Patch</small></div><div class="seg pend" style="flex:3"><small>Cal</small></div>
+      </div></div></div></div>
+    <div class="grid" style="display:grid;grid-template-columns:1fr 240px;gap:12px">
+      <div class="tile">
+        <div class="tile-h">Vulnérabilités<div class="act"><button class="btn">Colonnes : statut</button></div></div>
+        <div class="kb">
+          <div><div class="col-h">Trouvées<i>9</i></div>
+            <div class="fc" onclick="openPeek()"><span class="sev h">HIGH</span><div class="ttl">SSRF via l'URL d'import</div><div class="loc">api/import.py:88</div></div>
+            <div class="fc" onclick="openPeek()"><span class="sev m">MEDIUM</span><div class="ttl">Cookie de session sans SameSite</div><div class="loc">web/auth.ts:31</div></div></div>
+          <div><div class="col-h">Revues<i>14</i></div>
+            <div class="fc" onclick="openPeek()"><span class="sev c">CRITICAL</span><div class="ttl">Injection SQL dans /search</div><div class="loc">api/search.py:142</div><div class="chips"><span class="chip">Confirmé</span></div></div>
+            <div class="fc" onclick="openPeek()"><span class="sev l">LOW</span><div class="ttl">Version exposée dans les en-têtes</div><div class="loc">server.py:12</div></div></div>
+          <div><div class="col-h">Reproduites<i>0</i></div></div>
+          <div><div class="col-h">Corrigées<i>0</i></div></div>
+        </div>
+      </div>
+      <div style="display:grid;gap:12px;align-content:start">
+        <div class="tile"><div class="tile-h">Actions</div><div style="display:grid;gap:8px;padding:12px"><button class="btn">Mettre en pause</button><button class="btn">Arrêter l'audit</button></div></div>
+        <div class="tile"><div class="tile-h">Activité</div><div style="padding:10px 14px;font:11px/1.8 var(--mono);color:var(--faint)">14:43 REV f-014 confirmé<br>14:42 REV lot 2/3<br>14:41 DDP 26 → 23</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="scrim" id="scrim" onclick="if(event.target===this)closePeek()">
+    <div class="peek" role="dialog" aria-modal="true" aria-labelledby="pk-t">
+      <div class="peek-bar">f-014<span>·</span>api/search.py<span class="sp"></span><button class="btn" style="height:28px">Ouvrir en pleine page</button><button class="x" aria-label="Fermer" onclick="closePeek()">✕</button></div>
+      <div class="peek-in">
+        <span class="sev c">CRITICAL</span>
+        <h2 id="pk-t">Injection SQL dans /search</h2>
+        <div class="stagebar"><span class="y">Trouvé</span><span class="y">Dédoublonné</span><span class="n">En review</span><span>Critic</span><span>Repro</span><span>Patch</span></div>
+        <dl class="props">
+          <dt>Statut</dt><dd class="ic"><span class="ok">✓</span>Confirmé</dd>
+          <dt>Emplacement</dt><dd class="mono">api/search.py:142</dd>
+          <dt>Exploitable en prod</dt><dd class="ic"><span class="wa">◐</span>Pas encore évalué (critic)</dd>
+          <dt>Reproduction</dt><dd>Prévue à l'étape reproduce</dd>
+          <dt>Trouvé par</dt><dd class="mono">researcher W2 · 14:21</dd>
+        </dl>
+        <h4>Ce qui se passe</h4>
+        <p>Le paramètre <span class="mono">q</span> est concaténé directement dans la requête SQL. Un attaquant non authentifié peut lire toute la table <span class="mono">users</span>.</p>
+        <h4>Code concerné</h4>
+<pre>140  def search(q):
+141      db = get_db()
+<span class="r">142      rows = db.execute(f"SELECT * FROM items WHERE name LIKE '%{q}%'")</span>
+143      return jsonify(rows)</pre>
+        <h4>Correctif proposé</h4>
+<pre><span class="r">- rows = db.execute(f"SELECT * FROM items WHERE name LIKE '%{q}%'")</span>
+<span class="a">+ rows = db.execute("SELECT * FROM items WHERE name LIKE ?", (f"%{q}%",))</span></pre>
+        <div class="peek-act"><button class="btn pri">Prioriser la reproduction</button><button class="btn">Marquer faux positif</button><button class="btn">Copier le diff</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function openPeek(){document.getElementById('scrim').classList.add('open')}
+  function closePeek(){document.getElementById('scrim').classList.remove('open')}
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closePeek()});
+</script>
+</body>
+</html>
