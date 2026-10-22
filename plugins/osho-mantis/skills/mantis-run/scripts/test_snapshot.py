@@ -8,7 +8,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from snapshot import LEVEL_STAGES, build_snapshot
+from snapshot import LEVEL_STAGES, append_activity, build_snapshot, diff_events, read_snapshot_safe
 
 
 def audit(tmp, campaign, state=None, findings=(), waiting=None, activity=()):
@@ -111,6 +111,80 @@ def test_stale():
         assert build_snapshot(d, now=old + 10)["stale"] is False
 
 
+def test_diff_etape():
+    def at(status):
+        return snap({"repo": "/x/demo", "level": "Light"}, state={"stages": {"review": status}})
+    a = diff_events(at("pending"), at("running"), "2026-10-22T14:00:00")
+    b = diff_events(at("running"), at("done"), "2026-10-22T14:03:00")
+    assert [e["kind"] for e in a + b] == ["stage", "stage"] and a[0]["text"] == "Étape Revue démarrée"
+    assert b[0]["text"].startswith("Étape Revue terminée") and b[0]["from"] == "running"
+
+
+def test_diff_finding():
+    c = {"repo": "/x/demo", "level": "Sharp"}
+    s0 = snap(c, state={})
+    s1 = snap(c, state={}, findings=[{"id": "a", "title": "Faille A"}])
+    s2 = snap(c, state={}, findings=[{"id": "a", "title": "Faille A", "reasoning": "x"}])
+    n = diff_events(s0, s1, "t")
+    p = diff_events(s1, s2, "t")
+    assert [e["kind"] for e in n] == ["finding_new"] and n[0]["finding"] == "f0"
+    assert [(e["kind"], e["from"], e["to"]) for e in p] == [("finding_progress", "found", "reviewed")]
+    assert p[0]["text"] == "Faille A : Trouvées → Revues"
+
+
+def test_diff_premier_snapshot():
+    assert diff_events(None, snap({"repo": "/x/demo"}), "t") == []
+
+
+def test_diff_waiting_et_commande():
+    c = {"repo": "/x/demo", "level": "Light"}
+    s0, s1 = snap(c, state={}), snap(c, state={}, waiting={"kind": "failed"})
+    assert diff_events(s0, s1, "t")[0]["waiting_kind"] == "failed"
+    s2 = dict(s1, commands={"pending": [], "done": [{"id": "1", "action": "retry", "result": "refused", "reason": "non"}]})
+    e = diff_events(s1, s2, "t")
+    assert e[0]["text"] == "Action retry refusée : non" and e[0]["kind"] == "command"
+
+
+def test_json_tronque_ignore():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp, {"repo": "/x/demo", "level": "Light"}, state={"stages": {"review": "done"}})
+        prev = build_snapshot(d)
+        (d / "state.json").write_text('{"stages": {"rev')
+        cur = read_snapshot_safe(d, prev)
+        assert cur is prev and diff_events(prev, cur, "t") == []
+        (d / "state.json").write_text(json.dumps({"stages": {"review": "done"}}))
+        assert read_snapshot_safe(d, prev) is not prev
+
+
+def test_state_mauvaise_forme():
+    for state in ([], {"stages": None, "notes": None}):
+        s = snap({"repo": "/x/demo", "level": "Light"}, state=state)
+        assert s["stages"][1]["status"] == "pending"
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp, [], state=[], waiting=[])
+        s = build_snapshot(d)
+        assert s["waiting"] is None and s["stages"][0]["key"] == "triage"
+
+
+def test_textes_sans_cadratin():
+    c = {"repo": "/x/demo", "level": "Light"}
+    s0 = snap(c, state={"stages": {"review": "pending"}})
+    s1 = snap(c, state={"stages": {"review": "failed", "plan": "skipped"}}, waiting={"kind": "failed"},
+              findings=[{"id": "a", "title": "A"}])
+    evs = diff_events(s0, s1, "t") + diff_events(s1, dict(s1, commands={"pending": [], "done": [
+        {"id": "1", "action": "x", "result": "applied"}]}), "t")
+    assert len(evs) >= 5 and all("—" not in e["text"] for e in evs)
+
+
+def test_append_activity():
+    with tempfile.TemporaryDirectory() as tmp:
+        append_activity(Path(tmp), [{"a": 1}, {"b": "é"}])
+        append_activity(Path(tmp), [])
+        append_activity(Path(tmp), [{"c": 3}])
+        assert [json.loads(x) for x in (Path(tmp) / "activity.jsonl").read_text().splitlines()] == [
+            {"a": 1}, {"b": "é"}, {"c": 3}]
+
+
 if __name__ == "__main__":
     test_snapshot_triage_seul()
     test_snapshot_sharp_en_cours()
@@ -122,4 +196,12 @@ if __name__ == "__main__":
     test_src_et_file()
     test_durees()
     test_stale()
+    test_diff_etape()
+    test_diff_finding()
+    test_diff_premier_snapshot()
+    test_diff_waiting_et_commande()
+    test_json_tronque_ignore()
+    test_state_mauvaise_forme()
+    test_textes_sans_cadratin()
+    test_append_activity()
     print("OK")
