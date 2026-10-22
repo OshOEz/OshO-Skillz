@@ -123,9 +123,9 @@ Reply in 3 lines: commit sha or « aucun », files changed, any doubt.
 
 ### 2.4 Après la fin de l'audit
 
-Aujourd'hui, mantis-run se termine après Finish, et la page passe à « Aucune session active ». Pour que « Corriger » marche après l'audit, il faut une session Claude à l'écoute. *(Choix de Claude, à valider : §5.)*
+Aujourd'hui, mantis-run se termine après Finish, et la page passe à « Aucune session active ». Pour que « Corriger » marche après l'audit, il faut une session Claude à l'écoute. *(Validé par l'utilisateur : §5.)*
 
-- **Ma proposition :** à la fin de Finish, mantis-run reste à l'écoute des corrections dans un mode « Corrections ». Il lance Monitor sur `pending` et traite les commandes `fix` comme au §2.1. La page affiche « Claude attend tes demandes de correction », avec un bouton **Terminer**.
+- À la fin de Finish, mantis-run reste à l'écoute des corrections dans un mode « Corrections ». Il lance Monitor sur `pending` et traite les commandes `fix` comme au §2.1. La page affiche « Claude attend tes demandes de correction », avec un bouton **Terminer**.
 - Le mode se termine quand l'utilisateur clique **Terminer** ou tape « terminé », ou quand aucun clic n'arrive pendant 30 min et qu'aucune correction n'est en cours.
 - Plus tard, `/mantis-run <audit>` sur un audit terminé rouvre directement ce mode, sans relancer l'audit.
 
@@ -165,10 +165,10 @@ Depuis le terminal :
 - Si l'utilisateur a supprimé ou déplacé la branche de l'audit à la main, `merge_fix` répond `failed` (« branche de l'audit introuvable ») et ne la recrée pas d'office.
 - Le contrôle d'intégrité de Finish (lot 1, §4.1) compare toujours `git status` du répertoire de l'utilisateur. Il doit rester vide de changements, puisque les corrections n'y écrivent rien.
 
-## 5. Questions ouvertes pour l'utilisateur
+## 5. Décisions de l'utilisateur (2026-10-22)
 
-1. Après la fin de l'audit, Claude reste-t-il à l'écoute des corrections (§2.4) ? Si non, « Corriger » ne marche que pendant l'audit, ou après un nouveau `/mantis-run`.
-2. Faut-il afficher le nom de la branche de l'audit, avec la commande pour la fusionner dans son travail, dans la bannière et dans le rapport final ? *(Proposé : oui.)*
+1. **Après la fin de l'audit, Claude reste à l'écoute** dans le mode « Corrections » décrit au §2.4. Le mode a un bouton Terminer, s'arrête tout seul après 30 min sans clic, et `/mantis-run` sur un audit terminé le rouvre.
+2. **La branche de l'audit est affichée** dans la bannière et dans le rapport final, par exemple « 3 correctifs sur `mantis/audit-…` », avec un bouton qui copie `git merge mantis/audit-…`.
 
 ## 6. Tests
 
