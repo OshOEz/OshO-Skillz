@@ -290,6 +290,41 @@ def test_final_sans_eventsource():
         assert re.search(r"if \(D\.mode === ['\"]live['\"]\) \{[^}]*new EventSource", js), "EventSource non conditionné"
 
 
+def test_carte_option():
+    """Carte de choix : puce Recommandé et coût en lignes ; ancien waiting.json (sans summary) : label et description."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        node_ok(tmp, fn(js, "optionBody") + """
+const assert = require('assert');
+function el(tag, attrs, ...kids) { return {tag, cls: (attrs || {}).class || '', kids: kids.filter(k => k != null)}; }
+const txt = n => n == null ? '' : typeof n === 'string' ? n : n.kids.map(txt).join('|');
+const find = (n, c) => !n || typeof n === 'string' ? null : n.cls === c ? n : n.kids.map(k => find(k, c)).find(Boolean) || null;
+let r = optionBody({value: 'Light', label: 'Light (Recommandé)', summary: 'Statique : plan', recommended: true,
+  cost: 'Pro : ~1,0 fenêtres · Max 5x : ~20 %', description: 'x'});
+const root = {kids: r.kids};
+assert.strictEqual(r.rec, true);
+assert.strictEqual(txt(find(root, 'nm')), 'Light');
+assert.strictEqual(txt(find(root, 'rec-chip')), 'Recommandé');
+assert.strictEqual(txt(find(root, 'sum')), 'Statique : plan');
+assert.strictEqual(txt(find(root, 'cost')), 'Pro|~1,0 fenêtres|Max 5x|~20 %');
+r = optionBody({value: 'Sharp', label: 'Sharp', summary: 's', cost: 'c', recommended: false});
+assert.strictEqual(r.rec, false);
+assert.strictEqual(find({kids: r.kids}, 'rec-chip'), null);
+assert.strictEqual(find({kids: r.kids}, 'cost raw').kids[0], 'c');
+r = optionBody({value: 'Light', label: 'Light (Recommandé)', description: 'Statique : a : Pro : ~1'});
+assert.strictEqual(r.rec, true, 'ancien format : (Recommandé) dans le label');
+assert.strictEqual(txt(find({kids: r.kids}, 'nm')), 'Light');
+assert.strictEqual(txt(find({kids: r.kids}, 'sum')), 'Statique : a : Pro : ~1');
+assert.strictEqual(find({kids: r.kids}, 'cost'), null);
+r = optionBody({value: 'oui', label: 'Oui'});
+assert.strictEqual(txt(find({kids: r.kids}, 'nm')), 'Oui');
+assert.strictEqual(r.rec, false);
+""")
+
+
 def test_pipeline_hooks():
     """Sélecteur de vue du pipeline : deux boutons-icônes avec aria-pressed."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -494,4 +529,5 @@ if __name__ == "__main__":
     test_cles_stables()
     test_cmd_text()
     test_etat_commande()
+    test_carte_option()
     print("OK")

@@ -155,7 +155,7 @@ class Handler(BaseHTTPRequestHandler):
         cookie = ""
         for part in self.headers.get("Cookie", "").split(";"):
             k, _, v = part.strip().partition("=")
-            if k == "mantis_key":
+            if k == f"mantis_key_{port}":  # un cookie par port : deux dashboards ne s'écrasent pas la clé
                 cookie = v
         ok = lambda k: hmac.compare_digest(k.encode(), self.dash.key.encode())
         return (ok(via_query) or ok(cookie)), ok(via_query)
@@ -170,7 +170,8 @@ class Handler(BaseHTTPRequestHandler):
         elif route == "/":
             page = (HERE / "dashboard.html").read_text(encoding="utf-8")
             page = page.replace("__DATA__", render.safe_json(self.dash.fresh()), 1)
-            cookie = f"mantis_key={self.dash.key}; HttpOnly; SameSite=Strict; Path=/"
+            port = self.server.server_address[1]
+            cookie = f"mantis_key_{port}={self.dash.key}; HttpOnly; SameSite=Strict; Path=/"
             self.send(200, page, "text/html", [("Set-Cookie", cookie)] if via_query else [])
         elif route == "/events":
             self.events()

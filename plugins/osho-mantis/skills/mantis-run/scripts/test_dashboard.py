@@ -92,9 +92,10 @@ def test_auth():
         assert req(port, "GET", "/")[0] == 403
         assert req(port, "GET", "/?key=mauvaise")[0] == 403
         s, body, r = req(port, "GET", f"/?key={key}")
-        assert s == 200 and "mantis_key=" in r.getheader("Set-Cookie") and "HttpOnly" in r.getheader("Set-Cookie")
+        assert s == 200 and f"mantis_key_{port}=" in r.getheader("Set-Cookie") and "HttpOnly" in r.getheader("Set-Cookie")
         assert "SameSite=Strict" in r.getheader("Set-Cookie")
-        assert req(port, "GET", "/", {"Cookie": f"mantis_key={key}"})[0] == 200
+        assert req(port, "GET", "/", {"Cookie": f"mantis_key_{port}={key}"})[0] == 200
+        assert req(port, "GET", "/", {"Cookie": f"mantis_key={key}"})[0] == 403, "cookie sans port ignoré"
         assert req(port, "GET", "/health")[0] == 403
         assert req(port, "GET", "/events")[0] == 403
         assert req(port, "GET", f"/?key={key}", {"Host": "evil:80"})[0] == 403
