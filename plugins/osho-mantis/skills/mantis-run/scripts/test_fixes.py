@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 
 import fixes
@@ -289,6 +290,107 @@ def test_cli():
     with scratch() as tmp:
         d, repo = git_audit(tmp)
         assert run("start", str(d), "../x").returncode == 2
+
+
+def test_merge_sans_conflit():
+    with scratch() as tmp:
+        d, repo = git_audit(tmp)
+        make_ready(d, "f1")
+        assert fixes.merge(d, "f1") == ("merged", None)
+        assert git(repo, "log", "-1", "--format=%s", "mantis/audit-x") == "Merge correctif Mantis : Faille [f1]"
+        assert len(git(repo, "rev-list", "--parents", "-1", "mantis/audit-x").split()) == 3
+        e = fixes.load(d)["f1"]
+        assert e["status"] == "merged" and e["merge_commit"] == git(repo, "rev-parse", "mantis/audit-x")
+        assert e["error"] is None and not has_ref(repo, "refs/heads/mantis/fix/audit-x/f1")
+
+
+def _conflit(tmp):
+    d, repo = git_audit(tmp, findings=(("f1", F), ("f2", F)))
+    make_ready(d, "f1", text="autre")
+    wt2 = make_ready(d, "f2")["worktree"]
+    assert fixes.merge(d, "f1")[0] == "merged"
+    return d, repo, wt2
+
+
+def test_merge_conflit():
+    with scratch() as tmp:
+        d, repo, wt2 = _conflit(tmp)
+        before = git(repo, "rev-parse", "mantis/audit-x")
+        assert fixes.merge(d, "f2") == ("conflict", "conflit avec un autre correctif")
+        assert git(repo, "rev-parse", "mantis/audit-x") == before
+        assert "+fixed" in (d / "fixes" / "f2.prev.diff").read_text()
+        assert fixes.load(d)["f2"]["status"] == "conflict" and not Path(wt2).exists()
+
+
+def test_recorriger_part_de_la_tete():
+    with scratch() as tmp:
+        d, repo, _ = _conflit(tmp)
+        fixes.merge(d, "f2")
+        e = fixes.start(d, "f2")
+        assert e["base"] == git(repo, "rev-parse", "mantis/audit-x")
+        assert e["prev_diff"] == str(d / "fixes" / "f2.prev.diff")
+
+
+def test_merge_concurrent_update_ref():
+    with scratch() as tmp:
+        d, repo = git_audit(tmp)
+        e = make_ready(d, "f1")
+        ref = "refs/heads/mantis/audit-x"
+        stale = git(repo, "rev-parse", ref)
+        tree = git(repo, "rev-parse", "HEAD^{tree}")
+        git(repo, "update-ref", ref, git(repo, "commit-tree", tree, "-p", stale, "-m", "autre"))
+        now = git(repo, "rev-parse", ref)
+        assert fixes.merge_ref(repo, ref, stale, e["commit"], "m") == ("busy", None)
+        assert git(repo, "rev-parse", ref) == now
+
+
+def test_merge_double_seul_un():
+    with scratch() as tmp:
+        d, repo = git_audit(tmp)
+        make_ready(d, "f1")
+        out = []
+        ts = [threading.Thread(target=lambda: out.append(fixes.merge(d, "f1")[0])) for _ in range(2)]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+        assert sorted(out) == ["merged", "refused"], out
+        assert git(repo, "rev-list", "--merges", "--count", "mantis/audit-x") == "1"
+
+
+def test_merge_branche_supprimee():
+    with scratch() as tmp:
+        d, repo = git_audit(tmp)
+        make_ready(d, "f1")
+        git(repo, "update-ref", "-d", "refs/heads/mantis/audit-x")
+        assert fixes.merge(d, "f1") == ("failed", "branche de l'audit introuvable")
+        assert fixes.load(d)["f1"]["status"] == "failed"
+        assert not has_ref(repo, "refs/heads/mantis/audit-x")
+
+
+def test_repo_utilisateur_intact():
+    with scratch() as tmp:
+        d, repo = git_audit(tmp)
+        snap = lambda: (git(repo, "status", "--porcelain"), git(repo, "symbolic-ref", "HEAD"),
+                        git(repo, "rev-parse", "HEAD"), (repo / "app.py").read_text())
+        before = snap()
+        make_ready(d, "f1")
+        assert fixes.merge(d, "f1")[0] == "merged"
+        assert snap() == before
+
+
+def test_hooks_neutralises():
+    with scratch() as tmp:
+        d, repo = git_audit(tmp)
+        hooks = repo / "hooks"
+        hooks.mkdir()
+        for h in ("post-checkout", "reference-transaction"):
+            (hooks / h).write_text(f"#!/bin/sh\ntouch '{tmp}/HOOKED'\n")
+            (hooks / h).chmod(0o755)
+        git(repo, "config", "core.hooksPath", str(hooks))
+        make_ready(d, "f1")
+        assert fixes.merge(d, "f1")[0] == "merged"
+        assert not (Path(tmp) / "HOOKED").exists()
 
 
 if __name__ == "__main__":

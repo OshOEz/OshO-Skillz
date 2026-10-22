@@ -92,6 +92,16 @@ def _finding_path(audit_dir, stem):
     return Path(audit_dir) / "workspace" / "findings" / f"{stem}.json"
 
 
+def _finding(audit_dir, stem):
+    f = render.load_json(_finding_path(audit_dir, stem), {})
+    return f if isinstance(f, dict) else {}
+
+
+def _title(f, stem):
+    """Titre sur une ligne, sans caractère de contrôle, pour les messages de commit"""
+    return re.sub(r"[\x00-\x1f\x7f]", "", " ".join(str(f.get("title") or stem).split()))[:200]
+
+
 def valid_stem(audit_dir, stem):
     return (not commands._bad(stem) and stem != "" and stem.isprintable()
             and _finding_path(audit_dir, stem).is_file())
@@ -212,9 +222,8 @@ def start(audit_dir, stem):
                      error="le repo déclare un filtre git (.gitattributes) : correction refusée")
             _save(audit_dir, data)
             return dict(e)
-        f = render.load_json(_finding_path(audit_dir, stem), {})
-        f = f if isinstance(f, dict) else {}
-        title = re.sub(r"[\x00-\x1f\x7f]", "", " ".join(str(f.get("title") or stem).split()))[:200]
+        f = _finding(audit_dir, stem)
+        title = _title(f, stem)
         (audit_dir / "fixes").mkdir(exist_ok=True)
         msg = audit_dir / "fixes" / f"{stem}.msg"
         commands.atomic_write(msg, f"fix(mantis): {title} [{stem}]\n")
@@ -281,6 +290,49 @@ def fail(audit_dir, stem, reason):
 
 def reconcile(audit_dir):
     return [finish(audit_dir, s, interrupted=True) for s in _with(audit_dir, "running")]
+
+
+def merge_ref(repo, ref, old, fix, message):
+    """Merge en mémoire de fix dans ref (attendue à old) ; aucun worktree ni index touché"""
+    r = git(repo, "merge-tree", "--write-tree", old, fix, check=False)
+    if r.returncode == 1:
+        return ("conflict", None)
+    if r.returncode:
+        raise RuntimeError((r.stderr.strip().splitlines() or ["git merge-tree a échoué"])[0])
+    tree = r.stdout.split("\n", 1)[0].strip()
+    new = git(repo, "commit-tree", tree, "-p", old, "-p", fix, "-m", message).stdout.strip()
+    if git(repo, "update-ref", ref, new, old, check=False).returncode:  # ref déplacée entre-temps
+        return ("busy", None)
+    return ("merged", new)
+
+
+def merge(audit_dir, stem):
+    audit_dir = Path(audit_dir)
+    with locked(audit_dir):
+        data = load(audit_dir)
+        e = data.get(stem)
+        if not isinstance(e, dict) or e.get("status") != "ready":
+            return ("refused", "le correctif n'est pas prêt")
+        repo, ref = repo_of(audit_dir), "refs/heads/" + audit_branch(audit_dir)
+        r = git(repo, "rev-parse", "--verify", "-q", ref + "^{commit}", check=False)
+        if r.returncode:
+            res, why, fields = "failed", "branche de l'audit introuvable", {"status": "failed"}
+        else:
+            msg = f"Merge correctif Mantis : {_title(_finding(audit_dir, stem), stem)} [{stem}]"
+            res, new = merge_ref(repo, ref, r.stdout.strip(), e["commit"], msg)
+            if res == "busy":
+                return ("busy", "branche de l'audit modifiée pendant la fusion, réessaie")
+            if res == "conflict":
+                why, fields = "conflit avec un autre correctif", {"status": "conflict"}
+                diff = git(repo, "diff", "--no-color", "--no-ext-diff", "--no-textconv", e["base"], e["commit"]).stdout
+                (audit_dir / "fixes").mkdir(exist_ok=True)
+                commands.atomic_write(audit_dir / "fixes" / f"{stem}.prev.diff", diff)
+            else:
+                why, fields = None, {"status": "merged", "merge_commit": new}
+        _set(data, stem, error=why, **fields)
+        _cleanup(audit_dir, data, stem)
+        _save(audit_dir, data)
+        return (res, why)
 
 
 def main(argv):
