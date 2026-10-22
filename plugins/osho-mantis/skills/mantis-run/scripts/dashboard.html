@@ -228,7 +228,7 @@ details.col[open] summary::before{transform:rotate(90deg)}
 .chips{display:flex;gap:4px;margin-top:7px;flex-wrap:wrap}
 .chip{font-size:11px;color:var(--muted);background:var(--muted-bg);border-radius:99px;padding:0 7px}
 .chip.verified::before{content:"✓ ";color:var(--ok)}
-.chip.fx-merged{color:color-mix(in oklch,var(--ok) 70%,var(--fg))} .chip.fx-failed{color:var(--bad)} .chip.fx-conflict{color:color-mix(in srgb,var(--warn) 65%,var(--fg))}
+.chip.fx-merged{color:color-mix(in srgb,var(--ok) 70%,var(--fg))} .chip.fx-failed{color:var(--bad)} .chip.fx-conflict{color:color-mix(in srgb,var(--warn) 65%,var(--fg))}
 .chip.fx-ready,.chip.fx-running{color:var(--primary)}
 
 /* Fiche façon Notion « peek » */
@@ -624,12 +624,18 @@ function cmdKey(c) {
   const {id, at, source, ...rest} = c; // même clé que JSON.stringify(cmd) côté page : le serveur garde l'ordre des champs
   return JSON.stringify(rest);
 }
+function sentText(c, inList) {
+  // merge_fix : le serveur fusionne tout de suite ; Claude en attente (question, corrections) traite aussitôt
+  if (c.action === 'merge_fix') return inList ? 'fusion en cours…' : 'Fusion en cours…';
+  if (D.listening === 'working') return inList ? 'en attente, prise en compte à la fin du lot en cours' : 'Envoyé, pris en compte à la fin du lot en cours';
+  return inList ? 'en attente' : 'Envoyé';
+}
 function cmdState(k) {
   // Envoyé tant que l'id n'est pas acquitté (ou commande identique en file), puis Appliqué / Refusé
   const c = D.commands || {}, id = sent.get(k), d = id && (c.done || []).find(x => x.id === id);
   if (d) return d.result === 'applied' ? {t: 'Appliqué', cls: 'ok'} : {t: 'Refusé : ' + (d.reason || 'raison inconnue'), cls: 'bad'};
   if (inflight.has(k) || (c.pending || []).some(x => x.id === id || cmdKey(x) === k)) {
-    return {t: 'Envoyé, pris en compte à la fin du lot en cours', cls: 'na', busy: true};
+    return {t: sentText(JSON.parse(k)), cls: 'na', busy: true};
   }
   return null;
 }
@@ -669,7 +675,7 @@ function sendCommand(cmd) {
       settleSent(); // le snapshot montrant l'id a pu arriver avant la réponse du POST
       if (err || !sent.has(k)) inflight.delete(k); // sans id, rien à suivre : bouton rendu
       if (err) { cmdErr.set(k, err); $('live-region').textContent = 'Action refusée : ' + err; }
-      else $('live-region').textContent = 'Envoyé, pris en compte à la fin du lot en cours';
+      else $('live-region').textContent = sentText(cmd);
       render(D);
     });
 }
@@ -698,7 +704,7 @@ function renderActions() {
   const pend = (D.commands && D.commands.pending) || [], done = ((D.commands && D.commands.done) || []).slice(-3).reverse();
   if (pend.length || done.length) {
     kids.push(el('ul', {class: 'cmds', 'aria-label': 'Commandes envoyées'},
-      ...pend.map(c => el('li', {class: 'na'}, cmdText(c) + ' : en attente, prise en compte à la fin du lot en cours')),
+      ...pend.map(c => el('li', {class: 'na'}, cmdText(c) + ' : ' + sentText(c, true))),
       ...done.map(c => el('li', {class: c.result === 'applied' ? 'ok' : 'bad'},
         cmdText(c) + ' : ' + (c.result === 'applied' ? 'appliquée' : 'refusée : ' + (c.reason || 'raison inconnue'))))));
   }

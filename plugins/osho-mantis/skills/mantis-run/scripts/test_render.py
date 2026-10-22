@@ -505,10 +505,10 @@ def test_etat_commande():
         html, _ = data(audit(tmp, [CRIT]))
         js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
         node_ok(tmp, "const inflight = new Set(), sent = new Map();" + "".join(
-            fn(js, n) for n in ("cmdKey", "cmdState", "blocked", "settleSent")) + """
+            fn(js, n) for n in ("sentText", "cmdKey", "cmdState", "blocked", "settleSent")) + """
 const assert = require('assert');
 const fp = JSON.stringify({action: 'false_positive', finding: 'f1'});
-let D = {commands: {pending: [], done: []}, waiting: null};
+let D = {commands: {pending: [], done: []}, waiting: null, listening: 'working'};
 inflight.add(fp); sent.set(fp, 'abc');
 assert.strictEqual(cmdState(fp).t, 'Envoyé, pris en compte à la fin du lot en cours');
 assert.ok(blocked({action: 'false_positive', finding: 'f1'}));
@@ -571,6 +571,68 @@ def test_fix_hooks():
         assert "innerHTML" not in html and "\u2014" not in html
 
 
+def test_texte_envoye():
+    """Texte d'envoi : « Fusion en cours… » pour merge_fix, le long texte seulement quand Claude travaille, sinon « Envoyé »."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        node_ok(tmp, fn(js, "sentText") + """
+const assert = require('assert');
+let D = {listening: 'working'};
+assert.strictEqual(sentText({action: 'pause'}), 'Envoyé, pris en compte à la fin du lot en cours');
+assert.strictEqual(sentText({action: 'pause'}, true), 'en attente, prise en compte à la fin du lot en cours');
+assert.strictEqual(sentText({action: 'merge_fix', finding: 'a'}), 'Fusion en cours…');
+assert.strictEqual(sentText({action: 'merge_fix', finding: 'a'}, true), 'fusion en cours…');
+for (const l of ['fixes', 'waiting']) {
+  D = {listening: l};
+  assert.strictEqual(sentText({action: 'fix', finding: 'a'}), 'Envoyé');
+  assert.strictEqual(sentText({action: 'fix', finding: 'a'}, true), 'en attente');
+  assert.strictEqual(sentText({action: 'merge_fix', finding: 'a'}), 'Fusion en cours…');
+}
+""")
+
+
+def test_carte_correction():
+    """card() : enveloppe .fc-card, jamais de bouton dans button.fc ; Avancement en direct : rangée de correction ;
+    Sévérité : puce sans rangée ; mode final : ni rangée ni bouton."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        label = re.search(r"const FIX_LABEL = \{.*?\};", js, re.S).group(0)
+        node_ok(tmp, label + fn(js, "fixView") + fn(js, "card") + """
+const assert = require('assert');
+function el(tag, attrs, ...kids) {
+  return {tag, cls: (attrs || {}).class || '', kids: kids.filter(k => k != null && k !== false),
+    append(...k) { this.kids.push(...k); }, addEventListener() {}, get children() { return this.kids; }};
+}
+const cmdButton = (cmd, cls, label) => [el('button', {class: cls}, label)];
+const sevPill = () => el('span', {class: 'sev'}), val = () => 'app.py:1', openPeek = () => {};
+const all = n => [n, ...(n.kids || []).filter(k => typeof k === 'object').flatMap(all)];
+const row = c => c.kids.find(k => k.cls.startsWith('fc-fix'));
+const chip = c => all(c).find(k => k.cls.startsWith('chip fx-'));
+const f = {_src: 'a', _bucket: 'HIGH', title: 't', _fix: {status: 'ready'}};
+let ui = {view: 'progress'}, D = {mode: 'live'};
+for (const view of ['progress', 'severity']) for (const mode of ['live', 'final']) {
+  ui = {view}; D = {mode};
+  const c = card(f), btn = c.kids[0];
+  assert.strictEqual(c.cls, 'fc-card');
+  assert.strictEqual(btn.tag, 'button'); assert.strictEqual(btn.cls, 'fc');
+  assert.ok(!all(btn).slice(1).some(k => k.tag === 'button'), 'pas de bouton dans button.fc');
+  if (view === 'progress' && mode === 'live') {
+    assert.ok(row(c) && all(row(c)).some(k => k.tag === 'button' && k.cls.includes('pri')), 'Merger dans la rangée');
+    assert.ok(!chip(c));
+  } else {
+    assert.ok(!row(c), 'pas de rangée : ' + view + ' ' + mode);
+    assert.strictEqual(chip(c).kids[0], 'Correctif prêt');
+  }
+}
+""")
+
+
 if __name__ == "__main__":
     test_trois_findings()
     test_niveau_banniere_et_reproduce()
@@ -599,4 +661,6 @@ if __name__ == "__main__":
     test_readme_corrections_hostile()
     test_fix_view()
     test_fix_hooks()
+    test_texte_envoye()
+    test_carte_correction()
     print("OK")
