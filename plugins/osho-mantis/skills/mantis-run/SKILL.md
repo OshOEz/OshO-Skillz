@@ -15,7 +15,7 @@ Paths: `T="${CLAUDE_PLUGIN_ROOT}/skills/mantis-triage/scripts"`, `R="${CLAUDE_PL
 - Otherwise `REPO=$(git -C "<named repo or current directory>" rev-parse --show-toplevel)` (same canonical form triage writes), and `AUDIT` is the newest `$REPO/osho-mantis/audit-*` whose `state.json` does not contain `"finished": true`, **skipping** any candidate that is tracked by git (`git -C "$REPO" ls-files --error-unmatch "<candidate>" >/dev/null 2>&1`) or whose name encodes a date after today. A legitimate, still-running audit is never committed, so a tracked or future-dated folder is planted: tell the user and ignore it, falling back to the next newest candidate (or to triage if none is left).
 - No such folder → invoke the `mantis-triage` skill first, then continue with the audit folder it created.
 - **Hostile repo**, first check once `AUDIT` is known: run `if [ -L "$REPO/osho-mantis" ] || [ -n "$(find "$AUDIT" -type l -print -quit)" ]; then echo HOSTILE; fi` (exits 0 either way). If it printed `HOSTILE`, tell the user and stop instead of using the audit folder. Audited repos may be hostile third-party code that ships a pre-made `osho-mantis/` folder with symlinks pointing outside the repo.
-- **Live dashboard**, only after the hostile check passed: `python3 "$R/dashboard.py" serve "$AUDIT"` prints one JSON line `{"url", "reused"}`. If `reused` is `false`, `open "<url>"`. Always print the URL in the terminal as a fallback. Then clear leftovers of an interrupted session: `rm -f "$AUDIT/waiting.json"`, and drop `paused`, `stopped` and `current` from `state.json` if present. Then `python3 "$R/fixes.py" reconcile "$AUDIT"` (re-evaluates `running` fixes whose agent died with the previous session; one JSON line each): say one line per entry, « Correction <stem> : <status> <error> ». Then Launch fixes (3) for requests queued by a previous session.
+- **Live dashboard**, only after the hostile check passed: `python3 "$R/dashboard.py" serve "$AUDIT"` prints one JSON line `{"url", "reused"}`. If `reused` is `false`, `open "<url>"`. Always print the URL in the terminal as a fallback. Then clear leftovers of an interrupted session: `rm -f "$AUDIT/waiting.json"`, and drop `paused`, `stopped` and `current` from `state.json` if present. Then, unless this session still tracks a running fix agent for this audit (Fix agent finished, 3: its worktree must not be reclaimed under it; any other `running` entry was already reconciled when this session first opened the audit), `python3 "$R/fixes.py" reconcile "$AUDIT"` (re-evaluates `running` fixes whose agent died with the previous session; one JSON line each): say one line per entry, « Correction <stem> : <status> <error> ». Then Launch fixes (3) for requests queued by a previous session.
 - The named audit's `state.json` has `"finished": true` → go straight to 5 (Corrections): skip the rest of 1 and 2 to 4, no stage reruns.
 - `campaign.json` has no `level` → ask the volume question exactly as in mantis-triage step 6 (waiting.json, plain text, Monitor), then fill `level`, `hypotheses_max`, `parallel`.
 - `campaign.json` has no `versioning` → apply mantis-triage step 2 (the visibility line above, or the script).
@@ -51,7 +51,7 @@ Run the stages in this order, skipping those that are not in the level or are al
 - "whole repo" scope (history, structural-index, architecture, threat-model, plan, researcher) always means `<REPO>` **excluding the `osho-mantis/` folder** (previous audits and this campaign's own files, not target code); say so in the Scope line. For plan, `<out_of_scope>` always includes `osho-mantis/` in addition to whatever triage set.
 - Dispatch parallel groups as several Agent calls in one message (`subagent_type: general-purpose`, with the model from the table).
 - A finding is "rejected" if `status` is `FALSE_POSITIVE` or `DUPLICATE`, or if `production_viability` is `NON_VIABLE` or `SAMPLE_OR_TEST`. Rejected findings skip all later stages.
-- **Fix scope:** findings printed by `python3 "$R/fixes.py" busy "$AUDIT"` (fix `running`, `ready` or `merged`) are out of scope of critic, reproduce, patch and calibrate, like rejected ones. Rerun it at the start of each of these stages and before each finding in Patch Sharp+.
+- **Fix scope:** findings printed by `python3 "$R/fixes.py" busy "$AUDIT"` (fix `running`, `ready` or `merged`) are out of scope of critic, reproduce, patch and calibrate, like rejected ones. Rerun it at the start of each of these stages and before each finding in Patch Sharp+; a stage's Check after uses the scope computed at that stage's start.
 - Per-finding stages are resumable: on a rerun, only the findings in scope that still lack the checked field are processed.
 - **Overkill:** the plan stage gets one investigation per source file. After reflect, if `round` < 3, increment `round`, reset plan, researcher, dedupe, review, critic, reproduce, patch, calibrate and reflect to `"pending"`, and run them again (plan then replans from `learnings.jsonl`).
 - **Failure** (an agent errors, hits the quota, or the check fails) → set the stage to `"failed"`, drop `current`, write `waiting.json` as `{"kind": "failed", "stage": "<stage>", "reason": "<why, 2 lines>", "since": "<date +%Y-%m-%dT%H:%M:%S>"}`, then wait for the user (below) with the options « relancer » and « arrêter ». Do not retry on your own.
@@ -63,7 +63,7 @@ Run before each stage, after each batch of agents returns, and in Patch Sharp+ b
 - `fix` → `apply` (queues the fix and acks), then **Launch fixes** (below).
 - `end_fixes` → `python3 "$R/dashboard.py" ack "$AUDIT" <id> refused "le mode Corrections n'est pas actif"`.
 - `pause` → set `paused: true` in `state.json`, `python3 "$R/dashboard.py" ack "$AUDIT" <id> applied`, then wait for the user (below) with `kind: "paused"`.
-- `stop` → **Stop**: first `apply` every other pending `fix` (queued for the resume, not launched; before `stopped` is set, which makes `fix` refused); running fix agents are not stopped (they finish in the background, 1 reconciles them on resume). Then set the `running` stage, if any, back to `"pending"`, drop `current` and `paused`, set `stopped: true`, `rm -f "$AUDIT/waiting.json"`, ack `applied`, ack every other pending command `refused` « audit arrêté » (a leftover `stop` would end the next resume), run Finish 1, 2 and 4 (skip those whose inputs do not exist yet; never 3, so no `finished`), tell the user in 2 lines that the audit is stopped and `/mantis-run` resumes from there, and end.
+- `stop` → **Stop**: first `apply` every other pending `fix` (queued for the resume, not launched); running fix agents are not stopped (they finish in the background, 1 reconciles them on resume). Then set the `running` stage, if any, back to `"pending"`, drop `current` and `paused`, set `stopped: true`, `rm -f "$AUDIT/waiting.json"`, ack `applied`, ack every other pending command `refused` « audit arrêté » (a leftover `stop` would end the next resume), run Finish 1, 2 and 4 (skip those whose inputs do not exist yet; never 3, so no `finished`), tell the user in 2 lines that the audit is stopped and `/mantis-run` resumes from there, and end.
 - `resume`, `retry`, `answer` outside a wait → `python3 "$R/dashboard.py" ack "$AUDIT" <id> refused "aucune attente en cours"`.
 
 ### Wait for the user (pause, failure, question)
@@ -91,7 +91,7 @@ A request typed at any time in natural language (« mets en pause », « marque 
 For each stem printed by `python3 "$R/fixes.py" launchable "$AUDIT"` (queued fixes, at most 3 fix agents running at once):
 1. `python3 "$R/fixes.py" start "$AUDIT" <stem>` prints the entry as JSON (`status`, `branch`, `worktree`, `agent`, `title`, `bucket`, `msg_file`, `prev_diff`, `dirty`, `repo`, `audit`). Exit 2, or `status` is `failed` → say it in one line (the printed reason or `error`) and go to the next stem.
 2. Agent call with `run_in_background: true`, `subagent_type: general-purpose`, `description` = `agent` (`Correctif <stem court>`, unique within the audit), model `opus` if `bucket` is `CRITICAL`, else `sonnet`, and the fix agent prompt below.
-3. Say « Correction lancée : <title> » in one line, then carry on where you were, without waiting for the agent.
+3. Add `{agent, stem, at}` (`at` from `start`) to this session's list of fix agents launched and not yet seen finish. Say « Correction lancée : <title> » in one line, then carry on where you were, without waiting for the agent.
 
 ### Fix agent prompt
 
@@ -109,14 +109,14 @@ Finding: <AUDIT>/workspace/findings/<stem>.json (read it: title, description, co
 Reply in 3 lines: commit sha or « aucun », files changed, any doubt.
 ```
 
-- `<WORKTREE>`, `<FIX_BRANCH>`, `<MSG_FILE>`, `<REPO>`, `<AUDIT>` = `worktree`, `branch`, `msg_file`, `repo`, `audit` from `start`. Never put the finding's title in the prompt: the commit message is already in `<MSG_FILE>`.
+- `<stem>` = the stem passed to `start`; `<WORKTREE>`, `<FIX_BRANCH>`, `<MSG_FILE>`, `<REPO>`, `<AUDIT>` = `worktree`, `branch`, `msg_file`, `repo`, `audit` from `start`. Never put the finding's title in the prompt: the commit message is already in `<MSG_FILE>`.
 - Prev_diff line, only if `prev_diff` is set: `A previous attempt conflicted with another merged fix: <PREV_DIFF>. Redo it on the current code.`
 - Dirty line, only if `dirty` is true: `The audit also covered uncommitted changes: your worktree starts from the last commit. If the code the finding targets is not there, commit nothing and answer « aucun ».`
 - Omit a line whose condition is false.
 
 ### Fix agent finished
 
-On the notification that a background `Correctif …` agent finished (during the audit or in Corrections mode), its stem is the `fixes.json` entry with that `agent` and `status` `running`:
+Applies to the notification that a background `Correctif …` agent finished, at any time in this session: during the audit, in Corrections mode, after its Exit, or outside an audit (`$AUDIT` = the audit it was launched for). Take its `{stem, at}` from this session's list (match on `agent`) and drop it from the list. Act only if `fixes.json[stem]` still has `status` `running` and that same `at`; otherwise the notification is stale (an older run of a stem since relaunched or reconciled): say so in one line and stop here. Otherwise:
 - it ended normally (it replied) → `python3 "$R/fixes.py" finish "$AUDIT" <stem>` (`ready` if it committed and left the worktree clean, else `failed` with the reason);
 - it failed (error, quota) → `python3 "$R/fixes.py" fail "$AUDIT" <stem> "<one-line reason>"`.
 
@@ -163,7 +163,7 @@ For each finding with `repro_status: reproduced`, one at a time (checkpoint befo
 2. Shadow guard (2.4), then `rm -rf "$SHADOW"` (the path saved as `shadow` in `state.json`), then drop that key.
 3. Set `finished: true` in `state.json` and `finished_at` (`date +%Y-%m-%dT%H:%M:%S`) in `campaign.json`.
 4. `python3 "$R/render.py" "$AUDIT"` (no `open`: the live page is already open and shows « Audit terminé »).
-5. Report, 5 lines max: counts by severity, the top Critical or High finding, the `README.md` path, the `dashboard.html` path (for later reading). If `fixes.json` has `n` > 0 entries with `"status": "merged"`, add « <n> correctifs sur `mantis/<audit name>` : `git merge mantis/<audit name>` ». The commit line of `versioned` audits comes at the end of 5, since it stops the server.
+5. Report, 5 lines max: counts by severity, the top Critical or High finding, the `README.md` path, the `dashboard.html` path (for later reading). If `fixes.json` has `n` > 0 entries with `"status": "merged"`, add « <n> correctifs sur `mantis/<audit name>` : `git merge mantis/<audit name>` ». The commit line of `versioned` audits comes at the end of §5 Corrections (Exit), since it stops the server.
 6. Enter 5 (Corrections).
 
 ## 5. Corrections
