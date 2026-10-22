@@ -4,7 +4,7 @@
 
 | Component | Type | What it does |
 |---|---|---|
-| `repo-init` | Skill | After `git init`/`git clone` or on request: builds the code-review-graph and installs its pre-commit hook. Script: `skills/repo-init/scripts/repo-init.sh [path]` |
+| `repo-init` | Skill | After `git init`/`git clone` or on request: builds the code-review-graph, installs its pre-commit hook and the relay to the versioned `.githooks/pre-push`, then audits and aligns the repo on Nobori's Git & CI process (plan, then approval). Script: `skills/repo-init/scripts/repo-init.sh [path]` |
 | `donnees-fictives` | Skill | Builds fully invented test data from confidential client documents, checks nothing leaks, then purges the copies. Tool: `uv run skills/donnees-fictives/scripts/donnees_fictives.py`, self-test: `python3 skills/donnees-fictives/scripts/test_donnees_fictives.py` |
 | `audit-loop` | Skill | Audit → fix loop on a PR until it is production-ready: the auditor opens GitHub issues for major problems only, a dev fixes them, the auditor verifies and closes; 3 rounds max, then proposes the merge |
 | `tache` | Skill | `/tache <id>`: links a Claude Code session to a card of Horizon's Kanban. Reads the card and its previous session logs, moves it to « En cours », then posts a session log (Fait / Décisions / Reste à faire / Branche / PR) with `kanban_log`. Needs the `horizon-kanban` MCP server (token from Horizon → Kanban → Accès Claude Code, reachable over Tailscale) |
