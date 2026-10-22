@@ -24,9 +24,11 @@ LOW = {"id": "l1", "title": "En-tête de sécurité manquant", "severity": "LOW"
 REJ = {"id": "r1", "title": "Faux SQLi", "severity": "HIGH", "status": "FALSE_POSITIVE", "reasoning": "Requête paramétrée."}
 
 
-def audit(tmp, findings, broken=False):
+def audit(tmp, findings, broken=False, fixes=None):
     d = Path(tmp)
     (d / "workspace" / "findings").mkdir(parents=True)
+    if fixes is not None:
+        (d / "fixes.json").write_text(json.dumps(fixes))
     (d / "campaign.json").write_text(json.dumps({"repo": "/x/demo", "level": "Light", "mantis_commit": "47099ed",
                                                  "started_at": "2026-10-01T14:32:00", "finished_at": "2026-10-01T15:47:00"}))
     (d / "state.json").write_text(json.dumps({"stages": {"threat-model": "done", "reproduce": "skipped"},
@@ -355,6 +357,32 @@ def test_reduced_motion():
         assert "prefers-reduced-motion" in html
 
 
+def test_readme_corrections_fusionnees():
+    fixes = {"f0": {"status": "merged", "commit": "a" * 40, "merge_commit": "b" * 40}}
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp, [CRIT, LOW], fixes=fixes)
+        readme = (d / "README.md").read_text()
+        assert "## Corrections fusionnées" in readme
+        assert "1 correctif sur la branche" in readme and "git merge mantis/" in readme
+        assert "(`bbbbbbb`)" in readme
+        assert readme.index("## Corrections fusionnées") < readme.index("## Limites")
+
+
+def test_readme_sans_correction():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp, [CRIT, LOW])
+        assert "Corrections fusionnées" not in (d / "README.md").read_text()
+
+
+def test_readme_corrections_hostile():
+    hostile = dict(LOW, id="h1", title="<img src=x onerror=alert(1)>")
+    fixes = {"f0": {"status": "merged", "commit": "a" * 40, "merge_commit": "b" * 40}}
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp, [hostile], fixes=fixes)
+        readme = (d / "README.md").read_text()
+        assert "&lt;img" in readme and "<img src=x" not in readme
+
+
 def test_aucun_finding():
     with tempfile.TemporaryDirectory() as tmp:
         d = audit(tmp, [])
@@ -530,4 +558,7 @@ if __name__ == "__main__":
     test_cmd_text()
     test_etat_commande()
     test_carte_option()
+    test_readme_corrections_fusionnees()
+    test_readme_sans_correction()
+    test_readme_corrections_hostile()
     print("OK")
