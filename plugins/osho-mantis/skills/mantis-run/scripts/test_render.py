@@ -231,10 +231,11 @@ def test_frise_etapes():
         node_ok(tmp, prog + fn(js, "trail") + """
 const assert = require('assert');
 function el(tag, attrs, ...kids) { return {cls: (attrs || {}).class || '', kids, append(...k) { this.kids.push(...k); }}; }
-const D = {progress_columns: ['found', 'reviewed', 'evaluated', 'reproduced', 'fixed']};
-const bar = trail({reasoning: 'x', patch_status: 'MITIGATION_PROPOSED', _progress: 'fixed', _bucket: 'CRITICAL'});
-const got = Object.fromEntries(bar.kids.map(k => [k.kids[0], k.cls === 'y']));
-assert.deepStrictEqual(got, {'Trouvé': true, 'Revu': true, 'Évalué': false, 'Reproduit': false, 'Corrigé': true});
+const D = {progress_columns: ['found', 'reviewed', 'evaluated', 'reproduced', 'proposed', 'fixed']};
+const steps = f => Object.fromEntries(trail(f).kids.map(k => [k.kids[0], k.cls === 'y']));
+assert.deepStrictEqual(steps({reasoning: 'x', patch_status: 'MITIGATION_PROPOSED', _progress: 'proposed', _bucket: 'CRITICAL'}),
+  {'Trouvé': true, 'Revu': true, 'Évalué': false, 'Reproduit': false, 'Correctif proposé': true, 'Corrigé': false});
+assert.strictEqual(steps({patch_status: 'MITIGATION_PROPOSED', _fix: {status: 'merged'}, _progress: 'fixed', _bucket: 'CRITICAL'})['Corrigé'], true);
 """)
 
 
@@ -535,6 +536,41 @@ settleSent(); assert.ok(!sent.has(a));
 """)
 
 
+def test_fix_view():
+    """fixView() : état de correction d'une carte, en texte et en bouton (Corriger, Merger, Recorriger)."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        label = re.search(r"const FIX_LABEL = \{.*?\};", js, re.S).group(0)
+        node_ok(tmp, label + fn(js, "fixView") + """
+const assert = require('assert');
+const v = (st, extra) => fixView({_bucket: 'HIGH', _fix: st ? Object.assign({status: st}, extra) : null}, 'live');
+assert.strictEqual(fixView({_bucket: 'HIGH'}, 'final'), null);
+assert.strictEqual(fixView({_bucket: 'REJECTED'}, 'live'), null);
+assert.strictEqual(v('merged'), null);
+assert.deepStrictEqual([v(null).action, v(null).label], ['fix', 'Corriger']);
+assert.deepStrictEqual([v('failed', {error: 'tests rouges'}).text, v('failed').action, v('failed').label], ['Échec : tests rouges', 'fix', 'Corriger']);
+assert.strictEqual(v('failed').text, 'Échec : raison inconnue');
+assert.deepStrictEqual([v('queued').text, v('queued').action], ['En file…', undefined]);
+assert.deepStrictEqual([v('running').text, v('running').cls, v('running').action], ['Correction en cours', 'loading', undefined]);
+assert.deepStrictEqual([v('ready').action, v('ready').label, v('ready').cls], ['merge_fix', 'Merger', 'pri']);
+assert.deepStrictEqual([v('conflict').text, v('conflict').action, v('conflict').label], ['Conflit avec un autre correctif', 'fix', 'Recorriger']);
+assert.strictEqual(FIX_LABEL.merged, 'Corrigée');
+""")
+
+
+def test_fix_hooks():
+    """Bannière de branche, mode Corrections et grisage de Merger présents ; ni innerHTML ni tiret cadratin."""
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        for s in ('id="fix-branch"', 'id="copy-merge"', "Correctif proposé", "Claude attend tes demandes de correction",
+                  "cmd.action !== 'merge_fix'"):
+            assert s in html, s
+        assert "innerHTML" not in html and "\u2014" not in html
+
+
 if __name__ == "__main__":
     test_trois_findings()
     test_niveau_banniere_et_reproduce()
@@ -561,4 +597,6 @@ if __name__ == "__main__":
     test_readme_corrections_fusionnees()
     test_readme_sans_correction()
     test_readme_corrections_hostile()
+    test_fix_view()
+    test_fix_hooks()
     print("OK")

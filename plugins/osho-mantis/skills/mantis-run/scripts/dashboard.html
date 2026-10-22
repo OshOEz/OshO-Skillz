@@ -64,6 +64,8 @@ button{font:inherit;color:inherit}
 .kpi span{font-size:12px;color:var(--muted)}
 .kpi.hot{border-left-color:var(--high)}
 .kpi.na b{color:var(--faint)}
+#fix-branch{display:flex;align-items:center;gap:8px;margin-top:10px}
+#fix-branch[hidden]{display:none}
 
 /* Corps */
 main{padding:14px 20px 40px;display:grid;gap:12px}
@@ -183,6 +185,9 @@ main{padding:14px 20px 40px;display:grid;gap:12px}
 .btn:hover{border-color:var(--faint)}
 .btn.pri{background:var(--primary);color:var(--on-primary);border-color:var(--primary);font-weight:600}
 .btn:disabled,.btn[aria-disabled=true]{opacity:.45;cursor:not-allowed}
+.btn.sm{height:24px;padding:0 9px;font-size:12px;border-radius:5px}
+.loading::before{content:"";display:inline-block;width:10px;height:10px;margin-right:6px;vertical-align:-1px;border-radius:50%;border:1.5px solid currentColor;border-right-color:transparent;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 #filter{height:30px;width:220px;padding:0 10px;border-radius:6px;border:1px solid var(--input);background:var(--bg);color:var(--fg);font:13px var(--sans)}
 #filter::placeholder{color:var(--faint)}
 .seg{display:inline-flex;padding:2px;border-radius:6px;border:1px solid var(--input);background:var(--bg)}
@@ -202,7 +207,16 @@ details.col summary{list-style:none;cursor:pointer;border-radius:6px}
 details.col summary::-webkit-details-marker{display:none}
 details.col summary::before{content:"▸";font-size:10px;color:var(--faint);transition:transform .15s var(--ease)}
 details.col[open] summary::before{transform:rotate(90deg)}
-.fc{display:block;width:100%;text-align:left;background:var(--elev);border:1px solid var(--border);border-radius:6px;padding:9px 10px;margin-bottom:8px;font-size:13px;cursor:pointer;transition:border-color .15s}
+.fc-card{margin-bottom:8px}
+.fc{display:block;width:100%;text-align:left;background:var(--elev);border:1px solid var(--border);border-radius:6px;padding:9px 10px;font-size:13px;cursor:pointer;transition:border-color .15s}
+.fc-card:has(.fc-fix) .fc{border-radius:6px 6px 0 0}
+.fc-fix{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:6px 10px;background:var(--elev);border:1px solid var(--border);border-top:1px dashed var(--border);border-radius:0 0 6px 6px;font-size:12px;color:var(--muted)}
+.fc-fix>span:first-child{flex:1;min-width:0;overflow-wrap:anywhere}
+.fc-fix.fx-failed>span:first-child{color:var(--bad)}
+.fc-fix.fx-conflict>span:first-child{color:color-mix(in srgb,var(--warn) 65%,var(--fg))}
+.fc-fix.fx-running>span:first-child{color:var(--primary)}
+.fc-fix .btn:first-child{margin-left:auto}
+.fix-warn{grid-column:1/-1;margin:0;padding:7px 12px;border:1px solid var(--border);border-left:2px solid var(--warn);border-radius:6px;background:var(--elev);font-size:12px;color:var(--muted)}
 .fc:hover{border-color:var(--input)}
 .fc .ttl{display:block;color:var(--fg);font-weight:600;line-height:1.3;margin-top:6px;overflow-wrap:anywhere}
 .fc .loc{display:block;color:var(--faint);font:11px var(--mono);margin-top:3px;overflow-wrap:anywhere}
@@ -214,6 +228,8 @@ details.col[open] summary::before{transform:rotate(90deg)}
 .chips{display:flex;gap:4px;margin-top:7px;flex-wrap:wrap}
 .chip{font-size:11px;color:var(--muted);background:var(--muted-bg);border-radius:99px;padding:0 7px}
 .chip.verified::before{content:"✓ ";color:var(--ok)}
+.chip.fx-merged{color:color-mix(in oklch,var(--ok) 70%,var(--fg))} .chip.fx-failed{color:var(--bad)} .chip.fx-conflict{color:color-mix(in srgb,var(--warn) 65%,var(--fg))}
+.chip.fx-ready,.chip.fx-running{color:var(--primary)}
 
 /* Fiche façon Notion « peek » */
 #scrim{position:fixed;inset:0;z-index:10;background:var(--scrim);backdrop-filter:blur(2px);display:flex;align-items:flex-start;justify-content:center;padding:36px 20px;animation:fade .18s var(--ease)}
@@ -281,6 +297,7 @@ code{font:12px var(--mono);background:var(--muted-bg);border-radius:4px;padding:
   <h1 id="banner-title">Audit</h1>
   <p id="banner-sub"></p>
   <p id="level-note"></p>
+  <p id="fix-branch" hidden><span></span> <button id="copy-merge" class="btn sm" type="button">Copier git merge</button></p>
   <div id="kpis">
     <div class="kpi"><b>0</b><span>findings</span></div>
     <div class="kpi"><b>0</b><span>critiques ou hautes</span></div>
@@ -337,7 +354,9 @@ const PRODUCER = {production_viability: 'critic', repro_status: 'reproduce', run
   patch_status: 'patch', patch_diff: 'patch', reattack_status: 'patch', mantis_risk_score: 'calibrate', executive_summary: 'calibrate'};
 const SEV = {CRITICAL: ['Critical', 'c'], HIGH: ['High', 'h'], MEDIUM: ['Medium', 'm'], LOW: ['Low', 'l'], REJECTED: ['Écartés', 'x']};
 const PROG = [['found', 'Trouvées', 'Trouvé'], ['reviewed', 'Revues', 'Revu'], ['evaluated', 'Évaluées', 'Évalué'],
-  ['reproduced', 'Reproduites', 'Reproduit'], ['fixed', 'Corrigées', 'Corrigé']];
+  ['reproduced', 'Reproduites', 'Reproduit'], ['proposed', 'Correctif proposé', 'Correctif proposé'], ['fixed', 'Corrigées', 'Corrigé']];
+const FIX_LABEL = {queued: 'En file…', running: 'Correction en cours', ready: 'Correctif prêt', failed: 'Échec de la correction',
+  conflict: 'Conflit avec un autre correctif', merged: 'Corrigée'};
 const PROPS = [['Statut', 'status'], ['Emplacement', 'code_paths'], ['CWE', 'cwe'], ['Exploitabilité', 'production_viability'],
   ['Reproduction', 'repro_status'], ['Patch', 'patch_status'], ['Re-attaque', 'reattack_status'], ['Score de risque', 'mantis_risk_score']];
 const MONO = new Set(['code_paths', 'cwe', 'mantis_risk_score', 'repro_file_path']);
@@ -348,7 +367,7 @@ const ICON = {
 };
 const $ = id => document.getElementById(id);
 // état de l'interface, conservé d'un render(D) à l'autre
-const ui = {view: load('mantis.kbView') === 'progress' ? 'progress' : 'severity', peek: null, full: false, back: null,
+const ui = {view: (new URLSearchParams(location.search).get('kb') ?? load('mantis.kbView')) === 'progress' ? 'progress' : 'severity', peek: null, full: false, back: null,
   stage: null, stageView: stageView(new URLSearchParams(location.search).get('view') ?? load('mantis.stageView')), activityAll: false};
 let lastMsg = Date.now(); // dernier message du serveur (chargement, snapshot ou ping)
 const inflight = new Set(), cmdErr = new Map(); // commandes pas encore vues dans un snapshot, erreurs 400/409 par commande
@@ -441,6 +460,11 @@ function renderBanner() {
   }
   $('banner-sub').textContent = parts.join(', ');
   $('level-note').textContent = m.level_banner || '';
+  const n = m.fixes_merged || 0;
+  $('fix-branch').hidden = !(n > 0 && m.audit_branch);
+  if (n > 0 && m.audit_branch) {
+    $('fix-branch').firstElementChild.replaceChildren(n + (n > 1 ? ' correctifs sur ' : ' correctif sur '), el('code', {}, String(m.audit_branch)));
+  }
   const rej = b.REJECTED || 0, na = !m.reproduce_done && m.level === 'Light';
   const kpis = [
     [s.total - rej, rej ? rej + (rej > 1 ? ' findings écartés non comptés' : ' finding écarté non compté') : ''],
@@ -590,7 +614,7 @@ function openStage(key) {
 function cmdButton(cmd, cls, ...kids) {
   // bouton d'action : grisé sans session, bloqué tant que la commande attend, état ou erreur affiché à côté
   const k = JSON.stringify(cmd), b = el('button', {class: cls, type: 'button', 'data-cmd': k}, ...kids);
-  if (D.listening === 'none') { b.disabled = true; b.setAttribute('aria-describedby', 'sess'); }
+  if (D.listening === 'none' && cmd.action !== 'merge_fix') { b.disabled = true; b.setAttribute('aria-describedby', 'sess'); }
   if (blocked(cmd)) b.setAttribute('aria-disabled', 'true'); // pas disabled : le focus reste sur le bouton
   b.addEventListener('click', () => sendCommand(cmd));
   const err = cmdErr.get(k), st = cmdState(k);
@@ -650,7 +674,8 @@ function sendCommand(cmd) {
     });
 }
 const ACT_LABEL = {pause: 'Pause', resume: 'Reprise', stop: 'Arrêt', retry: 'Relance', answer: 'Réponse',
-  false_positive: 'Faux positif', prioritize_repro: 'Priorité de reproduction'};
+  false_positive: 'Faux positif', prioritize_repro: 'Priorité de reproduction', fix: 'Correction', merge_fix: 'Fusion',
+  end_fixes: 'Fin des corrections'};
 function cmdText(c) {
   // cible nommée : « Relance de Plan », « Faux positif <titre> » ; inconnue, son identifiant brut
   const s = c.stage && (D.stages || []).find(x => x.key === c.stage), f = c.finding && (D.findings || []).find(x => x._src === c.finding);
@@ -662,12 +687,14 @@ function renderActions() {
   box.closest('.tile').hidden = D.mode === 'final';
   if (D.mode === 'final') return;
   const failed = (D.stages || []).find(s => s.status === 'failed');
-  const kids = [el('p', {class: 'sess', id: 'sess'},
-    {working: 'Claude travaille', waiting: 'Claude attend ta réponse'}[D.listening] || 'Aucune session active : relance /mantis-run'),
+  const fixing = D.listening === 'fixes';
+  const kids = [el('p', {class: 'sess', id: 'sess'}, {working: 'Claude travaille', waiting: 'Claude attend ta réponse',
+    fixes: 'Claude attend tes demandes de correction'}[D.listening] || 'Aucune session active : relance /mantis-run'),
     D.stale ? el('p', {class: 'stale'}, 'aucune activité depuis 20 min') : null,
-    ...cmdButton({action: m.paused ? 'resume' : 'pause'}, 'btn pri', m.paused ? 'Reprendre' : 'Mettre en pause'),
-    ...(failed ? cmdButton({action: 'retry', stage: failed.key}, 'btn', "Relancer l'étape") : []),
-    ...cmdButton({action: 'stop'}, 'btn', 'Arrêter')];
+    ...(fixing ? cmdButton({action: 'end_fixes'}, 'btn pri', 'Terminer') : [
+      ...cmdButton({action: m.paused ? 'resume' : 'pause'}, 'btn pri', m.paused ? 'Reprendre' : 'Mettre en pause'),
+      ...(failed ? cmdButton({action: 'retry', stage: failed.key}, 'btn', "Relancer l'étape") : []),
+      ...cmdButton({action: 'stop'}, 'btn', 'Arrêter')])];
   const pend = (D.commands && D.commands.pending) || [], done = ((D.commands && D.commands.done) || []).slice(-3).reverse();
   if (pend.length || done.length) {
     kids.push(el('ul', {class: 'cmds', 'aria-label': 'Commandes envoyées'},
@@ -755,16 +782,31 @@ function matches(f, q) {
   const hay = [f.title, paths, f.cwe].map(x => x == null ? '' : String(x)).join(' ').toLowerCase();
   return hay.includes(q);
 }
+function fixView(f, mode) {
+  // état de correction d'une carte : texte, bouton (action, libellé), classe ; null si rien à montrer
+  const st = f._fix && f._fix.status;
+  if (mode === 'final' || f._bucket === 'REJECTED' || st === 'merged') return null;
+  if (!st) return {action: 'fix', label: 'Corriger'};
+  return {failed: {text: 'Échec : ' + (f._fix.error || 'raison inconnue'), action: 'fix', label: 'Corriger'},
+    queued: {text: 'En file…'}, running: {text: 'Correction en cours', cls: 'loading'},
+    ready: {action: 'merge_fix', label: 'Merger', cls: 'pri'},
+    conflict: {text: 'Conflit avec un autre correctif', action: 'fix', label: 'Recorriger'}}[st] || null;
+}
 function card(f) {
-  const chips = el('span', {class: 'chips'});
+  const chips = el('span', {class: 'chips'}), st = f._fix && f._fix.status;
   if (f.status === 'VALID') chips.append(el('span', {class: 'chip'}, 'Confirmé'));
   if (f.repro_status === 'reproduced') chips.append(el('span', {class: 'chip'}, 'Reproduit'));
   if (f.patch_status === 'VERIFIED_SECURE') chips.append(el('span', {class: 'chip verified'}, 'Patch vérifié'));
+  const live = ui.view === 'progress' && D.mode !== 'final';
+  if (!live && FIX_LABEL[st]) chips.append(el('span', {class: 'chip fx-' + st}, FIX_LABEL[st]));
   const b = el('button', {class: 'fc', type: 'button', 'data-src': f._src}, sevPill(f._bucket),
     el('span', {class: 'ttl'}, String(f.title)), el('span', {class: 'loc'}, val(f, 'code_paths')),
     chips.children.length ? chips : null);
   b.addEventListener('click', () => openPeek(f));
-  return b;
+  const v = live && fixView(f, D.mode);
+  const row = v ? el('div', {class: 'fc-fix' + (st ? ' fx-' + st : '')}, v.text ? el('span', v.cls ? {class: v.cls} : {}, v.text) : null,
+    ...(v.action ? cmdButton({action: v.action, finding: f._src}, 'btn sm ' + (v.cls || ''), v.label) : [])) : null;
+  return el('div', {class: 'fc-card', 'data-src': f._src}, b, row);
 }
 function column(box, head, items) {
   box.append(head);
@@ -785,8 +827,8 @@ function progressColumn(f, keys) {
 let seenFiles = null;
 function renderBoard(animate) {
   const board = $('board'), q = $('filter').value;
-  const focused = board.contains(document.activeElement) ? document.activeElement.dataset.src : null;
-  const before = new Map([...board.querySelectorAll('.fc')].map(c => [c.dataset.src, c.getBoundingClientRect()]));
+  const a = document.activeElement, focused = board.contains(a) ? {src: (a.closest('[data-src]') || a).dataset.src, cmd: a.dataset.cmd} : null;
+  const before = new Map([...board.querySelectorAll('.fc-card')].map(c => [c.dataset.src, c.getBoundingClientRect()]));
   const prevRej = board.querySelector('details.col');
   const shown = D.findings.filter(f => matches(f, q)), kept = shown.filter(f => f._bucket !== 'REJECTED');
   let cols;
@@ -800,17 +842,23 @@ function renderBoard(animate) {
   const rejCol = column(el('details', {class: 'col'}), colHead('summary', 'Écartés', 'x', rej.length), rej);
   rejCol.open = !!(prevRej && prevRej.open);
   board.style.setProperty('--n', cols.length);
-  board.replaceChildren(...cols.map(([label, dot, items]) => column(el('div', {class: 'col'}), colHead('div', label, dot, items.length), items)), rejCol);
+  const warn = ui.view === 'progress' && D.mode === 'live' && D.meta.dirty_before
+    ? el('p', {class: 'fix-warn'}, "L'audit portait aussi sur des modifications non commitées : le correctif part du dernier commit.") : null;
+  board.replaceChildren(...(warn ? [warn] : []), ...cols.map(([label, dot, items]) => column(el('div', {class: 'col'}), colHead('div', label, dot, items.length), items)), rejCol);
   const toggle = $('kb-view-toggle');
   toggle.dataset.view = ui.view;
   for (const b of toggle.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.v === ui.view));
-  if (focused) { const c = cardFor(focused); if (c) c.focus({preventScroll: true}); }
+  if (focused) {
+    // bouton de correction disparu (Corriger devenu « En file… ») : le focus revient sur la carte
+    const c = (focused.cmd && [...board.querySelectorAll('[data-cmd]')].find(x => x.dataset.cmd === focused.cmd)) || cardFor(focused.src);
+    if (c) c.focus({preventScroll: true});
+  }
   if (animate && seenFiles && !matchMedia('(prefers-reduced-motion: reduce)').matches) flip(before);
   seenFiles = new Set(D.findings.map(f => f._src));
 }
 function flip(before) {
   // carte qui change de place : glisse depuis l'ancienne position (FLIP) ; finding nouveau : fondu
-  for (const c of $('board').querySelectorAll('.fc')) {
+  for (const c of $('board').querySelectorAll('.fc-card')) {
     const a = before.get(c.dataset.src), b = c.getBoundingClientRect();
     if (!seenFiles.has(c.dataset.src)) c.animate([{opacity: 0}, {opacity: 1}], {duration: 220, easing: 'ease-out'});
     else if (a && a.width && b.width && (a.left !== b.left || a.top !== b.top)) {
@@ -820,7 +868,7 @@ function flip(before) {
   }
 }
 function cardFor(src) {
-  return [...$('board').querySelectorAll('.fc')].find(b => b.dataset.src === src) || null;
+  return [...$('board').querySelectorAll('button.fc')].find(b => b.dataset.src === src) || null;
 }
 
 function leadOf(desc) {
@@ -851,7 +899,7 @@ function props(f, rows) {
 function trail(f) {
   const keys = D.progress_columns || [];
   const reached = {found: true, reviewed: !!(f.reasoning || f.critic_reasoning), evaluated: !!f.production_viability,
-    reproduced: f.repro_status === 'reproduced', fixed: ['VERIFIED_SECURE', 'MITIGATION_PROPOSED'].includes(f.patch_status)};
+    reproduced: f.repro_status === 'reproduced', proposed: !!f.patch_status, fixed: !!(f._fix && f._fix.status === 'merged')};
   const bar = el('div', {class: 'stagebar', role: 'list', 'aria-label': 'Étapes traversées'});
   PROG.forEach(([k, , one]) => {
     if (keys.includes(k)) bar.append(el('span', {class: reached[k] || f._progress === k ? 'y' : '', role: 'listitem'}, one));
@@ -1044,6 +1092,11 @@ $('kb-view-toggle').addEventListener('click', e => {
   renderBoard();
 });
 $('filter').addEventListener('input', () => renderBoard());
+$('copy-merge').addEventListener('click', () => {
+  const cp = $('copy-merge'), done = t => { cp.textContent = t; setTimeout(() => { cp.textContent = 'Copier git merge'; }, 1500); };
+  if (!navigator.clipboard) return done('Copie impossible');
+  navigator.clipboard.writeText('git merge ' + D.meta.audit_branch).then(() => done('Copié'), () => done('Copie impossible'));
+});
 $('pipeline').querySelector('.pv-rail').addEventListener('click', e => {
   const b = e.target.closest('button');
   if (!b || b.dataset.v === ui.stageView) return;
