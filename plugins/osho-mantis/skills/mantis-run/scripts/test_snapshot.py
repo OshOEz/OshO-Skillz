@@ -108,6 +108,7 @@ def test_fix_queued_derive():
 def test_listening_fixes():
     c = {"repo": "/x/demo", "level": "Light"}
     assert snap(c, state={"finished": True}, waiting={"kind": "fixes"})["listening"] == "fixes"
+    assert snap(c, state={"stages": {"plan": "running"}}, waiting={"kind": "fixes"})["listening"] == "fixes"
     assert snap(c, state={"finished": True})["listening"] == "none"
 
 
@@ -119,6 +120,18 @@ def test_meta_branche():
         assert m["audit_branch"] == "mantis/" + d.name and m["fixes_merged"] == 1 and m["dirty_before"] is True
         (d / "state.json").write_text("{}")
         assert build_snapshot(d)["meta"]["dirty_before"] is False
+
+
+def test_fixes_tronque_ignore():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp, {"repo": "/x/demo", "level": "Light"}, state={},
+                  findings=[("a", {"id": "a", "title": "A", "patch_status": "MITIGATION_PROPOSED"})],
+                  fixes={"a": {"status": "merged"}})
+        prev = build_snapshot(d)
+        assert prev["findings"][0]["_progress"] == "fixed"
+        (d / "fixes.json").write_text('{"a": {"sta')
+        cur = read_snapshot_safe(d, prev)
+        assert cur is prev and diff_events(prev, cur, "t") == []
 
 
 def test_diff_fix_fusionne():
@@ -338,6 +351,7 @@ if __name__ == "__main__":
     test_fix_queued_derive()
     test_listening_fixes()
     test_meta_branche()
+    test_fixes_tronque_ignore()
     test_diff_fix_fusionne()
     test_overkill_tour_2()
     test_src_et_file()

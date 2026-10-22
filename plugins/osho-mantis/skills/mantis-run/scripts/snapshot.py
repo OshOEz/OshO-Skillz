@@ -108,9 +108,10 @@ def build_snapshot(audit_dir, mode="live", now=None, loaded=None):
     notes = state.get("notes") if isinstance(state.get("notes"), list) else []
     findings, _ = render.load_findings(audit_dir / "workspace", loaded.get("carry"))
     assign_files(findings)
-    fix_entries = fixes.load(audit_dir)
+    fix_entries = loaded["fixes"] if isinstance(loaded.get("fixes"), dict) else fixes.load(audit_dir)
+    pending_cmds = commands.pending(audit_dir)
     pending_fix = {}
-    for c in commands.pending(audit_dir):
+    for c in pending_cmds:
         if c.get("action") == "fix":
             pending_fix.setdefault(c.get("finding"), c.get("id"))
     for f in findings:
@@ -148,7 +149,7 @@ def build_snapshot(audit_dir, mode="live", now=None, loaded=None):
         listening = "waiting"
     else:
         listening = "working" if any(s["status"] == "running" for s in stages) else "none"
-    watched = [audit_dir / n for n in ("campaign.json", "state.json", "waiting.json", "activity.jsonl")]
+    watched = [audit_dir / n for n in ("campaign.json", "state.json", "waiting.json", "activity.jsonl", "fixes.json")]
     watched += [audit_dir / "workspace" / "findings"] + list((audit_dir / "workspace" / "findings").glob("*.json"))
     mtimes = [p.stat().st_mtime for p in watched if p.exists()]
     age = int(now - max(mtimes)) if mtimes else 0
@@ -173,7 +174,7 @@ def build_snapshot(audit_dir, mode="live", now=None, loaded=None):
                          for f in sorted(findings, key=render.sort_key)],
             "progress_columns": (["found", "reviewed", "proposed", "fixed"] if level == "Light"
                                  else ["found", "reviewed", "evaluated", "reproduced", "proposed", "fixed"]),
-            "activity": activity[-200:], "commands": {"pending": commands.pending(audit_dir)[-50:],
+            "activity": activity[-200:], "commands": {"pending": pending_cmds[-50:],
                          "done": commands.done(audit_dir)[-50:]}}
 
 
@@ -266,7 +267,7 @@ def read_snapshot_safe(audit_dir, prev, mode="live"):
     """Snapshot courant, ou prev inchangé si un JSON surveillé est en cours d'écriture (illisible).
     Chaque fichier est lu une seule fois : celui qu'on valide est celui dont on construit le snapshot."""
     loaded = {"carry": {f["_src"]: f for f in prev["findings"]} if prev else {}}
-    for key, default in (("state", {}), ("campaign", {}), ("waiting", None)):
+    for key, default in (("state", {}), ("campaign", {}), ("waiting", None), ("fixes", {})):
         p = Path(audit_dir) / f"{key}.json"
         if not p.exists():
             loaded[key] = default
