@@ -7,6 +7,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+import commands
 import render
 
 _ALL = ["history", "structural-index", "architecture", "threat-model", "plan", "researcher", "dedupe",
@@ -142,7 +143,8 @@ def build_snapshot(audit_dir, mode="live", now=None, loaded=None):
                          for f in sorted(findings, key=render.sort_key)],
             "progress_columns": (["found", "reviewed", "fixed"] if level == "Light"
                                  else ["found", "reviewed", "evaluated", "reproduced", "fixed"]),
-            "activity": activity[-200:], "commands": {"pending": [], "done": []}}
+            "activity": activity[-200:], "commands": {"pending": commands.pending(audit_dir)[-50:],
+                         "done": commands.done(audit_dir)[-50:]}}
 
 
 COLUMN_LABELS = {"found": "Trouvées", "reviewed": "Revues", "evaluated": "Évaluées", "reproduced": "Reproduites",
