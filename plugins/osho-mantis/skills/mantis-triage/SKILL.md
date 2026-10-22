@@ -7,7 +7,7 @@ description: Quick, low-cost security triage of a git repository before a Mantis
 
 Visibility of the current directory's repo, computed when this skill loaded: !`bash "${CLAUDE_PLUGIN_ROOT}/skills/mantis-triage/scripts/check-visibility.sh"`
 
-Scripts: `T="${CLAUDE_PLUGIN_ROOT}/skills/mantis-triage/scripts"`.
+Scripts: `T="${CLAUDE_PLUGIN_ROOT}/skills/mantis-triage/scripts"`, `R="${CLAUDE_PLUGIN_ROOT}/skills/mantis-run/scripts"`.
 
 ## Steps
 
@@ -17,14 +17,22 @@ Scripts: `T="${CLAUDE_PLUGIN_ROOT}/skills/mantis-triage/scripts"`.
    - `public` → say: « ⚠️ Repo public : le dossier d'audit contiendra des vulnérabilités détaillées et des exploits, visibles de tous une fois poussés. » Then AskUserQuestion, header `Versionnement`, options `Non versionné (Recommandé)` / `Versionné quand même`.
    - `unknown` → AskUserQuestion, header `Versionnement`, question explaining that `gh` could not confirm whether the repo is public (gh absent, not logged in, or remote outside GitHub), options `Versionné` / `Non versionné`.
    - Non-versioned → resolve the exclude file with `p=$(git -C "$REPO" rev-parse --git-path info/exclude)`; in a worktree or submodule this is already absolute (a shared file outside `$REPO`), otherwise resolve it as `$REPO/$p`. `mkdir -p` its directory, add the line `osho-mantis/` unless already there, then `git -C "$REPO" check-ignore -q osho-mantis/`. If that fails (e.g. a `!osho-mantis/` negation in `.gitignore`), tell the user and stop — do not set `VERSIONING=ignored`. Otherwise `VERSIONING=ignored`.
-3. **Audit folder.** Run `if [ -L "$REPO/osho-mantis" ]; then echo SYMLINK; fi` (exits 0 either way). If it printed `SYMLINK`, tell the user the repo ships a symlinked `osho-mantis` and stop. Otherwise `mkdir -p "$REPO/osho-mantis"`, then `AUDIT="$REPO/osho-mantis/audit-$(date +%Y-%m-%d_%Hh%M)"` and `mkdir "$AUDIT" && mkdir "$AUDIT/workspace"` (no `-p`: the audit folder must be new; if it already exists, wait one minute or ask the user).
+3. **Audit folder.** Run `if [ -L "$REPO/osho-mantis" ]; then echo SYMLINK; fi` (exits 0 either way). If it printed `SYMLINK`, tell the user the repo ships a symlinked `osho-mantis` and stop. Otherwise `mkdir -p "$REPO/osho-mantis"`, then `AUDIT="$REPO/osho-mantis/audit-$(date +%Y-%m-%d_%Hh%M)"` and `mkdir "$AUDIT" && mkdir "$AUDIT/workspace"` (no `-p`: the audit folder must be new; if it already exists, wait one minute or ask the user). Then start the live dashboard: `python3 "$R/dashboard.py" serve "$AUDIT"` prints one JSON line `{"url", "reused"}`; `open "<url>"` and also print the URL in the terminal as a fallback.
 4. **Inventory (zero tokens).** `python3 "$T/inventory.py" "$REPO" "$AUDIT/inventory.json"`.
 5. **Short Claude pass.** Dispatch one Agent (`subagent_type: general-purpose`, `model: sonnet`) with the prompt below (fill `<REPO>` and `<AUDIT>`). Do not proceed to step 6 on dispatch alone: wait for the agent's completion notification, then check `<AUDIT>/campaign.json` exists and has a `recommended` key. If the agent failed, or `campaign.json` is missing or has no `recommended` key, fall back to `recommended` from `inventory.json` and tell the user the agent's recommendation was unavailable so this is the inventory-based fallback.
-6. **Volume question.** AskUserQuestion, header `Volume`, question `Quel niveau d'audit ?`, four options in this order. Label = level name, plus ` (Recommandé)` on the `recommended` value resolved in step 5 (from `campaign.json`, or the `inventory.json` fallback). Description = the line below + ` — ` + `levels.<level>.subtitle` from `inventory.json`:
+6. **Volume question**, answerable from the terminal or the dashboard (no AskUserQuestion: it would block the page's answer). Four options in this order. Value = level name. Label = level name, plus ` (Recommandé)` on the `recommended` value resolved in step 5 (from `campaign.json`, or the `inventory.json` fallback). Description = the line below + ` — ` + `levels.<level>.subtitle` from `inventory.json`:
    - `Light` : Statique : architecture, threat model, plan, recherche, review, diffs non vérifiés.
    - `Sharp` : + critic, reproduction Docker (High+), patchs vérifiés, calibrage.
    - `Savage` : + historique git, reproduction de tout le viable, chaînes d'exploits.
    - `Overkill` : + chaque fichier source, 2 tours de replanification.
+
+   1. Write `$AUDIT/waiting.json`: `{"kind": "question", "question": "volume", "options": [{"value", "label", "description"} × 4, same order], "since": "<date +%Y-%m-%dT%H:%M:%S>"}`.
+   2. In the terminal, plain text: `Quel niveau d'audit ?`, then the four options numbered 1 to 4 as `<n>. <label> : <description>`, then « Réponds ici (nom ou numéro) ou sur le dashboard. »
+   3. Start the Monitor tool (`timeout_ms` 1800000) with `until [ -n "$(python3 "$R/dashboard.py" pending "$AUDIT")" ]; do sleep 2; done`, then end your turn.
+   4. **On wake-up**, first run `python3 "$R/dashboard.py" pending "$AUDIT"` (one JSON command per line). The first `answer` with `question` `volume` wins: its `value` is the level. Ack every other pending command `refused` « répondre d'abord à la question Volume » (`python3 "$R/dashboard.py" ack "$AUDIT" <id> refused "<reason>"`). No answer and no typed reply → back to 3.
+   5. No page answer pending and the user typed a reply → accept it only if it names a level (Light, Sharp, Savage, Overkill, case ignored) or is its number 1 to 4; otherwise repeat the question (back to 2). Record an accepted reply first: `python3 "$R/dashboard.py" command "$AUDIT" '{"action": "answer", "question": "volume", "value": "<Level>"}'` (`<Level>` capitalised as above) prints the stored command; use its `id`.
+   6. Once a level is chosen: `python3 "$R/dashboard.py" ack "$AUDIT" <id> applied`, then `rm "$AUDIT/waiting.json"`.
+   7. Monitor expired with no command → if `python3 -c 'import json,os,sys; os.kill(json.load(open(sys.argv[1]))["pid"], 0)' "$AUDIT/server.json"` succeeds (server alive), start Monitor again and end your turn; otherwise say « Dashboard arrêté : réponds ici. » and end your turn without Monitor (a typed reply still goes through 5).
 7. **campaign.json.** Merge into the file the agent wrote: `level`, `hypotheses_max` (= `levels.<level>.hypotheses` in `inventory.json`) and `parallel` (= `levels.<level>.parallel`), `versioning`, `visibility`, `repo` (`REPO`), `started_at` (`date +%Y-%m-%dT%H:%M:%S`).
 8. **Report**, 4 lines max: audit folder, top 3 risks from `triage.md`, chosen level, then « Lancer `/mantis-run "<AUDIT>"` ? » — name the folder explicitly, so mantis-run audits the one just created instead of auto-selecting among `$REPO/osho-mantis/audit-*`.
 

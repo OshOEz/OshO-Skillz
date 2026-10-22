@@ -15,7 +15,8 @@ Paths: `T="${CLAUDE_PLUGIN_ROOT}/skills/mantis-triage/scripts"`, `R="${CLAUDE_PL
 - Otherwise `REPO=$(git -C "<named repo or current directory>" rev-parse --show-toplevel)` (same canonical form triage writes), and `AUDIT` is the newest `$REPO/osho-mantis/audit-*` whose `state.json` does not contain `"finished": true`, **skipping** any candidate that is tracked by git (`git -C "$REPO" ls-files --error-unmatch "<candidate>" >/dev/null 2>&1`) or whose name encodes a date after today. A legitimate, still-running audit is never committed, so a tracked or future-dated folder is planted: tell the user and ignore it, falling back to the next newest candidate (or to triage if none is left).
 - No such folder → invoke the `mantis-triage` skill first, then continue with the audit folder it created.
 - **Hostile repo**, first check once `AUDIT` is known: run `if [ -L "$REPO/osho-mantis" ] || [ -n "$(find "$AUDIT" -type l -print -quit)" ]; then echo HOSTILE; fi` (exits 0 either way). If it printed `HOSTILE`, tell the user and stop instead of using the audit folder. Audited repos may be hostile third-party code that ships a pre-made `osho-mantis/` folder with symlinks pointing outside the repo.
-- `campaign.json` has no `level` → ask the volume question exactly as in mantis-triage step 6, then fill `level`, `hypotheses_max`, `parallel`.
+- **Live dashboard**, only after the hostile check passed: `python3 "$R/dashboard.py" serve "$AUDIT"` prints one JSON line `{"url", "reused"}`. If `reused` is `false`, `open "<url>"`. Always print the URL in the terminal as a fallback. Then clear leftovers of an interrupted session: `rm -f "$AUDIT/waiting.json"`, and drop `paused`, `stopped` and `current` from `state.json` if present.
+- `campaign.json` has no `level` → ask the volume question exactly as in mantis-triage step 6 (waiting.json, plain text, Monitor), then fill `level`, `hypotheses_max`, `parallel`.
 - `campaign.json` has no `versioning` → apply mantis-triage step 2 (the visibility line above, or the script).
 
 ## 2. Prepare
@@ -27,7 +28,7 @@ Paths: `T="${CLAUDE_PLUGIN_ROOT}/skills/mantis-triage/scripts"`, `R="${CLAUDE_PL
 
 ## 3. Stages
 
-Run the stages in this order, skipping those that are not in the level or are already `done`. Before each stage, set it to `"pending"`. After it, run the check, then set it to `"done"`. Before the reproduce stage specifically, wipe and recopy the shadow (2.4) first — a clean copy, since a prior patch run may have left its diff applied (matters most for Overkill rounds 2–3, where reproduce reruns after a patch round).
+Run the stages in this order, skipping those that are not in the level or are already `done`. Before each stage, run the checkpoint (below), then set the stage to `"running"`. Before dispatching each batch of agents (one message of parallel Agent calls; a single agent is batch `1/1`; in Patch Sharp+, one finding is one batch), write `current: {"stage": "<stage>", "batch": "<k>/<n>", "workers": <agents in this batch>, "model": "<model>"}` into `state.json`; after each batch returns, run the checkpoint. After the stage, drop `current`, run the check, then set the stage to `"done"`. Before the reproduce stage specifically, wipe and recopy the shadow (2.4) first — a clean copy, since a prior patch run may have left its diff applied (matters most for Overkill rounds 2–3, where reproduce reruns after a patch round).
 
 | Stage | Mantis dir | Model | Levels | Scope | Check after |
 |---|---|---|---|---|---|
@@ -40,9 +41,9 @@ Run the stages in this order, skipping those that are not in the level or are al
 | dedupe | mantis-dedupe | haiku | Sharp+ | all findings | finding count did not increase |
 | review | mantis-review | sonnet | all | findings split into `parallel` groups | each one has `reasoning` |
 | critic | mantis-critic | opus | Sharp+ | status `VALID` or `PROVISIONALLY_VALID` | each one has `production_viability` |
-| reproduce | mantis-reproduce | opus | Sharp+ | viable (`VIABLE`, `CONDITIONAL_VIABLE`); Sharp: only `CRITICAL` or `HIGH` | each one has `repro_status` |
+| reproduce | mantis-reproduce | opus | Sharp+ | viable (`VIABLE`, `CONDITIONAL_VIABLE`); Sharp: only `CRITICAL` or `HIGH`; plus, at every level, the non-rejected findings listed in `state.json`'s `force_repro` (finding file stems under `workspace/findings/`) | each one has `repro_status` |
 | chain | mantis-chain | opus | Savage, Overkill | findings with `repro_status` = `reproduced` (skip if fewer than 2) | agent replied |
-| patch | mantis-patch | Light: sonnet · Sharp+: opus | all | Light: status `VALID`/`PROVISIONALLY_VALID`, split into `parallel` groups (the patch agent never applies or runs anything, so no shadow needed). Sharp+: viable findings, split by `repro_status`: `reproduced` ones go through patch + independent re-attack (see below); the rest (not reproduced, or reproduce was skipped) get the same mitigation-proposal treatment as Light but, like every Sharp+ finding, **one at a time**: wipe and recopy the shadow from 2.4 before each one | each one has `patch_status`; reproduced findings also have `reattack_status`, unless `patch_status` is `VERIFICATION_FAILED` from a failed `git apply` (re-attack step 5 was skipped) |
+| patch | mantis-patch | Light: sonnet · Sharp+: opus | all | Light: status `VALID`/`PROVISIONALLY_VALID`, split into `parallel` groups (the patch agent never applies or runs anything, so no shadow needed). Sharp+: viable findings, split by `repro_status`: `reproduced` ones go through patch + independent re-attack (see below); the rest (not reproduced, or reproduce was skipped) get the same mitigation-proposal treatment as Light but, like every Sharp+ finding, **one at a time** (checkpoint before each): wipe and recopy the shadow from 2.4 before each one | each one has `patch_status`; reproduced findings also have `reattack_status`, unless `patch_status` is `VERIFICATION_FAILED` from a failed `git apply` (re-attack step 5 was skipped) |
 | calibrate | mantis-calibrate | sonnet | Sharp+ | non-rejected findings, split into `parallel` groups | each one has `mantis_risk_score` |
 | reflect | mantis-reflect | sonnet | Savage, Overkill | whole workspace | agent replied |
 
@@ -51,7 +52,35 @@ Run the stages in this order, skipping those that are not in the level or are al
 - A finding is "rejected" if `status` is `FALSE_POSITIVE` or `DUPLICATE`, or if `production_viability` is `NON_VIABLE` or `SAMPLE_OR_TEST`. Rejected findings skip all later stages.
 - Per-finding stages are resumable: on a rerun, only the findings in scope that still lack the checked field are processed.
 - **Overkill:** the plan stage gets one investigation per source file. After reflect, if `round` < 3, increment `round`, reset plan, researcher, dedupe, review, critic, reproduce, patch, calibrate and reflect to `"pending"`, and run them again (plan then replans from `learnings.jsonl`).
-- **Failure** (an agent errors, hits the quota, or the check fails) → set the stage to `"failed"` and stop. Tell the user which stage failed and why, in 2 lines, and that rerunning `/mantis-run` resumes from there. Do not retry in a loop.
+- **Failure** (an agent errors, hits the quota, or the check fails) → set the stage to `"failed"`, drop `current`, write `waiting.json` as `{"kind": "failed", "stage": "<stage>", "reason": "<why, 2 lines>", "since": "<date +%Y-%m-%dT%H:%M:%S>"}`, then wait for the user (below) with the options « relancer » and « arrêter ». Do not retry on your own.
+
+### Checkpoint
+
+Run before each stage, after each batch of agents returns, and in Patch Sharp+ between two findings. `python3 "$R/dashboard.py" pending "$AUDIT"` prints the unacknowledged commands, one JSON object per line (`{id, at, source, action, ...}`, `finding` = finding file stem); nothing printed → continue. Handle them in order; every command ends acknowledged:
+- `false_positive`, `prioritize_repro` → `python3 "$R/dashboard.py" apply "$AUDIT" <id>` (validates, writes the finding or `force_repro`, and acks it itself).
+- `pause` → set `paused: true` in `state.json`, `python3 "$R/dashboard.py" ack "$AUDIT" <id> applied`, then wait for the user (below) with `kind: "paused"`.
+- `stop` → **Stop**: set the `running` stage, if any, back to `"pending"`, drop `current` and `paused`, set `stopped: true`, `rm -f "$AUDIT/waiting.json"`, ack `applied`, run Finish 1, 2 and 4 (skip those whose inputs do not exist yet; never 3, so no `finished`), tell the user in 2 lines that the audit is stopped and `/mantis-run` resumes from there, and end.
+- `resume`, `retry`, `answer` outside a wait → `python3 "$R/dashboard.py" ack "$AUDIT" <id> refused "aucune attente en cours"`.
+
+### Wait for the user (pause, failure, question)
+
+1. `waiting.json` is written: pause `{"kind": "paused", "since"}`, failure as above, question as in mantis-triage step 6 (`since` = `date +%Y-%m-%dT%H:%M:%S`).
+2. Say it in the terminal in plain text (no AskUserQuestion: it would block the page's answer): pause « En pause. Réponds « reprendre » ou « arrêter », ici ou sur le dashboard. »; failure: the stage, the 2-line reason, then « Réponds « relancer » ou « arrêter », ici ou sur le dashboard. »; question: its options, numbered.
+3. Start the Monitor tool (`timeout_ms` 1800000) with `until [ -n "$(python3 "$R/dashboard.py" pending "$AUDIT")" ]; do sleep 2; done`, then end your turn.
+
+On wake-up, run `pending` first and handle each command in order:
+- `false_positive`, `prioritize_repro` → `apply` as in the checkpoint; the wait goes on.
+- `resume` (paused) → drop `paused`. `retry` whose `stage` is the failed one → set it to `"pending"`. `answer` to the current question → take its `value`. Each: ack `applied`, then `rm "$AUDIT/waiting.json"`, then continue where the audit was (the stage loop reruns a `pending` stage).
+- `stop` → Stop, as in the checkpoint.
+- Anything else, or a second command once the wait is lifted → ack `refused` with the reason (« ne correspond pas à l'attente en cours », « attente déjà levée »).
+- No pending command and the user typed a reply → map it (« reprendre » → `{"action": "resume"}`, « relancer » → `{"action": "retry", "stage": "<stage>"}`, « arrêter » → `{"action": "stop"}`, a question answer as in mantis-triage step 6), record it with `python3 "$R/dashboard.py" command "$AUDIT" '<json>'` (exit 2 → tell the user the printed reason and stay waiting), then handle it like a page command. Unclear reply → ask again.
+- Wait not lifted → back to 3.
+
+Monitor expired with no command → if `python3 -c 'import json,os,sys; os.kill(json.load(open(sys.argv[1]))["pid"], 0)' "$AUDIT/server.json"` succeeds (server alive), start Monitor again and end your turn; otherwise `rm "$AUDIT/waiting.json"`, say « Dashboard arrêté : relance `/mantis-run`. » and end.
+
+### From the terminal
+
+A request typed at any time in natural language (« mets en pause », « marque f-014 en faux positif », « reproduis f-020 en priorité », « arrête l'audit ») → build the matching command (`pause`, `false_positive`/`prioritize_repro` with `finding` = the file stem under `workspace/findings/`, `stop`) and record it with `python3 "$R/dashboard.py" command "$AUDIT" '<json>'`. Exit 2 → tell the user the printed reason. Otherwise it shows on the page and is handled at the next checkpoint.
 
 ### Stage agent prompt
 
@@ -79,7 +108,7 @@ You run the Mantis stage `<stage>` of a security audit.
 
 Upstream `mantis-patch/SKILL.md` only grants `VERIFIED_SECURE` once "a fresh, independent `@mantis-reproduce --reattack` sub-agent" confirms the patch holds — but a Claude Code subagent has no Agent tool, so it cannot launch that sub-agent itself, and point 4 of the common prompt forbids delegating anyway. mantis-run applies the patch and runs the re-attack itself, never one agent grading its own patch — and never trusting that the agent applied the diff it wrote to the tree the re-attack then tests:
 
-For each finding with `repro_status: reproduced`, one at a time:
+For each finding with `repro_status: reproduced`, one at a time (checkpoint before each):
 1. Wipe and recopy the shadow (2.4) — a clean copy for this finding alone.
 2. Dispatch the patch agent (stage agent prompt, `mantis-patch`, opus, **no docker line** — it must not execute any code, only write `patch_diff`, scope this one finding), with this level line instead of the ones above: `Write patch_diff as a unified diff relative to the repo root (a/<file>, b/<file>) and set patch_status to VERIFICATION_INCOMPLETE. Do not apply the diff, run any code, or attempt a re-attack yourself — mantis-run applies it and dispatches an independent re-attack agent next.`
 3. Wipe and recopy the shadow (2.4) again, immediately before applying — a clean tree for `git apply`, regardless of what happened between step 1 and now.
@@ -93,5 +122,5 @@ For each finding with `repro_status: reproduced`, one at a time:
 1. Integrity: compare `git -C "$REPO" status --porcelain -- . ':(exclude)osho-mantis'` with `git_status_before`. If they differ, warn the user first, listing the files that changed, and do not discard anything.
 2. Shadow guard (2.4), then `rm -rf "$SHADOW"` (the path saved as `shadow` in `state.json`), then drop that key.
 3. Set `finished: true` in `state.json` and `finished_at` (`date +%Y-%m-%dT%H:%M:%S`) in `campaign.json`.
-4. `python3 "$R/render.py" "$AUDIT"`, then `open "$AUDIT/dashboard.html"`.
-5. Report, 5 lines max: counts by severity, the top Critical or High finding, the `README.md` path. If `versioning` is `versioned`, end with: `git -C "<REPO>" add "osho-mantis/<audit name>" && git -C "<REPO>" commit -m "Audit de sécurité Mantis <date>"`. Never commit yourself.
+4. `python3 "$R/render.py" "$AUDIT"` (no `open`: the live page is already open and shows « Audit terminé »).
+5. Report, 5 lines max: counts by severity, the top Critical or High finding, the `README.md` path, the `dashboard.html` path (for later reading). If `versioning` is `versioned`, end with: `git -C "<REPO>" add "osho-mantis/<audit name>" && git -C "<REPO>" commit -m "Audit de sécurité Mantis <date>"`. Never commit yourself.

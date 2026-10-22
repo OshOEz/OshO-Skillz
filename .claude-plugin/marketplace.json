@@ -15,7 +15,7 @@
     {
       "name": "osho-mantis",
       "source": "./plugins/osho-mantis",
-      "description": "Mantis security audits from Claude Code, no API key: quick triage, Light→Overkill campaign, French report, suggested patches and HTML dashboard."
+      "description": "Mantis security audits from Claude Code, no API key: quick triage, Light→Overkill campaign, live dashboard (follow and steer the audit from the browser), French report, suggested patches and HTML dashboard."
     }
   ]
 }
