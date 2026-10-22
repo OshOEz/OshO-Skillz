@@ -86,7 +86,7 @@ A request typed at any time in natural language (« mets en pause », « marque 
 
 ```
 You run the Mantis stage `<stage>` of a security audit.
-1. Read <M>/<mantis dir>/SKILL.md and follow it in standalone mode with:
+1. Read <M>/skills/<mantis dir>/SKILL.md and follow it in standalone mode with:
    --state_root <AUDIT>      (state files live in <AUDIT>/workspace/)
    --target_root <CODE>      (<CODE> = <REPO>; for reproduce and patch, <SHADOW> — the path saved in state.json)
 2. <REPO> is read-only. Write only under <AUDIT>/workspace/.

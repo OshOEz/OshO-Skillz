@@ -430,6 +430,48 @@ assert.strictEqual(cmdText({action: 'pause'}), 'Pause');
 """)
 
 
+
+def test_etat_commande():
+    """Retour d'action à côté du bouton : Envoyé tant que l'id n'est pas acquitté, puis Appliqué ou Refusé ;
+    le bouton reste bloqué (inflight) jusqu'à ce qu'un snapshot montre l'id ; une réponse envoyée bloque
+    toutes les options de la question jusqu'à la levée de l'attente."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        node_ok(tmp, "const inflight = new Set(), sent = new Map();" + "".join(
+            fn(js, n) for n in ("cmdKey", "cmdState", "blocked", "settleSent")) + """
+const assert = require('assert');
+const fp = JSON.stringify({action: 'false_positive', finding: 'f1'});
+let D = {commands: {pending: [], done: []}, waiting: null};
+inflight.add(fp); sent.set(fp, 'abc');
+assert.strictEqual(cmdState(fp).t, 'Envoyé, pris en compte à la fin du lot en cours');
+assert.ok(blocked({action: 'false_positive', finding: 'f1'}));
+settleSent(); assert.ok(inflight.has(fp)); // POST résolu, snapshot pas encore arrivé : toujours bloqué
+D = {commands: {pending: [{action: 'false_positive', finding: 'f1', id: 'abc', at: 't', source: 'page'}], done: []}, waiting: null};
+settleSent(); assert.ok(!inflight.has(fp) && blocked({action: 'false_positive', finding: 'f1'}));
+D = {commands: {pending: [], done: [{id: 'abc', result: 'applied'}]}, waiting: null};
+assert.strictEqual(cmdState(fp).t, 'Appliqué'); assert.ok(!blocked({action: 'false_positive', finding: 'f1'}));
+D = {commands: {pending: [], done: [{id: 'abc', result: 'refused', reason: 'non'}]}, waiting: null};
+assert.strictEqual(cmdState(fp).t, 'Refusé : non');
+// commande en file connue seulement du serveur (page rechargée) : bloquée aussi
+inflight.clear(); sent.clear();
+D = {commands: {pending: [{action: 'pause', id: 'p1', at: 't', source: 'page'}], done: []}, waiting: null};
+assert.ok(blocked({action: 'pause'}) && !blocked({action: 'stop'}));
+// question : une réponse envoyée bloque toutes les options, jusqu'à la levée de l'attente
+const w = {kind: 'question', question: 'volume', options: [{value: 'Light'}, {value: 'Sharp'}]};
+const a = JSON.stringify({action: 'answer', question: 'volume', value: 'Light'});
+sent.set(a, 'q1');
+D = {commands: {pending: [{action: 'answer', question: 'volume', value: 'Light', id: 'q1'}], done: []}, waiting: w};
+assert.ok(blocked({action: 'answer', question: 'volume', value: 'Sharp'}));
+D = {commands: {pending: [], done: [{id: 'q1', result: 'applied'}]}, waiting: w};
+assert.ok(blocked({action: 'answer', question: 'volume', value: 'Sharp'}));
+D = {commands: {pending: [], done: [{id: 'q1', result: 'applied'}]}, waiting: null};
+settleSent(); assert.ok(!sent.has(a));
+""")
+
+
 if __name__ == "__main__":
     test_trois_findings()
     test_niveau_banniere_et_reproduce()
@@ -451,4 +493,5 @@ if __name__ == "__main__":
     test_question_texte()
     test_cles_stables()
     test_cmd_text()
+    test_etat_commande()
     print("OK")

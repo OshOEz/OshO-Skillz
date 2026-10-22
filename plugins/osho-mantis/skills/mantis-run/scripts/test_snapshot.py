@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 import time
+from datetime import datetime
 from pathlib import Path
 
 from snapshot import LEVEL_STAGES, append_activity, build_snapshot, diff_events, read_snapshot_safe
@@ -174,7 +175,33 @@ def test_diff_waiting_et_commande():
     assert diff_events(s0, s1, "t")[0]["waiting_kind"] == "failed"
     s2 = dict(s1, commands={"pending": [], "done": [{"id": "1", "action": "retry", "result": "refused", "reason": "non"}]})
     e = diff_events(s1, s2, "t")
-    assert e[0]["text"] == "Action retry refusée : non" and e[0]["kind"] == "command"
+    assert e[0]["text"] == "Relance : refusée : non" and e[0]["kind"] == "command"
+
+
+def test_textes_commandes_francais():
+    c = {"repo": "/x/demo", "level": "Light"}
+    s1 = snap(c, state={"stages": {"plan": "failed"}}, findings=[("f1", {"id": "a", "title": "Injection"})])
+    done = [{"id": "1", "action": "retry", "stage": "plan", "result": "applied"},
+            {"id": "2", "action": "false_positive", "finding": "f1", "result": "refused", "reason": "non"},
+            {"id": "3", "action": "prioritize_repro", "finding": "zz", "result": "applied"},
+            {"id": "4", "action": "answer", "result": "applied"}]
+    texts = [e["text"] for e in diff_events(s1, dict(s1, commands={"pending": [], "done": done}), "t")]
+    assert texts == ["Relance de Plan : appliquée", "Faux positif Injection : refusée : non",
+                     "Priorité de reproduction zz : appliquée", "Réponse : appliquée"], texts
+
+
+def test_duree_triage():
+    """Le serveur démarre pendant le triage : début = création d'inventory.json, fin = passage à done"""
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp, {"repo": "/x/demo", "level": "Light", "started_at": "2026-10-22T14:05:00"},
+                  activity=[{"kind": "stage", "stage": "triage", "to": "done", "at": "2026-10-22T14:01:40"}])
+        (d / "inventory.json").write_text("{}")
+        t0 = datetime.fromisoformat("2026-10-22T14:00:00").timestamp()
+        os.utime(d / "inventory.json", (t0, t0))
+        tri = build_snapshot(d)["stages"][0]
+        assert tri["started_at"] == "2026-10-22T14:00:00" and tri["duration_s"] == 100, tri
+        (d / "activity.jsonl").unlink()  # sans événement de fin : début de campagne
+        assert build_snapshot(d)["stages"][0]["duration_s"] == 300
 
 
 def test_json_tronque_ignore():
@@ -268,6 +295,8 @@ if __name__ == "__main__":
     test_textes_sans_cadratin()
     test_append_activity()
     test_duree_inconnue()
+    test_textes_commandes_francais()
+    test_duree_triage()
     test_finding_en_ecriture_garde()
     test_score_non_numerique()
     print("OK")

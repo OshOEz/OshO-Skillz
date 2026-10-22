@@ -73,9 +73,10 @@ def read_activity(path):
     return out
 
 
-def timing(activity, key):
-    """(started_at, duration_s) d'une étape : dernier passage à running, puis fin éventuelle"""
-    start = end = None
+def timing(activity, key, start=None, default_end=None):
+    """(started_at, duration_s) d'une étape : dernier passage à running, puis fin éventuelle ;
+    start/default_end : valeurs par défaut quand le journal n'en a pas (triage, vu par le serveur déjà en cours)"""
+    end = None
     for e in activity:
         if e.get("kind") != "stage" or e.get("stage") != key:
             continue
@@ -83,6 +84,7 @@ def timing(activity, key):
             start, end = e.get("at"), None
         elif e.get("to") in END and start and end is None:
             end = e.get("at")
+    end = end or default_end
     try:
         return start, int((datetime.fromisoformat(end) - datetime.fromisoformat(start)).total_seconds())
     except (TypeError, ValueError):
@@ -107,10 +109,17 @@ def build_snapshot(audit_dir, mode="live", now=None, loaded=None):
     done_stages = state.get("stages") if isinstance(state.get("stages"), dict) else {}
     level = campaign.get("level")
     keys = LEVEL_STAGES.get(level) or list(done_stages)
+    inv = audit_dir / "inventory.json"  # écrit au début du triage
+    try:
+        tri_start = datetime.fromtimestamp((inv if inv.exists() else audit_dir).stat().st_mtime).isoformat(
+            timespec="seconds")
+    except OSError:  # dossier supprimé pendant la lecture
+        tri_start = None
     stages = []
     for key in ["triage"] + keys:
         status = ("done" if level else "running") if key == "triage" else done_stages.get(key, "pending")
-        started, dur = timing(activity, key)
+        started, dur = (timing(activity, key, tri_start, campaign.get("started_at") if level else None)
+                        if key == "triage" else timing(activity, key))
         stages.append({"key": key, "code": STAGE_CODES.get(key, key[:3].upper()), "name": STAGE_NAMES.get(key, key),
                        "status": status, "duration_s": dur, "started_at": started,
                        "notes": [n for n in notes if key in str(n)]})
@@ -158,6 +167,19 @@ def _secs(start, at):
         return None  # début inconnu : durée inconnue
 
 
+ACT_LABELS = {"pause": "Pause", "resume": "Reprise", "stop": "Arrêt", "retry": "Relance", "answer": "Réponse",
+              "false_positive": "Faux positif", "prioritize_repro": "Priorité de reproduction"}
+
+
+def cmd_text(c, snap):
+    """Même texte que cmdText() de la page : « Relance de Plan », « Faux positif <titre> »"""
+    stage = next((s["name"] for s in snap["stages"] if s["key"] == c.get("stage")), c.get("stage"))
+    title = next((f.get("title") for f in snap["findings"] if f["_src"] == c.get("finding")), None) or c.get("finding")
+    parts = [ACT_LABELS.get(c.get("action"), str(c.get("action"))),
+             f"de {stage}" if stage and stage != c.get("stage") else stage, title]
+    return " ".join(str(x) for x in parts if x)
+
+
 def diff_events(prev, cur, at):
     """Événements d'activité entre deux snapshots ; sans snapshot précédent, il n'y en a aucun"""
     if prev is None:
@@ -198,8 +220,8 @@ def diff_events(prev, cur, at):
             continue
         refused = c.get("result") == "refused"
         ev.append({"at": at, "kind": "command", "id": c.get("id"), "action": c.get("action"),
-                   "result": c.get("result"),
-                   "text": f"Action {c.get('action')} " + (f"refusée : {c.get('reason')}" if refused else "appliquée")})
+                   "result": c.get("result"), "text": cmd_text(c, cur) + " : " + (
+                       f"refusée : {c.get('reason') or 'raison inconnue'}" if refused else "appliquée")})
     return ev
 
 

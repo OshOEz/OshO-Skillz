@@ -147,6 +147,7 @@ main{padding:14px 20px 40px;display:grid;gap:12px}
 #actions .btn{width:100%}
 .cmds{list-style:none;margin:0;padding:8px 0 0;border-top:1px solid var(--border);display:grid;gap:4px;font-size:12px;overflow-wrap:anywhere}
 .cmd-err{font-size:12px;color:var(--bad);overflow-wrap:anywhere}
+.cmd-st{font-size:12px;align-self:center;overflow-wrap:anywhere}.cmd-st.ok{color:var(--ok)}.cmd-st.bad{color:var(--bad)}
 #activity div{overflow-wrap:anywhere}
 #activity b{color:var(--muted);font-weight:500;margin-right:6px}
 .link{background:none;border:0;padding:0;margin-top:6px;color:var(--primary);font:12px var(--sans);cursor:pointer}
@@ -330,7 +331,8 @@ const $ = id => document.getElementById(id);
 const ui = {view: load('mantis.kbView') === 'progress' ? 'progress' : 'severity', peek: null, full: false, back: null,
   stage: null, stageView: stageView(new URLSearchParams(location.search).get('view') ?? load('mantis.stageView')), activityAll: false};
 let lastMsg = Date.now(); // dernier message du serveur (chargement, snapshot ou ping)
-const inflight = new Set(), cmdErr = new Map(); // commandes en cours d'envoi, erreurs 400/409 par commande
+const inflight = new Set(), cmdErr = new Map(); // commandes pas encore vues dans un snapshot, erreurs 400/409 par commande
+const sent = new Map(); // clé de commande -> id renvoyé par le POST, pour afficher son accusé à côté du bouton
 
 function load(k) {
   try { return localStorage.getItem(k); } catch (e) { return null; }
@@ -566,32 +568,69 @@ function openStage(key) {
   $('peek-close').focus({preventScroll: true});
 }
 function cmdButton(cmd, cls, ...kids) {
-  // bouton d'action : grisé sans session, inactif pendant l'envoi, erreur du serveur affichée à côté
+  // bouton d'action : grisé sans session, bloqué tant que la commande attend, état ou erreur affiché à côté
   const k = JSON.stringify(cmd), b = el('button', {class: cls, type: 'button', 'data-cmd': k}, ...kids);
   if (D.listening === 'none') { b.disabled = true; b.setAttribute('aria-describedby', 'sess'); }
-  if (inflight.has(k)) b.setAttribute('aria-disabled', 'true'); // pas disabled : le focus reste sur le bouton
+  if (blocked(cmd)) b.setAttribute('aria-disabled', 'true'); // pas disabled : le focus reste sur le bouton
   b.addEventListener('click', () => sendCommand(cmd));
-  const err = cmdErr.get(k);
-  return err ? [b, el('span', {class: 'cmd-err'}, err)] : [b];
+  const err = cmdErr.get(k), st = cmdState(k);
+  return err ? [b, el('span', {class: 'cmd-err'}, err)] : st ? [b, el('span', {class: 'cmd-st ' + st.cls}, st.t)] : [b];
+}
+function cmdKey(c) {
+  const {id, at, source, ...rest} = c; // même clé que JSON.stringify(cmd) côté page : le serveur garde l'ordre des champs
+  return JSON.stringify(rest);
+}
+function cmdState(k) {
+  // Envoyé tant que l'id n'est pas acquitté (ou commande identique en file), puis Appliqué / Refusé
+  const c = D.commands || {}, id = sent.get(k), d = id && (c.done || []).find(x => x.id === id);
+  if (d) return d.result === 'applied' ? {t: 'Appliqué', cls: 'ok'} : {t: 'Refusé : ' + (d.reason || 'raison inconnue'), cls: 'bad'};
+  if (inflight.has(k) || (c.pending || []).some(x => x.id === id || cmdKey(x) === k)) {
+    return {t: 'Envoyé, pris en compte à la fin du lot en cours', cls: 'na', busy: true};
+  }
+  return null;
+}
+function blocked(cmd) {
+  // une réponse envoyée ou appliquée bloque toutes les options de la question tant que l'attente dure
+  if (cmd.action === 'answer' && D.waiting) {
+    return (D.waiting.options || []).some(o => {
+      const st = o && cmdState(JSON.stringify({action: 'answer', question: cmd.question, value: o.value}));
+      return st && (st.busy || st.cls === 'ok');
+    });
+  }
+  const st = cmdState(JSON.stringify(cmd));
+  return !!(st && st.busy);
+}
+function settleSent() {
+  // à chaque snapshot : l'envoi est fini quand l'id apparaît en file ou acquitté ; attente levée, réponses oubliées
+  const c = D.commands || {}, seen = new Set([...(c.pending || []), ...(c.done || [])].map(x => x.id));
+  for (const [k, id] of sent) {
+    if (seen.has(id)) inflight.delete(k);
+    if (!D.waiting && JSON.parse(k).action === 'answer') { sent.delete(k); inflight.delete(k); }
+  }
 }
 function sendCommand(cmd) {
   if (D.mode === 'final') return; // fichier final : pas de serveur
   const k = JSON.stringify(cmd);
-  if (inflight.has(k)) return;
+  if (blocked(cmd)) return;
+  const done = (D.commands && D.commands.done) || [];
+  for (const [kk, id] of sent) if (done.some(x => x.id === id)) sent.delete(kk); // n'afficher que le dernier accusé
   inflight.add(k);
   cmdErr.delete(k);
   render(D);
   fetch('/command', {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: k})
-    .then(r => r.ok ? null : r.json().then(b => String(b.error || 'erreur ' + r.status), () => 'erreur ' + r.status))
+    .then(r => r.ok ? r.json().then(b => { if (b && b.id) sent.set(k, String(b.id)); }, () => null).then(() => null)
+      : r.json().then(b => String(b.error || 'erreur ' + r.status), () => 'erreur ' + r.status))
     .catch(() => 'serveur injoignable')
     .then(err => {
-      inflight.delete(k);
+      settleSent(); // le snapshot montrant l'id a pu arriver avant la réponse du POST
+      if (err || !sent.has(k)) inflight.delete(k); // sans id, rien à suivre : bouton rendu
       if (err) { cmdErr.set(k, err); $('live-region').textContent = 'Action refusée : ' + err; }
+      else $('live-region').textContent = 'Envoyé, pris en compte à la fin du lot en cours';
       render(D);
     });
 }
 const ACT_LABEL = {pause: 'Pause', resume: 'Reprise', stop: 'Arrêt', retry: 'Relance', answer: 'Réponse',
-  false_positive: 'Faux positif', prioritize_repro: 'Reproduction prioritaire'};
+  false_positive: 'Faux positif', prioritize_repro: 'Priorité de reproduction'};
 function cmdText(c) {
   // cible nommée : « Relance de Plan », « Faux positif <titre> » ; inconnue, son identifiant brut
   const s = c.stage && (D.stages || []).find(x => x.key === c.stage), f = c.finding && (D.findings || []).find(x => x._src === c.finding);
@@ -647,12 +686,12 @@ function renderActivity() {
 }
 const seenEvents = new Set();
 function announce(first) {
-  // lecteur d'écran : texte de chaque nouvel événement d'étape (rien au premier affichage)
+  // lecteur d'écran : texte de chaque nouvel événement d'étape ou accusé de commande (rien au premier affichage)
   const fresh = (D.activity || []).filter(e => {
     const k = e.at + '|' + e.kind + '|' + e.stage + '|' + e.text;
     return !seenEvents.has(k) && seenEvents.add(k);
   });
-  const txt = fresh.filter(e => e.kind === 'stage').map(e => String(e.text || '')).join('. ');
+  const txt = fresh.filter(e => e.kind === 'stage' || e.kind === 'command').map(e => String(e.text || '')).join('. ');
   if (!first && txt) $('live-region').textContent = txt;
 }
 function keepFocus(root, fill) {
@@ -921,6 +960,7 @@ function render(snap) {
   const first = !rendered;
   rendered = true;
   window.D = snap;
+  settleSent();
   const m = D.meta;
   document.title = 'Mantis · ' + (m.repo_name || 'audit');
   $('crumb-repo').textContent = m.repo_name || 'repo';
