@@ -26,7 +26,7 @@ Scripts: `T="${CLAUDE_PLUGIN_ROOT}/skills/mantis-triage/scripts"`, `R="${CLAUDE_
    - `Savage` : + historique git, reproduction de tout le viable, chaînes d'exploits.
    - `Overkill` : + chaque fichier source, 2 tours de replanification.
 
-   1. Write `$AUDIT/waiting.json`: `{"kind": "question", "question": "volume", "options": [{"value", "label", "description"} × 4, same order], "since": "<date +%Y-%m-%dT%H:%M:%S>"}`.
+   1. Write `$AUDIT/waiting.json`: `{"kind": "question", "question": "volume", "text": "Quel niveau d'audit ?", "options": [{"value", "label", "description"} × 4, same order], "since": "<date +%Y-%m-%dT%H:%M:%S>"}`.
    2. In the terminal, plain text: `Quel niveau d'audit ?`, then the four options numbered 1 to 4 as `<n>. <label> : <description>`, then « Réponds ici (nom ou numéro) ou sur le dashboard. »
    3. Start the Monitor tool (`timeout_ms` 1800000) with `until [ -n "$(python3 "$R/dashboard.py" pending "$AUDIT")" ]; do sleep 2; done`, then end your turn.
    4. **On wake-up** (Monitor event or typed reply): a Monitor event when `$AUDIT/waiting.json` no longer exists is stale: ignore it and do not re-arm Monitor. Otherwise first run `python3 "$R/dashboard.py" pending "$AUDIT"` (one JSON command per line). The first `answer` with `question` `volume` wins: its `value` is the level. Ack every other pending command `refused` « répondre d'abord à la question Volume » (`python3 "$R/dashboard.py" ack "$AUDIT" <id> refused "<reason>"`). No answer and no typed reply → back to 3.

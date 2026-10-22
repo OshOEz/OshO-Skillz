@@ -59,7 +59,7 @@ Run the stages in this order, skipping those that are not in the level or are al
 Run before each stage, after each batch of agents returns, and in Patch Sharp+ between two findings. `python3 "$R/dashboard.py" pending "$AUDIT"` prints the unacknowledged commands, one JSON object per line (`{id, at, source, action, ...}`, `finding` = finding file stem); nothing printed → continue. Handle them in order; every command ends acknowledged:
 - `false_positive`, `prioritize_repro` → `python3 "$R/dashboard.py" apply "$AUDIT" <id>` (validates, writes the finding or `force_repro`, and acks it itself).
 - `pause` → set `paused: true` in `state.json`, `python3 "$R/dashboard.py" ack "$AUDIT" <id> applied`, then wait for the user (below) with `kind: "paused"`.
-- `stop` → **Stop**: set the `running` stage, if any, back to `"pending"`, drop `current` and `paused`, set `stopped: true`, `rm -f "$AUDIT/waiting.json"`, ack `applied`, run Finish 1, 2 and 4 (skip those whose inputs do not exist yet; never 3, so no `finished`), tell the user in 2 lines that the audit is stopped and `/mantis-run` resumes from there, and end.
+- `stop` → **Stop**: set the `running` stage, if any, back to `"pending"`, drop `current` and `paused`, set `stopped: true`, `rm -f "$AUDIT/waiting.json"`, ack `applied`, ack every other pending command `refused` « audit arrêté » (a leftover `stop` would end the next resume), run Finish 1, 2 and 4 (skip those whose inputs do not exist yet; never 3, so no `finished`), tell the user in 2 lines that the audit is stopped and `/mantis-run` resumes from there, and end.
 - `resume`, `retry`, `answer` outside a wait → `python3 "$R/dashboard.py" ack "$AUDIT" <id> refused "aucune attente en cours"`.
 
 ### Wait for the user (pause, failure, question)

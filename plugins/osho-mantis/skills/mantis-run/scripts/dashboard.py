@@ -23,7 +23,7 @@ import snapshot
 
 HERE = Path(__file__).resolve().parent
 POLL_S, PING_S = 0.5, 10
-END_GRACE_S, IDLE_S = 1800, 4 * 3600
+END_GRACE_S, IDLE_S, HARD_IDLE_S = 1800, 4 * 3600, 24 * 3600  # HARD : même avec une page ouverte
 MAX_BODY = 4096  # validate() plafonne la commande à 1 Ko ; on coupe avant de tout lire
 USAGE = """usage: dashboard.py <commande> <AUDIT> [...]
   serve <AUDIT>                        démarre (ou réutilise) le serveur, affiche {"url", "reused"}
@@ -82,21 +82,21 @@ class Dash:
         sig, last_change, end_seen = signature(self.audit), time.time(), None
         try:
             while not self.stop_evt.wait(POLL_S):
+                if not self.audit.is_dir():
+                    break
                 try:
-                    if not self.audit.is_dir():
-                        break
                     sig, last_change = self.tick(sig, last_change)
-                    m = self.snap["meta"]
-                    if not (m["finished"] or m["stopped"]):
-                        end_seen = None
-                    elif end_seen is None:
-                        end_seen = time.time()
-                    if end_seen and time.time() - end_seen > END_GRACE_S:
-                        break
-                    if time.time() - last_change > IDLE_S and not self.clients:
-                        break
-                except Exception as e:  # le thread ne doit jamais mourir : l'arrêt automatique en dépend
+                except Exception as e:  # une erreur de tick ne doit jamais empêcher l'arrêt automatique ci-dessous
                     print(f"watch: {e!r}", file=sys.stderr, flush=True)
+                m, idle = self.snap["meta"], time.time() - last_change
+                if not (m["finished"] or m["stopped"]):
+                    end_seen = None
+                elif end_seen is None:
+                    end_seen = time.time()
+                if end_seen and time.time() - end_seen > END_GRACE_S:
+                    break
+                if (idle > IDLE_S and not self.clients) or idle > HARD_IDLE_S:
+                    break
         finally:
             self.shutdown()
 
@@ -112,7 +112,7 @@ class Dash:
             events = snapshot.diff_events(prev, cur, now_iso())
             if events:
                 snapshot.append_activity(self.audit, events)
-                cur = snapshot.build_snapshot(self.audit)
+                cur = snapshot.read_snapshot_safe(self.audit, cur)  # relu pour inclure le journal ; tronqué : on garde cur
             self.snap = cur
             msg = ("snapshot", json.dumps(cur, ensure_ascii=False))
             for q in self.clients:
@@ -231,12 +231,7 @@ def run(audit):
     port = httpd.server_address[1]
     info = {"pid": os.getpid(), "port": port, "url": f"http://127.0.0.1:{port}/?key={dash.key}",
             "key": dash.key, "started_at": now_iso()}
-    tmp = audit / "server.json.tmp"
-    tmp.unlink(missing_ok=True)  # supprime un lien planté sans le suivre
-    fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)  # la clé ouvre le dashboard
-    with os.fdopen(fd, "w") as fh:
-        fh.write(json.dumps(info))
-    os.replace(tmp, audit / "server.json")
+    commands.atomic_write(audit / "server.json", json.dumps(info), 0o600)  # la clé ouvre le dashboard
     signal.signal(signal.SIGTERM, lambda *_: dash.shutdown())
     threading.Thread(target=dash.watch, daemon=True).start()
     try:

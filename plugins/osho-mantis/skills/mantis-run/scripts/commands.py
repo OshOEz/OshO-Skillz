@@ -106,14 +106,23 @@ def ack(audit_dir, cmd_id, result, reason=None):
     if any(c.get("id") == cmd_id for c in done(audit_dir)):
         return
     orig = next((c for c in _read(Path(audit_dir) / "commands.jsonl") if c.get("id") == cmd_id), {})
-    _write_line(Path(audit_dir) / "commands-done.jsonl",
-                {"id": cmd_id, "action": orig.get("action"), "result": result, "reason": reason, "at": _now()})
+    entry = {"id": cmd_id, "action": orig.get("action"), "result": result, "reason": reason, "at": _now()}
+    entry.update({k: orig[k] for k in ("stage", "finding") if k in orig})
+    _write_line(Path(audit_dir) / "commands-done.jsonl", entry)
+
+
+def atomic_write(path, text, mode=0o644):
+    """Écrit via <path>.tmp sans jamais suivre un lien planté à cet endroit, puis remplace path"""
+    tmp = Path(f"{path}.tmp")
+    tmp.unlink(missing_ok=True)  # supprime le lien lui-même, pas sa cible
+    fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, mode)
+    with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as fh:
+        fh.write(text)
+    os.replace(tmp, path)
 
 
 def _atomic_json(path, data):
-    tmp = Path(f"{path}.tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2))
-    os.replace(tmp, path)
+    atomic_write(path, json.dumps(data, ensure_ascii=False, indent=2))
 
 
 def apply(audit_dir, cmd_id):

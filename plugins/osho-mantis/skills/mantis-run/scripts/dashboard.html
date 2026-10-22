@@ -593,7 +593,10 @@ function sendCommand(cmd) {
 const ACT_LABEL = {pause: 'Pause', resume: 'Reprise', stop: 'Arrêt', retry: 'Relance', answer: 'Réponse',
   false_positive: 'Faux positif', prioritize_repro: 'Reproduction prioritaire'};
 function cmdText(c) {
-  return [ACT_LABEL[c.action] || String(c.action), c.stage, c.finding, c.value].filter(x => x != null && x !== '').join(' ');
+  // cible nommée : « Relance de Plan », « Faux positif <titre> » ; inconnue, son identifiant brut
+  const s = c.stage && (D.stages || []).find(x => x.key === c.stage), f = c.finding && (D.findings || []).find(x => x._src === c.finding);
+  return [ACT_LABEL[c.action] || String(c.action), s ? 'de ' + s.name : c.stage, f ? String(f.title) : c.finding, c.value]
+    .filter(x => x != null && x !== '').join(' ');
 }
 function renderActions() {
   const box = $('actions'), m = D.meta;
@@ -615,6 +618,9 @@ function renderActions() {
   }
   keepFocus(box, () => box.replaceChildren(...kids.filter(Boolean)));
 }
+function waitText(w) {
+  return String(w.text ?? w.question ?? ''); // question : identifiant de la réponse ; text : la phrase à afficher
+}
 function renderWaiting() {
   const w = D.waiting, box = $('waiting-banner'), on = D.mode !== 'final' && !!w && w.kind === 'question';
   box.hidden = !on;
@@ -625,7 +631,7 @@ function renderWaiting() {
     opts.append(...cmdButton({action: 'answer', question: w.question, value: o.value}, 'btn',
       String(o.label ?? o.value), o.description ? el('small', {}, String(o.description)) : null));
   }
-  keepFocus(box, () => box.replaceChildren(el('p', {class: 'q'}, String(w.question ?? '')), opts));
+  keepFocus(box, () => box.replaceChildren(el('p', {class: 'q'}, waitText(w)), opts));
 }
 function renderActivity() {
   const box = $('activity'), all = (D.activity || []).slice().reverse();
@@ -674,7 +680,7 @@ function card(f) {
   if (f.status === 'VALID') chips.append(el('span', {class: 'chip'}, 'Confirmé'));
   if (f.repro_status === 'reproduced') chips.append(el('span', {class: 'chip'}, 'Reproduit'));
   if (f.patch_status === 'VERIFIED_SECURE') chips.append(el('span', {class: 'chip verified'}, 'Patch vérifié'));
-  const b = el('button', {class: 'fc', type: 'button', 'data-file': f._file}, sevPill(f._bucket),
+  const b = el('button', {class: 'fc', type: 'button', 'data-src': f._src}, sevPill(f._bucket),
     el('span', {class: 'ttl'}, String(f.title)), el('span', {class: 'loc'}, val(f, 'code_paths')),
     chips.children.length ? chips : null);
   b.addEventListener('click', () => openPeek(f));
@@ -699,8 +705,8 @@ function progressColumn(f, keys) {
 let seenFiles = null;
 function renderBoard(animate) {
   const board = $('board'), q = $('filter').value;
-  const focused = board.contains(document.activeElement) ? document.activeElement.dataset.file : null;
-  const before = new Map([...board.querySelectorAll('.fc')].map(c => [c.dataset.file, c.getBoundingClientRect()]));
+  const focused = board.contains(document.activeElement) ? document.activeElement.dataset.src : null;
+  const before = new Map([...board.querySelectorAll('.fc')].map(c => [c.dataset.src, c.getBoundingClientRect()]));
   const prevRej = board.querySelector('details.col');
   const shown = D.findings.filter(f => matches(f, q)), kept = shown.filter(f => f._bucket !== 'REJECTED');
   let cols;
@@ -720,21 +726,21 @@ function renderBoard(animate) {
   for (const b of toggle.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.v === ui.view));
   if (focused) { const c = cardFor(focused); if (c) c.focus({preventScroll: true}); }
   if (animate && seenFiles && !matchMedia('(prefers-reduced-motion: reduce)').matches) flip(before);
-  seenFiles = new Set(D.findings.map(f => f._file));
+  seenFiles = new Set(D.findings.map(f => f._src));
 }
 function flip(before) {
   // carte qui change de place : glisse depuis l'ancienne position (FLIP) ; finding nouveau : fondu
   for (const c of $('board').querySelectorAll('.fc')) {
-    const a = before.get(c.dataset.file), b = c.getBoundingClientRect();
-    if (!seenFiles.has(c.dataset.file)) c.animate([{opacity: 0}, {opacity: 1}], {duration: 220, easing: 'ease-out'});
+    const a = before.get(c.dataset.src), b = c.getBoundingClientRect();
+    if (!seenFiles.has(c.dataset.src)) c.animate([{opacity: 0}, {opacity: 1}], {duration: 220, easing: 'ease-out'});
     else if (a && a.width && b.width && (a.left !== b.left || a.top !== b.top)) {
       c.animate([{transform: `translate(${a.left - b.left}px, ${a.top - b.top}px)`}, {transform: 'none'}],
         {duration: 220, easing: 'cubic-bezier(.16,1,.3,1)'});
     }
   }
 }
-function cardFor(file) {
-  return [...$('board').querySelectorAll('.fc')].find(b => b.dataset.file === file) || null;
+function cardFor(src) {
+  return [...$('board').querySelectorAll('.fc')].find(b => b.dataset.src === src) || null;
 }
 
 function leadOf(desc) {
@@ -867,9 +873,9 @@ function fillPeek(f) {
 }
 function openPeek(f, full) {
   full = !!full;
-  const same = ui.peek === f._file;
-  if (!ui.peek) ui.back = f._file;
-  ui.peek = f._file;
+  const same = ui.peek === f._src; // _src est stable ; _file peut changer quand un homonyme apparaît
+  if (!ui.peek) ui.back = f._src;
+  ui.peek = f._src;
   ui.stage = null;
   ui.full = full;
   fillPeek(f);
@@ -899,7 +905,7 @@ function findingForHash(findings, hash) {
 function openFromHash() {
   const f = findingForHash(D.findings, location.hash), full = /&full$/.test(location.hash);
   if (!f) return ui.peek ? closePeek() : undefined; // un panneau d'étape n'a pas d'ancre
-  if (ui.peek !== f._file || ui.full !== full) openPeek(f, full);
+  if (ui.peek !== f._src || ui.full !== full) openPeek(f, full);
 }
 function trapFocus(e) {
   const items = [...$('peek').querySelectorAll('button, a[href], summary, input')].filter(x => !x.disabled && x.offsetParent !== null);
@@ -928,7 +934,7 @@ function render(snap) {
   renderActivity();
   announce(first);
   if (ui.peek || ui.stage) {
-    const f = ui.peek && D.findings.find(x => x._file === ui.peek), s = ui.stage && (D.stages || []).find(x => x.key === ui.stage);
+    const f = ui.peek && D.findings.find(x => x._src === ui.peek), s = ui.stage && (D.stages || []).find(x => x.key === ui.stage);
     if (!f && !s) return closePeek();
     const pk = $('peek'), top = pk.scrollTop;
     if (!keepFocus(pk, () => f ? fillPeek(f) : fillStage(s))) $('peek-close').focus({preventScroll: true});

@@ -96,6 +96,33 @@ def test_apply_devenue_invalide():
         assert commands.apply(d, c["id"])["result"] == "refused"
 
 
+def test_tmp_symlink_non_suivi():
+    with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as out:
+        d = sharp(tmp, findings=[("f1", F), ("f2", F)])
+        victim = Path(out) / "victime"
+        victim.write_text("intact")
+        (d / "workspace" / "findings" / "f1.json.tmp").symlink_to(victim)
+        (d / "state.json.tmp").symlink_to(victim)
+        for c in ({"action": "false_positive", "finding": "f1"}, {"action": "prioritize_repro", "finding": "f2"}):
+            assert commands.apply(d, commands.append(d, c, "ui")["id"])["result"] == "applied"
+        assert victim.read_text() == "intact"
+        assert not (d / "workspace" / "findings" / "f1.json").is_symlink() and not (d / "state.json").is_symlink()
+        assert json.loads((d / "workspace" / "findings" / "f1.json").read_text())["status"] == "FALSE_POSITIVE"
+        assert json.loads((d / "state.json").read_text())["force_repro"] == ["f2"]
+
+
+def test_ack_copie_la_cible():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = sharp(tmp)
+        r = commands.append(d, {"action": "retry", "stage": "plan"}, "ui")
+        f = commands.append(d, {"action": "false_positive", "finding": "f1"}, "ui")
+        commands.ack(d, r["id"], "applied")
+        commands.apply(d, f["id"])
+        by = {x["id"]: x for x in commands.done(d)}
+        assert by[r["id"]]["stage"] == "plan" and "finding" not in by[r["id"]]
+        assert by[f["id"]]["finding"] == "f1" and "stage" not in by[f["id"]]
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

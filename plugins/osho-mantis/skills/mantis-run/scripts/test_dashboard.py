@@ -3,14 +3,16 @@
   python3 test_dashboard.py
 """
 import http.client
+import io
 import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stderr
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -255,6 +257,62 @@ def test_page_live_servie():
         s, body, _ = req(port, "GET", f"/?key={key}")
         raw = body.split('<script id="data" type="application/json">', 1)[1].split("</script>", 1)[0]
         assert s == 200 and json.loads(raw)["mode"] == "live"
+
+
+def test_tick_json_tronque_apres_evenement():
+    import dashboard
+    import snapshot
+    with tempfile.TemporaryDirectory() as tmp:
+        d = make_audit(tmp).resolve()
+        dash = dashboard.Dash(d)
+        (d / "state.json").write_text(json.dumps({"stages": {"architecture": "done"}}))
+        real = snapshot.append_activity
+
+        def mid_write(audit, events):  # Claude réécrit state.json juste après l'événement
+            real(audit, events)
+            (d / "state.json").write_text('{"stages": {"arch')
+        snapshot.append_activity = mid_write
+        try:
+            sig, _ = dash.tick((), 0)
+        finally:
+            snapshot.append_activity = real
+        arc = lambda: next(x for x in dash.snap["stages"] if x["key"] == "architecture")["status"]
+        assert arc() == "done", "snapshot tout pending après un JSON tronqué"
+        (d / "state.json").write_text(json.dumps({"stages": {"architecture": "done"}}))
+        dash.tick(sig, 0)
+        act = [json.loads(x) for x in (d / "activity.jsonl").read_text().splitlines()]
+        assert [e.get("to") for e in act if e["kind"] == "stage"] == ["done"], act
+
+
+def test_watch_arret_malgre_erreur():
+    import dashboard
+
+    class Httpd:
+        def shutdown(self):
+            pass
+
+    def boom(*a):
+        raise TypeError("tick en échec")
+    saved = dashboard.POLL_S, dashboard.IDLE_S, dashboard.HARD_IDLE_S
+    try:
+        for clients, idle, hard in (([], 0, 99), ([object()], 99, 0)):  # inactif sans client ; 24 h même avec un client
+            dashboard.POLL_S, dashboard.IDLE_S, dashboard.HARD_IDLE_S = 0.01, idle, hard
+            with tempfile.TemporaryDirectory() as tmp:
+                dash = dashboard.Dash(make_audit(tmp).resolve())
+                dash.httpd, dash.tick, dash.clients = Httpd(), boom, clients
+                with redirect_stderr(io.StringIO()):
+                    t = threading.Thread(target=dash.watch, daemon=True)
+                    t.start()
+                    t.join(3)
+                assert not t.is_alive() and dash.stop_evt.is_set(), (clients, idle, hard)
+    finally:
+        dashboard.POLL_S, dashboard.IDLE_S, dashboard.HARD_IDLE_S = saved
+
+
+def test_score_non_numerique():
+    fs = [{"id": "a", "title": "A", "mantis_risk_score": "8"}, {"id": "b", "title": "B", "mantis_risk_score": "x"}]
+    with server(findings=fs) as (d, out, port, key):
+        assert req(port, "GET", f"/?key={key}")[0] == 200
 
 
 def test_help():

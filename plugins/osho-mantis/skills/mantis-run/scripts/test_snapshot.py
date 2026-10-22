@@ -217,6 +217,35 @@ def test_append_activity():
             {"a": 1}, {"b": "é"}, {"c": 3}]
 
 
+def test_duree_inconnue():
+    def at(status):
+        return snap({"repo": "/x/demo", "level": "Light"}, state={"stages": {"review": status}})
+    e = diff_events(at("running"), at("done"), "2026-10-22T14:03:20")[0]  # aucun passage à running journalisé
+    assert e["text"] == "Étape Revue terminée" and "duration_s" not in e, e
+
+
+def test_finding_en_ecriture_garde():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp, {"repo": "/x/demo", "level": "Light"}, state={},
+                  findings=[("a", {"id": "a", "title": "A", "reasoning": "x"})])
+        prev = build_snapshot(d)
+        p = d / "workspace" / "findings" / "a.json"
+        p.write_text('{"id": "a", "ti')
+        cur = read_snapshot_safe(d, prev)
+        assert [f["_src"] for f in cur["findings"]] == ["a"] and cur["stats"]["total"] == 1
+        assert diff_events(prev, cur, "t") == []
+        p.unlink()
+        assert read_snapshot_safe(d, cur)["findings"] == [], "un fichier supprimé disparaît"
+
+
+def test_score_non_numerique():
+    s = snap({"repo": "/x/demo", "level": "Light"}, state={},
+             findings=[{"id": "a", "title": "A", "mantis_risk_score": "8"},
+                       {"id": "b", "title": "B", "mantis_risk_score": "x"},
+                       {"id": "c", "title": "C", "mantis_risk_score": 9}])
+    assert [f["id"] for f in s["findings"]] == ["c", "a", "b"]
+
+
 if __name__ == "__main__":
     test_snapshot_triage_seul()
     test_snapshot_sharp_en_cours()
@@ -238,4 +267,7 @@ if __name__ == "__main__":
     test_state_mauvaise_forme()
     test_textes_sans_cadratin()
     test_append_activity()
+    test_duree_inconnue()
+    test_finding_en_ecriture_garde()
+    test_score_non_numerique()
     print("OK")

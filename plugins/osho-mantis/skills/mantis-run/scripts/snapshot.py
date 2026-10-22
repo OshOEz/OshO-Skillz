@@ -101,7 +101,7 @@ def build_snapshot(audit_dir, mode="live", now=None, loaded=None):
     campaign, state = (x if isinstance(x, dict) else {} for x in (campaign, state))
     waiting = waiting if isinstance(waiting, dict) else None
     notes = state.get("notes") if isinstance(state.get("notes"), list) else []
-    findings, _ = render.load_findings(audit_dir / "workspace")
+    findings, _ = render.load_findings(audit_dir / "workspace", loaded.get("carry"))
     assign_files(findings)
     activity = read_activity(audit_dir / "activity.jsonl")
     done_stages = state.get("stages") if isinstance(state.get("stages"), dict) else {}
@@ -155,7 +155,7 @@ def _secs(start, at):
     try:
         return max(0, int((datetime.fromisoformat(at) - datetime.fromisoformat(start)).total_seconds()))
     except (TypeError, ValueError):
-        return 0
+        return None  # début inconnu : durée inconnue
 
 
 def diff_events(prev, cur, at):
@@ -168,14 +168,15 @@ def diff_events(prev, cur, at):
         old = before.get(s["key"], {}).get("status", "pending")
         if s["status"] == old:
             continue
-        texts = {"running": "démarrée", "done": f"terminée en {round(_secs(s['started_at'], at) / 60)} min",
+        secs = _secs(s["started_at"], at)
+        texts = {"running": "démarrée", "done": "terminée" if secs is None else f"terminée en {round(secs / 60)} min",
                  "failed": "en échec", "skipped": "sautée"}
         if s["status"] not in texts:
             continue
         e = {"at": at, "kind": "stage", "stage": s["key"], "from": old, "to": s["status"],
              "text": f"Étape {s['name']} {texts[s['status']]}"}
-        if s["status"] == "done":
-            e["duration_s"] = _secs(s["started_at"], at)
+        if s["status"] == "done" and secs is not None:
+            e["duration_s"] = secs
         ev.append(e)
     old_f = {f["_src"]: f for f in prev["findings"]}
     for f in cur["findings"]:
@@ -212,7 +213,7 @@ def append_activity(audit_dir, events):
 def read_snapshot_safe(audit_dir, prev, mode="live"):
     """Snapshot courant, ou prev inchangé si un JSON surveillé est en cours d'écriture (illisible).
     Chaque fichier est lu une seule fois : celui qu'on valide est celui dont on construit le snapshot."""
-    loaded = {}
+    loaded = {"carry": {f["_src"]: f for f in prev["findings"]} if prev else {}}
     for key, default in (("state", {}), ("campaign", {}), ("waiting", None)):
         p = Path(audit_dir) / f"{key}.json"
         if not p.exists():

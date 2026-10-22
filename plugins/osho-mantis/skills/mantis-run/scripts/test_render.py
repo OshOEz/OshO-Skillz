@@ -386,6 +386,50 @@ def test_safe_id_triple_collision():
             assert file_name in readme, f"README missing reference to {file_name}"
 
 
+def test_question_texte():
+    """La bannière d'attente affiche w.text (phrase) plutôt que w.question (identifiant)."""
+    triage = RENDER.parents[2] / "mantis-triage" / "SKILL.md"
+    assert '"text": "Quel niveau d\'audit ?"' in triage.read_text()
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        assert "waitText(w)" in fn(js, "renderWaiting")
+        node_ok(tmp, fn(js, "waitText") + """
+const assert = require('assert');
+assert.strictEqual(waitText({question: 'volume', text: "Quel niveau d'audit ?"}), "Quel niveau d'audit ?");
+assert.strictEqual(waitText({question: 'Q ?'}), 'Q ?');
+""")
+
+
+def test_cles_stables():
+    """Fiche ouverte et cartes déjà vues suivies par _src (stable) ; l'ancre d'URL reste _file."""
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        assert "ui.peek = f._src" in js and "seenFiles = new Set(D.findings.map(f => f._src))" in js
+        assert "x._file === ui.peek" not in js and "location.hash = f._file" in js
+
+
+def test_cmd_text():
+    """Tuile Actions : la cible est nommée (« Relance de Plan », « Faux positif <titre> »)."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        label = re.search(r"const ACT_LABEL = \{.*?\};", js, re.S).group(0)
+        node_ok(tmp, label + fn(js, "cmdText") + """
+const assert = require('assert');
+const D = {stages: [{key: 'plan', name: 'Plan'}], findings: [{_src: 'f1', title: 'Injection'}]};
+assert.strictEqual(cmdText({action: 'retry', stage: 'plan'}), 'Relance de Plan');
+assert.strictEqual(cmdText({action: 'false_positive', finding: 'f1'}), 'Faux positif Injection');
+assert.strictEqual(cmdText({action: 'false_positive', finding: 'zz'}), 'Faux positif zz');
+assert.strictEqual(cmdText({action: 'pause'}), 'Pause');
+""")
+
+
 if __name__ == "__main__":
     test_trois_findings()
     test_niveau_banniere_et_reproduce()
@@ -404,4 +448,7 @@ if __name__ == "__main__":
     test_aucun_finding()
     test_safe_id_collision()
     test_safe_id_triple_collision()
+    test_question_texte()
+    test_cles_stables()
+    test_cmd_text()
     print("OK")

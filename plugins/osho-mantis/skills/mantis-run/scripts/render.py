@@ -48,7 +48,8 @@ def load_json(path, default):
         return default
 
 
-def load_findings(workspace):
+def load_findings(workspace, carry=None):
+    """carry : findings du snapshot précédent par _src, gardés si leur fichier est en cours d'écriture"""
     findings, unreadable = [], []
     for p in sorted(Path(workspace, "findings").glob("*.json")):
         f = load_json(p, None)
@@ -56,6 +57,8 @@ def load_findings(workspace):
             f["id"] = str(f.get("id") or p.stem)
             f["_src"] = p.stem
             findings.append(f)
+        elif carry and p.stem in carry:
+            findings.append(dict(carry[p.stem]))
         else:
             unreadable.append(p.name)
     return findings, unreadable
@@ -72,8 +75,16 @@ def bucket(f):
     return level if level in BUCKETS else "LOW"
 
 
+def risk(f):
+    """Score de risque en nombre ; une valeur non numérique vaut 0"""
+    try:
+        return float(f.get("mantis_risk_score") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def sort_key(f):
-    return (-(f.get("mantis_risk_score") or 0), str(f["title"]).lower())
+    return (-risk(f), str(f["title"]).lower())
 
 
 def stats(findings):
