@@ -221,14 +221,30 @@ class Handler(BaseHTTPRequestHandler):
         reason = commands.validate(cmd, snap)
         if reason:
             return self.send(400, {"error": reason})
+        appended = None
         try:
-            cmd = commands.append(self.dash.audit, cmd, "page")
+            cmd = appended = commands.append(self.dash.audit, cmd, "page")
             if cmd["action"] == "merge_fix":
                 cmd = commands.apply(self.dash.audit, cmd["id"])  # le serveur fusionne lui-même, sans attendre Claude
         except Exception as e:
             print(f"POST /command: {e!r}", file=sys.stderr, flush=True)
+            if appended:
+                ack_crash(self.dash.audit, appended)
             return self.send(500, {"error": "erreur interne du serveur"})
         self.send(200, cmd)
+
+
+def ack_crash(audit, cmd):
+    """Commande écrite puis plantage de apply : accusée pour que la page ne l'attende pas sans fin"""
+    import fixes
+    try:
+        e = fixes.load(audit).get(cmd.get("finding"))
+        if isinstance(e, dict) and e.get("status") == "merged":  # la fusion a eu lieu avant le plantage
+            commands.ack(audit, cmd["id"], "applied")
+        else:
+            commands.ack(audit, cmd["id"], "refused", "erreur interne du serveur")
+    except Exception as err:
+        print(f"accusé impossible : {err!r}", file=sys.stderr, flush=True)
 
 
 def run(audit):

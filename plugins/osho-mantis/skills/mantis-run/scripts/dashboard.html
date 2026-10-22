@@ -464,6 +464,7 @@ function renderBanner() {
   $('fix-branch').hidden = !(n > 0 && m.audit_branch);
   if (n > 0 && m.audit_branch) {
     $('fix-branch').firstElementChild.replaceChildren(n + (n > 1 ? ' correctifs sur ' : ' correctif sur '), el('code', {}, String(m.audit_branch)));
+    $('copy-merge').hidden = !m.audit_branch_ok;
   }
   const rej = b.REJECTED || 0, na = !m.reproduce_done && m.level === 'Light';
   const kpis = [

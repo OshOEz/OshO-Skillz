@@ -383,6 +383,25 @@ def test_score_non_numerique():
         assert req(port, "GET", f"/?key={key}")[0] == 200
 
 
+def test_ack_crash():
+    import commands
+    import dashboard
+    with tempfile.TemporaryDirectory() as tmp:
+        d = make_audit(tmp, findings=[{"id": "a"}])
+        result = lambda c: next(x for x in commands.done(d) if x["id"] == c["id"])
+        (d / "fixes.json").write_text(json.dumps({"f0": {"status": "ready"}}))
+        c = commands.append(d, {"action": "merge_fix", "finding": "f0"}, "page")
+        dashboard.ack_crash(d, c)
+        assert (result(c)["result"], result(c)["reason"]) == ("refused", "erreur interne du serveur")
+        (d / "fixes.json").write_text(json.dumps({"f0": {"status": "merged"}}))
+        c = commands.append(d, {"action": "merge_fix", "finding": "f0"}, "page")
+        dashboard.ack_crash(d, c)
+        assert result(c)["result"] == "applied"
+        (d / "fixes.json").write_text("[")  # illisible : pas d'exception
+        with redirect_stderr(io.StringIO()):
+            dashboard.ack_crash(d, {"id": "zz"})
+
+
 def test_help():
     out = cli("--help").stdout
     for w in ("serve", "stop", "alive", "command", "pending", "apply", "ack"):

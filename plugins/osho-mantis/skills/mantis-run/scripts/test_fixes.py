@@ -41,7 +41,7 @@ def scratch():
                 git(repo, "worktree", "prune")
 
 
-def git_audit(tmp, findings=(("f1", F),), state=None):
+def git_audit(tmp, findings=(("f1", F),), state=None, name="audit-x"):
     repo = Path(tmp) / "repo"
     repo.mkdir()
     git(repo, "init", "-q", "-b", "main")
@@ -51,7 +51,7 @@ def git_audit(tmp, findings=(("f1", F),), state=None):
     git(repo, "add", "app.py")
     git(repo, "commit", "-q", "-m", "init")
     top = Path(git(repo, "rev-parse", "--show-toplevel")).resolve()
-    d = make_audit(repo / "osho-mantis" / "audit-x", {"repo": str(top), "level": "Light"},
+    d = make_audit(repo / "osho-mantis" / name, {"repo": str(top), "level": "Light"},
                    state=state, findings=findings)
     with open(repo / ".git" / "info" / "exclude", "a") as fh:
         fh.write("osho-mantis/\n")
@@ -333,6 +333,7 @@ def test_recorriger_part_de_la_tete():
     with scratch() as tmp:
         d, repo, _ = _conflit(tmp)
         fixes.merge(d, "f2")
+        fixes.queue(d, "f2", "c")  # le vrai parcours : la commande fix met l'entrée en file avant start
         e = fixes.start(d, "f2")
         assert e["base"] == git(repo, "rev-parse", "mantis/audit-x")
         assert e["prev_diff"] == str(d / "fixes" / "f2.prev.diff")
@@ -469,6 +470,65 @@ def test_merge_entree_incomplete():
             raise AssertionError("accepté")
         except RuntimeError as err:
             assert str(err) == "entrée de correction incomplète"
+
+
+def test_merge_branche_audit_extraite():
+    with scratch() as tmp:
+        d, repo = git_audit(tmp)
+        make_ready(d, "f1")
+        before = git(repo, "rev-parse", "mantis/audit-x")
+        user_wt = Path(tmp) / "user-wt"
+        git(repo, "worktree", "add", "-q", str(user_wt), "mantis/audit-x")
+        res, why = fixes.merge(d, "f1")
+        assert res == "busy" and why.startswith("branche de l'audit extraite dans ") and "change de branche" in why, why
+        assert fixes.load(d)["f1"]["status"] == "ready" and git(repo, "rev-parse", "mantis/audit-x") == before
+        git(repo, "worktree", "remove", "--force", str(user_wt))
+        git(repo, "symbolic-ref", "HEAD", "refs/heads/mantis/audit-x")  # extraite dans le worktree principal
+        assert fixes.merge(d, "f1")[0] == "busy"
+        git(repo, "symbolic-ref", "HEAD", "refs/heads/main")
+        assert fixes.merge(d, "f1")[0] == "merged"
+
+
+def test_nom_audit_invalide():
+    assert fixes.audit_branch_ok("x/audit-1.2_a") and not fixes.audit_branch_ok("x/audit x")
+    for bad in ("a..b", ".a", "a.lock", "é"):
+        assert not fixes.audit_branch_ok(bad), bad
+    why = "nom du dossier d'audit non pris en charge pour une branche git"
+    with scratch() as tmp:
+        d, repo = git_audit(tmp, name="audit x")
+        assert fixes.audit_branch(d) == "mantis/audit x"  # snapshot l'appelle : ne lève jamais
+        e = fixes.start(d, "f1")
+        assert e["status"] == "failed" and e["error"] == why, e
+        assert git(repo, "for-each-ref", "refs/heads/mantis") == ""
+        fixes.update(d, "f1", status="ready", base="a" * 40, commit="b" * 40)
+        assert fixes.merge(d, "f1") == ("failed", why)
+
+
+def test_branche_audit_supprimee_apres_merge():
+    with scratch() as tmp:
+        d, repo = git_audit(tmp, findings=(("f1", F), ("f2", F)))
+        make_ready(d, "f1")
+        assert fixes.merge(d, "f1")[0] == "merged"
+        git(repo, "update-ref", "-d", "refs/heads/mantis/audit-x")
+        e = fixes.start(d, "f2")
+        assert e["status"] == "failed", e
+        assert e["error"] == "branche de l'audit supprimée alors que des correctifs y étaient fusionnés"
+        assert not has_ref(repo, "refs/heads/mantis/audit-x")
+
+
+def test_recorriger_garde_branche_conservee():
+    with scratch() as tmp:
+        d, repo = git_audit(tmp)
+        old = make_ready(d, "f1")["commit"]
+        git(repo, "update-ref", "-d", "refs/heads/mantis/audit-x")
+        assert fixes.merge(d, "f1")[0] == "failed"
+        git(repo, "update-ref", "refs/heads/mantis/fix/audit-x/f1-ancien-1", old)  # nom déjà pris : on passe au suivant
+        fixes.queue(d, "f1", "c")
+        e = fixes.start(d, "f1")
+        kept = "mantis/fix/audit-x/f1-ancien-2"
+        assert e["status"] == "running" and e["kept_branch"] == kept, e
+        assert git(repo, "rev-parse", "refs/heads/" + kept) == old
+        assert git(repo, "rev-parse", "refs/heads/mantis/fix/audit-x/f1") == e["base"]
 
 
 if __name__ == "__main__":

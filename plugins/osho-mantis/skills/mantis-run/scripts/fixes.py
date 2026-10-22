@@ -17,6 +17,7 @@ import commands
 import render
 
 FIX_LIMIT = 3
+BAD_AUDIT_NAME = "nom du dossier d'audit non pris en charge pour une branche git"
 USAGE = __doc__.strip()
 
 
@@ -77,6 +78,13 @@ def audit_branch(audit_dir):
     return "mantis/" + Path(audit_dir).name
 
 
+def audit_branch_ok(audit_dir):
+    """Le nom du dossier d'audit donne une branche git valide (snapshot s'en sert pour masquer git merge)"""
+    name = Path(audit_dir).name
+    return bool(re.fullmatch(r"[A-Za-z0-9._-]+", name)) and not name.startswith(".") \
+        and ".." not in name and not name.endswith(".lock")
+
+
 def short(stem):
     return re.sub(r"[^A-Za-z0-9_-]", "_", stem)[:8]
 
@@ -117,10 +125,14 @@ def safe_tmp(path):
 
 
 def ensure_audit_branch(audit_dir):
+    if not audit_branch_ok(audit_dir):
+        raise ValueError(BAD_AUDIT_NAME)
     repo, ref = repo_of(audit_dir), "refs/heads/" + audit_branch(audit_dir)
     r = git(repo, "rev-parse", "--verify", "-q", ref + "^{commit}", check=False)
     if r.returncode == 0:
         return r.stdout.strip()
+    if _with(audit_dir, "merged"):  # la recréer depuis base_commit perdrait ces fusions sans bruit
+        raise ValueError("branche de l'audit supprimée alors que des correctifs y étaient fusionnés")
     state = render.load_json(Path(audit_dir) / "state.json", {})
     base = state.get("base_commit") if isinstance(state, dict) else None
     if not (isinstance(base, str) and re.fullmatch(r"[0-9a-f]{40}", base)
@@ -214,6 +226,24 @@ def active(audit_dir):
     return _with(audit_dir, "queued", "running")
 
 
+def _keep_old_branch(repo, data, stem):
+    """Branche gardée après un merge raté : renommée en <branche>-ancien-<n> pour que son commit reste joignable"""
+    e = data.get(stem) if isinstance(data.get(stem), dict) else {}
+    br, sha = e.get("branch"), e.get("commit")
+    if not (isinstance(br, str) and isinstance(sha, str) and sha):  # commit seulement après ready ; queued à ce stade
+        return
+    old = "refs/heads/" + br
+    if git(repo, "rev-parse", "--verify", "-q", old, check=False).stdout.strip() != sha \
+            or old in _worktrees(repo).values():  # déplacée ou extraite par l'utilisateur : on n'y touche pas
+        return
+    n = 1
+    while git(repo, "rev-parse", "--verify", "-q", f"{old}-ancien-{n}", check=False).returncode == 0:
+        n += 1
+    git(repo, "update-ref", f"{old}-ancien-{n}", sha, "")
+    git(repo, "update-ref", "-d", old, sha)
+    _set(data, stem, kept_branch=f"{br}-ancien-{n}")
+
+
 def start(audit_dir, stem):
     audit_dir = Path(audit_dir)
     with locked(audit_dir):
@@ -223,9 +253,15 @@ def start(audit_dir, stem):
             raise ValueError("finding invalide ou correction déjà en cours")
         repo = repo_of(audit_dir)
         diff = audit_dir / "fixes" / f"{stem}.prev.diff"
-        prev_diff = str(diff) if prev.get("status") == "conflict" and diff.is_file() else None
+        prev_diff = str(diff) if diff.is_file() else None  # la commande fix a déjà remis l'entrée en queued
+        try:
+            head = ensure_audit_branch(audit_dir)
+        except ValueError as err:
+            e = _set(data, stem, status="failed", error=str(err))
+            _save(audit_dir, data)
+            return dict(e)
+        _keep_old_branch(repo, data, stem)
         _cleanup(audit_dir, data, stem)
-        head = ensure_audit_branch(audit_dir)
         if has_filter(repo, head):
             e = _set(data, stem, status="failed",
                      error="le repo déclare un filtre git (.gitattributes) : correction refusée")
@@ -327,9 +363,13 @@ def merge(audit_dir, stem):
         except KeyError:
             raise RuntimeError("entrée de correction incomplète") from None
         repo, ref = repo_of(audit_dir), "refs/heads/" + audit_branch(audit_dir)
+        holder = next((p for p, b in _worktrees(repo).items() if b == ref), None)
+        if holder:  # update-ref changerait le HEAD et les fichiers de ce worktree
+            return ("busy", f"branche de l'audit extraite dans {holder} : change de branche puis réessaie")
         r = git(repo, "rev-parse", "--verify", "-q", ref + "^{commit}", check=False)
         old = r.stdout.strip()
-        why = ("branche de l'audit introuvable" if r.returncode
+        why = (BAD_AUDIT_NAME if not audit_branch_ok(audit_dir)
+               else "branche de l'audit introuvable" if r.returncode
                else "pilote de merge non autorisé dans .gitattributes"
                if has_merge_driver(repo, old) or has_merge_driver(repo, fix) else None)
         if why:  # la branche du correctif est gardée : l'utilisateur peut récupérer le correctif

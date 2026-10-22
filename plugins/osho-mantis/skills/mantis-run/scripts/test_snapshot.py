@@ -118,8 +118,16 @@ def test_meta_branche():
                   fixes={"a": {"status": "merged"}, "b": {"status": "ready"}})
         m = build_snapshot(d)["meta"]
         assert m["audit_branch"] == "mantis/" + d.name and m["fixes_merged"] == 1 and m["dirty_before"] is True
+        assert m["audit_branch_ok"] is True
         (d / "state.json").write_text("{}")
         assert build_snapshot(d)["meta"]["dirty_before"] is False
+
+
+def test_meta_branche_nom_invalide():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(Path(tmp) / "audit x", {"repo": "/x/demo", "level": "Light"}, state={})
+        m = build_snapshot(d)["meta"]
+        assert m["audit_branch"] == "mantis/audit x" and m["audit_branch_ok"] is False
 
 
 def test_fixes_tronque_ignore():
@@ -351,6 +359,7 @@ if __name__ == "__main__":
     test_fix_queued_derive()
     test_listening_fixes()
     test_meta_branche()
+    test_meta_branche_nom_invalide()
     test_fixes_tronque_ignore()
     test_diff_fix_fusionne()
     test_overkill_tour_2()

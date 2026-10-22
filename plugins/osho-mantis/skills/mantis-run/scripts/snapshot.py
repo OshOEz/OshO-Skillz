@@ -161,7 +161,7 @@ def build_snapshot(audit_dir, mode="live", now=None, loaded=None):
             "stages": [k for k, v in done_stages.items() if v == "done"],
             "round": state.get("round"), "finished": finished, "stopped": stopped,
             "paused": bool(state.get("paused")), "audit_age_s": age,
-            "audit_branch": fixes.audit_branch(audit_dir),
+            "audit_branch": fixes.audit_branch(audit_dir), "audit_branch_ok": fixes.audit_branch_ok(audit_dir),
             "fixes_merged": sum(1 for e in fix_entries.values() if isinstance(e, dict) and e.get("status") == "merged"),
             "dirty_before": bool(state.get("git_status_before"))}
     meta["reproduce_done"] = "reproduce" in meta["stages"]

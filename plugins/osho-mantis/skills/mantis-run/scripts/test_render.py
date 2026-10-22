@@ -369,6 +369,15 @@ def test_readme_corrections_fusionnees():
         assert readme.index("## Corrections fusionnées") < readme.index("## Limites")
 
 
+def test_readme_nom_audit_invalide():
+    fixes = {"f0": {"status": "merged", "commit": "a" * 40, "merge_commit": "b" * 40}}
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(Path(tmp) / "audit x", [CRIT, LOW], fixes=fixes)
+        readme = (d / "README.md").read_text()
+        assert "## Corrections fusionnées" in readme and "git merge" not in readme
+        assert "copy-merge').hidden = !m.audit_branch_ok" in (d / "dashboard.html").read_text()
+
+
 def test_readme_sans_correction():
     with tempfile.TemporaryDirectory() as tmp:
         d = audit(tmp, [CRIT, LOW])
@@ -657,6 +666,7 @@ if __name__ == "__main__":
     test_etat_commande()
     test_carte_option()
     test_readme_corrections_fusionnees()
+    test_readme_nom_audit_invalide()
     test_readme_sans_correction()
     test_readme_corrections_hostile()
     test_fix_view()

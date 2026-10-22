@@ -179,8 +179,9 @@ def readme(meta, findings, unreadable, st):
         merged = [f for f in findings if (f.get("_fix") or {}).get("status") == "merged"]
         n = meta["fixes_merged"]
         out += ["## Corrections fusionnées", "",
-                f"{n} correctif{'' if n == 1 else 's'} sur la branche `{meta['audit_branch']}`. "
-                f"Pour les intégrer à ta branche : `git merge {meta['audit_branch']}`", ""]
+                f"{n} correctif{'' if n == 1 else 's'} sur la branche `{meta['audit_branch']}`."
+                + (f" Pour les intégrer à ta branche : `git merge {meta['audit_branch']}`"
+                   if meta.get("audit_branch_ok") else ""), ""]
         out += [f"- {text(f['title'])} (`{(f['_fix'].get('merge_commit') or f['_fix'].get('commit') or '')[:7]}`)"
                 for f in merged] + [""]
     out += ["## Limites", ""] + [f"- {text(n)}" for n in meta["notes"]]
