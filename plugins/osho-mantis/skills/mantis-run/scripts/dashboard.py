@@ -28,6 +28,7 @@ MAX_BODY = 4096  # validate() plafonne la commande à 1 Ko ; on coupe avant de t
 USAGE = """usage: dashboard.py <commande> <AUDIT> [...]
   serve <AUDIT>                        démarre (ou réutilise) le serveur, affiche {"url", "reused"}
   stop <AUDIT>                         arrête le serveur
+  alive <AUDIT>                        code 0 si le serveur tourne et répond, 1 sinon
   command <AUDIT> '<json>'             ajoute une commande depuis le terminal (code 2 si refusée)
   pending <AUDIT>                      commandes en attente, une par ligne
   apply <AUDIT> <id>                   applique une commande finding (false_positive, prioritize_repro)
@@ -296,7 +297,7 @@ def stop(audit):
 
 def main(argv):
     if len(argv) < 2 or argv[1] in ("-h", "--help") or argv[1] not in (
-            "serve", "stop", "command", "pending", "apply", "ack", "_run") or len(argv) < 3:
+            "serve", "stop", "alive", "command", "pending", "apply", "ack", "_run") or len(argv) < 3:
         print(USAGE)
         return 0 if len(argv) < 2 or argv[1] in ("-h", "--help") else 2
     cmd, audit, rest = argv[1], argv[2], argv[3:]
@@ -309,6 +310,9 @@ def main(argv):
         print(json.dumps(serve(audit)))
     elif cmd == "stop":
         stop(audit)
+    elif cmd == "alive":
+        info = read_info(Path(audit).resolve())
+        return 0 if info and alive(info) else 1
     elif cmd == "pending":
         for c in commands.pending(audit):
             print(json.dumps(c, ensure_ascii=False))

@@ -68,15 +68,15 @@ Run before each stage, after each batch of agents returns, and in Patch Sharp+ b
 2. Say it in the terminal in plain text (no AskUserQuestion: it would block the page's answer): pause « En pause. Réponds « reprendre » ou « arrêter », ici ou sur le dashboard. »; failure: the stage, the 2-line reason, then « Réponds « relancer » ou « arrêter », ici ou sur le dashboard. »; question: its options, numbered.
 3. Start the Monitor tool (`timeout_ms` 1800000) with `until [ -n "$(python3 "$R/dashboard.py" pending "$AUDIT")" ]; do sleep 2; done`, then end your turn.
 
-On wake-up, run `pending` first and handle each command in order:
+On wake-up (Monitor event or typed reply): a Monitor event when `$AUDIT/waiting.json` no longer exists is stale: ignore it and do not re-arm Monitor. Otherwise run `pending` first and handle each command in order:
 - `false_positive`, `prioritize_repro` → `apply` as in the checkpoint; the wait goes on.
-- `resume` (paused) → drop `paused`. `retry` whose `stage` is the failed one → set it to `"pending"`. `answer` to the current question → take its `value`. Each: ack `applied`, then `rm "$AUDIT/waiting.json"`, then continue where the audit was (the stage loop reruns a `pending` stage).
-- `stop` → Stop, as in the checkpoint.
-- Anything else, or a second command once the wait is lifted → ack `refused` with the reason (« ne correspond pas à l'attente en cours », « attente déjà levée »).
+- `resume` (paused) → drop `paused`. `retry` whose `stage` is the failed one → set it to `"pending"`. `answer` to the current question → take its `value`. Each lifts the wait: ack `applied`, then `rm "$AUDIT/waiting.json"`; if Monitor is still running (the wait was lifted by a typed reply), stop it with TaskStop on its task id; handle the remaining pending commands with the checkpoint rules (a duplicate `resume`, `retry` or `answer` is refused there); then continue where the audit was (the stage loop reruns a `pending` stage).
+- `stop` → Stop, as in the checkpoint (TaskStop a still-running Monitor first).
+- Any other command (`pause` while waiting, `retry` of another stage, `answer` to another question) → ack `refused` « ne correspond pas à l'attente en cours »; the wait goes on.
 - No pending command and the user typed a reply → map it (« reprendre » → `{"action": "resume"}`, « relancer » → `{"action": "retry", "stage": "<stage>"}`, « arrêter » → `{"action": "stop"}`, a question answer as in mantis-triage step 6), record it with `python3 "$R/dashboard.py" command "$AUDIT" '<json>'` (exit 2 → tell the user the printed reason and stay waiting), then handle it like a page command. Unclear reply → ask again.
 - Wait not lifted → back to 3.
 
-Monitor expired with no command → if `python3 -c 'import json,os,sys; os.kill(json.load(open(sys.argv[1]))["pid"], 0)' "$AUDIT/server.json"` succeeds (server alive), start Monitor again and end your turn; otherwise `rm "$AUDIT/waiting.json"`, say « Dashboard arrêté : relance `/mantis-run`. » and end.
+Monitor expired with no command → if `$AUDIT/waiting.json` no longer exists, ignore this event and do not re-arm Monitor. Otherwise if `python3 "$R/dashboard.py" alive "$AUDIT"` exits 0 (server running), start Monitor again and end your turn; otherwise `rm "$AUDIT/waiting.json"`, say « Dashboard arrêté : relance `/mantis-run`. » and end.
 
 ### From the terminal
 
@@ -123,4 +123,4 @@ For each finding with `repro_status: reproduced`, one at a time (checkpoint befo
 2. Shadow guard (2.4), then `rm -rf "$SHADOW"` (the path saved as `shadow` in `state.json`), then drop that key.
 3. Set `finished: true` in `state.json` and `finished_at` (`date +%Y-%m-%dT%H:%M:%S`) in `campaign.json`.
 4. `python3 "$R/render.py" "$AUDIT"` (no `open`: the live page is already open and shows « Audit terminé »).
-5. Report, 5 lines max: counts by severity, the top Critical or High finding, the `README.md` path, the `dashboard.html` path (for later reading). If `versioning` is `versioned`, end with: `git -C "<REPO>" add "osho-mantis/<audit name>" && git -C "<REPO>" commit -m "Audit de sécurité Mantis <date>"`. Never commit yourself.
+5. Report, 5 lines max: counts by severity, the top Critical or High finding, the `README.md` path, the `dashboard.html` path (for later reading). If `versioning` is `versioned`, end with (stopping the server first deletes `server.json`, which holds the session key, so it is never committed): `python3 "$R/dashboard.py" stop "<AUDIT>" && git -C "<REPO>" add "osho-mantis/<audit name>" && git -C "<REPO>" commit -m "Audit de sécurité Mantis <date>"`. Never commit yourself.

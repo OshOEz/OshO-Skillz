@@ -231,6 +231,13 @@ def test_stop():
             pass
 
 
+def test_alive():
+    with server() as (d, out, port, key):
+        assert cli("alive", d, check=False).returncode == 0
+        cli("stop", d)
+        assert cli("alive", d, check=False).returncode == 1
+
+
 def test_command_terminal():
     with tempfile.TemporaryDirectory() as tmp:
         d = make_audit(tmp, {"stages": {"review": "done"}, "finished": True, "paused": True})
@@ -252,7 +259,7 @@ def test_page_live_servie():
 
 def test_help():
     out = cli("--help").stdout
-    for w in ("serve", "stop", "command", "pending", "apply", "ack"):
+    for w in ("serve", "stop", "alive", "command", "pending", "apply", "ack"):
         assert w in out
 
 
