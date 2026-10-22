@@ -206,6 +206,29 @@ def test_apply_merge_erreur_refusee():
         assert r["result"] == "refused" and "incomplète" in r["reason"]
 
 
+def test_apply_merge_rendu_en_echec():
+    import render
+    with scratch() as tmp:
+        d, repo = git_audit(tmp, state={"finished": True})
+        make_ready(d, "f1")
+        c = commands.append(d, {"action": "merge_fix", "finding": "f1"}, "ui")
+        orig, render.render = render.render, lambda *_: (_ for _ in ()).throw(RuntimeError("boum"))
+        try:
+            r = commands.apply(d, c["id"])
+        finally:
+            render.render = orig
+        assert r["result"] == "applied" and fixes.load(d)["f1"]["status"] == "merged"
+
+
+def test_apply_merge_deja_fusionne_sans_accuse():
+    with scratch() as tmp:
+        d, repo = git_audit(tmp)
+        make_ready(d, "f1")
+        c = commands.append(d, {"action": "merge_fix", "finding": "f1"}, "ui")
+        assert fixes.merge(d, "f1")[0] == "merged"  # plantage avant l'accusé
+        assert commands.apply(d, c["id"])["result"] == "applied"
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

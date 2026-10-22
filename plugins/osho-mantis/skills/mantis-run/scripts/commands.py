@@ -3,6 +3,7 @@
 import json
 import os
 import secrets
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -137,6 +138,17 @@ def _atomic_json(path, data):
     atomic_write(path, json.dumps(data, ensure_ascii=False, indent=2))
 
 
+def _render_if_finished(audit_dir):
+    """Le README suit la fusion ; un échec de rendu ne défait pas la fusion"""
+    import render
+    try:
+        state = render.load_json(Path(audit_dir) / "state.json", {})
+        if isinstance(state, dict) and state.get("finished"):
+            render.render(audit_dir)
+    except Exception as e:
+        print(f"rendu du README impossible : {e}", file=sys.stderr)
+
+
 def apply(audit_dir, cmd_id):
     import snapshot  # import tardif : snapshot importe commands
     audit_dir = Path(audit_dir)
@@ -151,27 +163,32 @@ def apply(audit_dir, cmd_id):
         raise ValueError("commande inconnue")
     if cmd.get("action") not in ("false_positive", "prioritize_repro", "fix", "merge_fix"):
         raise ValueError("à traiter par mantis-run")
-    reason = validate(cmd, snapshot.build_snapshot(audit_dir))
+    merged = False
+    if cmd["action"] == "merge_fix":
+        import fixes
+        # plantage entre la fusion et l'accusé : la fusion est faite, on ne la refuse pas
+        e = fixes.load(audit_dir).get(cmd["finding"]) if not _bad(cmd.get("finding")) else None
+        merged = isinstance(e, dict) and e.get("status") == "merged"
+    reason = None if merged else validate(cmd, snapshot.build_snapshot(audit_dir))
     if reason:
         ack(audit_dir, cmd_id, "refused", reason)
         return existing()
     if cmd["action"] in ("fix", "merge_fix"):
         import fixes
-        import render
         try:
             if cmd["action"] == "fix":
                 fixes.queue(audit_dir, cmd["finding"], cmd_id)
-            else:
+            elif not merged:
                 result, why = fixes.merge(audit_dir, cmd["finding"])
                 if result != "merged":
                     ack(audit_dir, cmd_id, "refused", why)
                     return existing()
-                state = render.load_json(audit_dir / "state.json", {})
-                if isinstance(state, dict) and state.get("finished"):
-                    render.render(audit_dir)
+                merged = True
         except (ValueError, RuntimeError) as e:
             ack(audit_dir, cmd_id, "refused", str(e))
             return existing()
+        if merged:
+            _render_if_finished(audit_dir)
     elif cmd["action"] == "false_positive":
         p = audit_dir / "workspace" / "findings" / f"{cmd['finding']}.json"
         f = json.loads(p.read_text())
