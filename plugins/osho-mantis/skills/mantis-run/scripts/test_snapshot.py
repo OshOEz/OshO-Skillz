@@ -115,9 +115,41 @@ def test_diff_etape():
     def at(status):
         return snap({"repo": "/x/demo", "level": "Light"}, state={"stages": {"review": status}})
     a = diff_events(at("pending"), at("running"), "2026-10-22T14:00:00")
-    b = diff_events(at("running"), at("done"), "2026-10-22T14:03:00")
+    done = at("done")
+    next(x for x in done["stages"] if x["key"] == "review")["started_at"] = "2026-10-22T14:00:00"
+    b = diff_events(at("running"), done, "2026-10-22T14:03:20")
+    assert b[0]["duration_s"] == 200 and b[0]["text"] == "Étape Revue terminée en 3 min"
     assert [e["kind"] for e in a + b] == ["stage", "stage"] and a[0]["text"] == "Étape Revue démarrée"
     assert b[0]["text"].startswith("Étape Revue terminée") and b[0]["from"] == "running"
+
+
+def test_textes_echec_et_saut():
+    def st(**k):
+        return snap({"repo": "/x/demo", "level": "Light"}, state={"stages": k})
+    texts = [e["text"] for e in diff_events(st(plan="pending", review="pending"),
+                                            st(plan="failed", review="skipped"), "t")]
+    assert texts == ["Étape Plan en échec", "Étape Revue sautée"], texts
+
+
+def test_lecture_unique():
+    # state.json devient illisible juste après la première lecture : jamais de snapshot tout pending
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp, {"repo": "/x/demo", "level": "Light"}, state={"stages": {"review": "done"}})
+        prev = build_snapshot(d)
+        real, calls = Path.read_text, []
+
+        def flaky(self, *a, **k):
+            if self.name == "state.json":
+                calls.append(1)
+                return real(self, *a, **k) if len(calls) == 1 else '{"stages": {"rev'
+            return real(self, *a, **k)
+        Path.read_text = flaky
+        try:
+            cur = read_snapshot_safe(d, prev)
+        finally:
+            Path.read_text = real
+        assert cur is prev or diff_events(prev, cur, "t") == []
+        assert all(x["status"] != "pending" for x in cur["stages"] if x["key"] == "review")
 
 
 def test_diff_finding():
@@ -197,6 +229,8 @@ if __name__ == "__main__":
     test_durees()
     test_stale()
     test_diff_etape()
+    test_textes_echec_et_saut()
+    test_lecture_unique()
     test_diff_finding()
     test_diff_premier_snapshot()
     test_diff_waiting_et_commande()

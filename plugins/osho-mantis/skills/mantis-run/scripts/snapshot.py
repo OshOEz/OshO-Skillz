@@ -88,13 +88,15 @@ def timing(activity, key):
         return start, None
 
 
-def build_snapshot(audit_dir, mode="live", now=None):
+def build_snapshot(audit_dir, mode="live", now=None, loaded=None):
+    """loaded : campaign/state/waiting déjà lus (read_snapshot_safe), pour ne lire chaque fichier qu'une fois"""
     audit_dir = Path(audit_dir).resolve()
     now = time.time() if now is None else now
     # un JSON de mauvaise forme (liste, null) vaut un fichier vide
-    campaign = render.load_json(audit_dir / "campaign.json", {})
-    state = render.load_json(audit_dir / "state.json", {})
-    waiting = render.load_json(audit_dir / "waiting.json", None)
+    loaded = loaded or {}
+    campaign = loaded["campaign"] if "campaign" in loaded else render.load_json(audit_dir / "campaign.json", {})
+    state = loaded["state"] if "state" in loaded else render.load_json(audit_dir / "state.json", {})
+    waiting = loaded["waiting"] if "waiting" in loaded else render.load_json(audit_dir / "waiting.json", None)
     campaign, state = (x if isinstance(x, dict) else {} for x in (campaign, state))
     waiting = waiting if isinstance(waiting, dict) else None
     notes = state.get("notes") if isinstance(state.get("notes"), list) else []
@@ -147,9 +149,9 @@ COLUMN_LABELS = {"found": "Trouvées", "reviewed": "Revues", "evaluated": "Éval
                  "fixed": "Corrigées", "rejected": "Écartés"}
 
 
-def _minutes(start, at):
+def _secs(start, at):
     try:
-        return max(0, round((datetime.fromisoformat(at) - datetime.fromisoformat(start)).total_seconds() / 60))
+        return max(0, int((datetime.fromisoformat(at) - datetime.fromisoformat(start)).total_seconds()))
     except (TypeError, ValueError):
         return 0
 
@@ -164,14 +166,14 @@ def diff_events(prev, cur, at):
         old = before.get(s["key"], {}).get("status", "pending")
         if s["status"] == old:
             continue
-        texts = {"running": "démarrée", "done": f"terminée en {_minutes(s['started_at'], at)} min",
+        texts = {"running": "démarrée", "done": f"terminée en {round(_secs(s['started_at'], at) / 60)} min",
                  "failed": "en échec", "skipped": "sautée"}
         if s["status"] not in texts:
             continue
         e = {"at": at, "kind": "stage", "stage": s["key"], "from": old, "to": s["status"],
              "text": f"Étape {s['name']} {texts[s['status']]}"}
         if s["status"] == "done":
-            e["duration_s"] = _minutes(s["started_at"], at) * 60
+            e["duration_s"] = _secs(s["started_at"], at)
         ev.append(e)
     old_f = {f["_src"]: f for f in prev["findings"]}
     for f in cur["findings"]:
@@ -206,14 +208,18 @@ def append_activity(audit_dir, events):
 
 
 def read_snapshot_safe(audit_dir, prev, mode="live"):
-    """Snapshot courant, ou prev inchangé si un JSON surveillé est en cours d'écriture (illisible)"""
-    for name in ("state.json", "campaign.json", "waiting.json"):
-        p = Path(audit_dir) / name
-        if p.exists():
-            try:
-                json.loads(p.read_text())
-            except ValueError:
-                return prev
-            except OSError:
-                pass
-    return build_snapshot(audit_dir, mode)
+    """Snapshot courant, ou prev inchangé si un JSON surveillé est en cours d'écriture (illisible).
+    Chaque fichier est lu une seule fois : celui qu'on valide est celui dont on construit le snapshot."""
+    loaded = {}
+    for key, default in (("state", {}), ("campaign", {}), ("waiting", None)):
+        p = Path(audit_dir) / f"{key}.json"
+        if not p.exists():
+            loaded[key] = default
+            continue
+        try:
+            loaded[key] = json.loads(p.read_text())
+        except ValueError:
+            return prev
+        except OSError:
+            loaded[key] = default
+    return build_snapshot(audit_dir, mode, loaded=loaded)
