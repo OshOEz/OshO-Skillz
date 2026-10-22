@@ -60,7 +60,7 @@ Third-party plugins are **referenced, never copied**: they auto-update from upst
 
 | Component | Type | What it does |
 |---|---|---|
-| `repo-init` | Skill | After `git init` / `git clone`, or on request: builds the code-review-graph and installs its pre-commit hook |
+| `repo-init` | Skill | After `git init` / `git clone`, or on request: builds the code-review-graph, installs its pre-commit hook and the versioned pre-push relay, then audits and aligns the repo on Nobori's Git & CI process |
 | `donnees-fictives` | Skill | Builds invented test data from confidential client documents, with an automatic leak check and purge |
 | `audit-loop` | Skill + agent | Say *"audit loop on PR #12"*: a senior auditor files issues for production-breaking problems only, a dev fixes them, repeat up to 3 rounds, then it proposes the merge |
 | `tache` | Skill | Paste *"/tache <id>"* from a card of Horizon's Kanban: the session starts from the card's context and leaves a session log on it when done. Needs the `horizon-kanban` MCP server (Horizon → Kanban → Accès Claude Code) and Tailscale |

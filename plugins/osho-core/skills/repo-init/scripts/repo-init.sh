@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Activate per-repo tooling: code-review-graph graph + pre-commit hook. Idempotent.
+# Activate per-repo tooling: code-review-graph graph + pre-commit hook, and the versioned
+# pre-push hook (.githooks/pre-push) when the repo has one. Idempotent.
 #   repo-init.sh [repo-path]
 set -euo pipefail
 
@@ -39,4 +40,29 @@ fi
 HOOK
   chmod +x "$hook"
   echo "pre-commit: installed ($hook)"
+fi
+
+# 3. Pre-push hook: relays to the checkout's versioned .githooks/pre-push (Nobori Git & CI process).
+# A relay, not a symlink: the hooks dir is shared by worktrees and a link into one would dangle
+# (git then skips the hook silently). No core.hooksPath: it would disable the pre-commit above.
+push="$hooks_dir/pre-push"
+pmark="# >>> versioned pre-push relay >>>"
+if [ ! -f "$root/.githooks/pre-push" ]; then
+  echo "pre-push: none (.githooks/pre-push absent)"
+elif [ -f "$push" ] && grep -qF "$pmark" "$push"; then
+  echo "pre-push: already present"
+elif [ -e "$push" ] && [ ! -L "$push" ]; then
+  echo "pre-push: NOT installed, $push already exists (merge it by hand)"
+else
+  rm -f "$push"
+  cat > "$push" <<'HOOK'
+#!/bin/sh
+# >>> versioned pre-push relay >>>
+h="$(git rev-parse --show-toplevel)/.githooks/pre-push"
+[ -f "$h" ] || exit 0
+[ -x "$h" ] && exec "$h" "$@"
+exec sh "$h" "$@"
+HOOK
+  chmod +x "$push"
+  echo "pre-push: installed ($push)"
 fi
