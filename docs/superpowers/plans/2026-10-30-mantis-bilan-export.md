@@ -106,6 +106,12 @@
 **Files:** `S/dashboard.html`, `S/test_dashboard.py` (présence des hooks).
 - Remplace `.pv-rail`, Réseau et Matrice. Cartes absolues sur fond pointillé ; courbes `M x1 y1 C mx y1, mx y2, x2 y2` ; bouts ronds HTML ; flèche reflect(N) → plan(N+1) ; flèche entrante de l'étape `running` animée (`stroke-dasharray: 6 6`, `stroke-dashoffset` en boucle 1 s) seulement si `listening == "working"` et pas `prefers-reduced-motion` ; nouvelle rangée en fondu.
 
+### Task 6 bis: Fil de Claude (spec §7 bis)
+**Files:** Create `S/feed.py`, `S/test_feed.py` ; Modify `S/dashboard.py`, `S/dashboard.html`, `S/test_dashboard.py`.
+- Produces: `feed.read(audit_dir, cursor: dict | None, projects=None, limit=200) -> {"items": [{at, who, text, kind: "message"|"agent_start"|"agent_end"}], "cursor": {path: offset}}` (réutilise `cost.find_sessions` et `cost.window` ; `who` = « Claude » ou `description` du `.meta.json` du sous-agent ; texte des blocs `text` de l'assistant seulement, 2 000 caractères max, fusion par `message.id`). Route `GET /feed?after=<json du curseur>` (clé exigée).
+- Page : onglet fixe en bas à droite, tiroir en bas, bulles par `textContent`, sans saisie ; masqué en mode final.
+- Tests : `test_texte_assistant_seul`, `test_resultats_outils_exclus`, `test_doublons_streaming`, `test_curseur_incremental`, `test_nom_sous_agent`, `test_feed_sans_cle_403`.
+
 ### Task 7: lancer et file sans session
 **Files:** `S/commands.py`, `S/dashboard.py`, `S/snapshot.py`, `S/dashboard.html`, tests.
 - `launch` (niveau choisi et `state.json` absent, ou `stopped`). Sans session : `launch`, `resume`, `retry`, `fix`, `false_positive`, `prioritize_repro` acceptées et en file ; `pause`, `stop`, `answer`, `end_fixes` → 409. Bandeau « Aucune session Claude n'écoute… » avec bouton « Copier » de `/mantis-run "<AUDIT>"`. Serveur : fin + page connectée → reste en vie (borne 24 h inchangée).

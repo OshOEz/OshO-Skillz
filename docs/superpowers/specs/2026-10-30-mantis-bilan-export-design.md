@@ -186,9 +186,22 @@ Tirée des `notes` et des `trajectory_insight` du cas d'essai.
 - Clic sur une carte : le panneau d'étape existant (notes, Relancer).
 - Accessibilité : cartes focusables, état en texte, `aria-live` inchangé.
 
+## 7 bis. Fil de Claude (demande de l'utilisateur, 2026-10-30)
+
+« En bas à droite ajoute un tab qui ouvre une fenêtre en bas en mode chat qui donne la sortie de Claude pendant tout le process. Pas d'écriture, que de l'affichage (comme des logs). »
+
+- Un onglet « Fil de Claude » ancré en bas à droite ouvre un panneau en bas de page (tiroir, hauteur réglable, refermable), présenté comme une conversation : une bulle par message, avec l'heure et l'auteur (« Claude » pour l'orchestrateur, la `description` de l'agent pour un sous-agent, par exemple « R2 critic groupe 02 »).
+- **Lecture seule** : pas de champ de saisie, pas d'envoi. Le défilement suit le bas tant que l'utilisateur n'est pas remonté.
+- Source : les transcripts Claude Code de l'audit, trouvés comme dans `cost.py` (`find_sessions`, même fenêtre). On affiche : texte des messages de l'assistant (session principale et sous-agents), et une ligne par lancement et fin de sous-agent (nom, modèle). Pas les résultats d'outils ni les entrées utilisateur (trop volumineux, et ils peuvent contenir des secrets ou des fichiers entiers). Texte coupé à 2 000 caractères par bulle.
+- Serveur : `GET /feed?after=<curseur>` (clé exigée) renvoie au plus 200 éléments `{at, who, text, kind}` et le curseur suivant (position par fichier) ; la page interroge toutes les 2 s quand le panneau est ouvert, toutes les 10 s sinon (pastille « nouveaux messages »). Lecture incrémentale des fichiers, jamais d'écriture.
+- Triage, audit, correctifs : couverts tant que la session qui les mène mentionne le dossier d'audit (c'est le cas dès le triage, qui le crée).
+- `dashboard.html` final et exports : l'onglet est masqué ; le contenu des transcripts n'est jamais copié dans un fichier de l'audit.
+- Affichage par `textContent` uniquement (sortie de Claude potentiellement issue d'un repo hostile).
+- Tests : extraction (texte assistant gardé, résultats d'outils exclus, doublons de streaming fusionnés par `message.id`), curseur incrémental, route sans clé = 403.
+
 ## 8. Onglets
 
-Barre d'onglets sous la bannière : **Suivi** (pipeline + kanban + colonne de droite, l'existant) et **Bilan** (iframe + boutons d'export + coût). Onglet mémorisé dans `localStorage`, lien `#bilan`.
+Barre d'onglets sous la bannière (l'onglet « Fil de Claude » du §7 bis est à part, en bas à droite) : **Suivi** (pipeline + kanban + colonne de droite, l'existant) et **Bilan** (iframe + boutons d'export + coût). Onglet mémorisé dans `localStorage`, lien `#bilan`.
 
 ## 9. Tests (auto-tests exécutables, comme les existants)
 
