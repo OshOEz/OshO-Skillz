@@ -102,10 +102,15 @@ Without Docker, reproduction is skipped and noted in the report. Reproduction ru
 Each audit writes to `osho-mantis/audit-<date>/` in the target repo:
 
 ```
+bilan.html        French synthesis for the developers: verdict, worst findings, how to apply the patches
 README.md         French report, one section per finding
 dashboard.html    standalone dashboard (open it locally, works offline)
 patches/<id>.diff one suggested fix per finding: git apply osho-mantis/audit-<date>/patches/<id>.diff
+cost.json         estimated cost (public API prices) and active time, from the Claude Code transcripts
+RESUME.md         checklist to resume after a quota cut
 ```
+
+The live dashboard does everything without the terminal: launch the audit, answer, pause, retry, fix, enter the cost, and export for the developers (the bilan as HTML, or a zip of the whole audit without the session files). The zip is raw: it lists the secrets found in the findings, to rotate, and must travel through a private channel. When no Claude session is listening, the page queues the request and shows the `/mantis-run` command to type.
 
 The folder is meant to be committed (the skill prints the command, never commits itself); on a public repo it asks first, since it contains exploits. Run it only on code you are allowed to test, and have a human check every finding before reporting it.
 
