@@ -358,7 +358,7 @@ body{padding-bottom:40px} /* la fin de page reste lisible sous l'onglet */
   </div>
 </main>
 
-<button id="feed-tab" class="feed-tab" type="button" aria-expanded="false" aria-controls="feed" hidden>Fil de Claude<span id="feed-badge" hidden></span></button>
+<button id="feed-tab" class="feed-tab" type="button" aria-expanded="false" aria-controls="feed">Fil de Claude<span id="feed-badge" hidden></span></button>
 <section id="feed" aria-label="Fil de Claude" hidden>
   <div class="feed-h"><h2>Fil de Claude</h2><span class="ro">lecture seule, comme un journal</span>
     <button id="feed-close" class="icon-btn" type="button" aria-label="Fermer le fil de Claude">✕</button></div>
@@ -1241,6 +1241,13 @@ function toggleFeed(open) {
   $('feed-tab').setAttribute('aria-expanded', String(open));
   if (open) {
     feedSt.unseen = 0;
+    if (D.mode === 'final') { // fichier figé : les transcripts ne sont jamais copiés, le fil n'existe qu'en direct
+      $('feed-list').replaceChildren(el('li', {class: 'agent_start'}, el('div', {class: 'bub'},
+        "Fil en direct disponible quand le dashboard est servi par Claude (mantis-run). Ce fichier est une copie figée : " +
+        "les messages de Claude n'y sont pas enregistrés.")));
+      $('feed-close').focus();
+      return;
+    }
     drawFeed([]);
     const list = $('feed-list');
     list.scrollTop = list.scrollHeight;
@@ -1324,7 +1331,6 @@ render(D);
 showTab(location.hash === '#bilan' ? 'bilan' : load('mantis.tab'));
 openFromHash();
 if (D.mode === 'live') {
-  $('feed-tab').hidden = false; // fichier final : pas de fil (les transcripts ne sont jamais copiés)
   pollFeed();
   const es = new EventSource('/events'); // cookie de session envoyé : même origine
   es.addEventListener('snapshot', e => {

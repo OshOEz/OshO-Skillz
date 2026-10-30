@@ -38,7 +38,7 @@ class Feed:
         now = time.time()
         if now - self.found_at > REFRESH_S or not self.sessions:
             start, _ = cost.window(self.audit)
-            self.sessions = cost.find_sessions(self.projects, str(self.audit), start) if self.projects.is_dir() else []
+            self.sessions = cost.find_sessions(self.projects, cost.audit_key(self.audit), start) if self.projects.is_dir() else []
             self.found_at = now
         out = []
         for s in self.sessions:

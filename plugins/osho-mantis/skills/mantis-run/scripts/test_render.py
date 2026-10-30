@@ -376,11 +376,17 @@ assert.strictEqual(wireState('failed', 'working'), 'done');
 """)
 
 
+FEED_STATIC = "Fil en direct disponible quand le dashboard est servi par Claude (mantis-run)"
+
+
 def test_fil_de_claude():
     """Onglet en bas à droite, tiroir en lecture seule (aucun champ de saisie), masqué en mode final."""
     with tempfile.TemporaryDirectory() as tmp:
         html, _ = data(audit(tmp, [CRIT]))
         assert 'id="feed-tab"' in html and 'id="feed"' in html
+        assert 'id="feed-tab" class="feed-tab" type="button" aria-expanded="false" aria-controls="feed" hidden' not in html, \
+            "onglet visible aussi dans le fichier final"
+        assert FEED_STATIC in html
         drawer = html[html.index('<section id="feed"'):]
         drawer = drawer[:drawer.index("</section>")]
         assert "<input" not in drawer and "<textarea" not in drawer and "contenteditable" not in drawer

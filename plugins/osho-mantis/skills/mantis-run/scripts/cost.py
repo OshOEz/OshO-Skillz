@@ -53,6 +53,11 @@ def window(audit_dir, now=None):
     return start, end if end is not None else (time.time() if now is None else now)
 
 
+def audit_key(audit_dir):
+    """<repo>/osho-mantis/<audit> : retrouve les transcripts d'un audit même copié ou déplacé"""
+    return "/".join(Path(audit_dir).parts[-3:])
+
+
 def find_sessions(projects, match, since):
     needles = {match.encode(), json.dumps(match)[1:-1].encode()}
     found = []
@@ -87,7 +92,7 @@ def compute(audit_dir, projects=None, now=None, match=None):
     projects = Path(projects) if projects is not None else default_projects()
     start, end = window(audit_dir, now)
     inside = lambda t: t is not None and (start is None or t >= start) and t <= end
-    sessions = find_sessions(projects, match or str(audit_dir), start) if projects.is_dir() else []
+    sessions = find_sessions(projects, match or audit_key(audit_dir), start) if projects.is_dir() else []
     usage, main_ts = {}, []
     for s in sessions:
         files = [(s, True)] + [(p, False) for p in sorted((s.parent / s.stem / "subagents").glob("*.jsonl"))]

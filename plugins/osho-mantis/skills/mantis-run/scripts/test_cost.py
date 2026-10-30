@@ -138,6 +138,18 @@ def test_match():
         assert cost.compute(copy, projects, match=str(audit))["sessions"] == 1
 
 
+def test_copie_meme_suffixe():
+    """Une copie du dossier d'audit (même <repo>/osho-mantis/<audit>) retrouve ses transcripts"""
+    with tempfile.TemporaryDirectory() as tmp:
+        audit, projects = setup(tmp, [msg(T0 + 10, "m1", out=1_000_000)])
+        dest = Path(tmp) / "ailleurs" / "repo" / "osho-mantis"
+        dest.mkdir(parents=True)
+        copy = dest / "audit-x"
+        audit.rename(copy)
+        assert cost.audit_key(copy) == "repo/osho-mantis/audit-x"
+        assert cost.compute(copy, projects)["sessions"] == 1
+
+
 if __name__ == "__main__":
     test_prix()
     test_doublons_message_id()
@@ -150,4 +162,5 @@ if __name__ == "__main__":
     test_en_cours()
     test_resume_vide()
     test_match()
+    test_copie_meme_suffixe()
     print("OK")
