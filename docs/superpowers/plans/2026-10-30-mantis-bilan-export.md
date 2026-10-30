@@ -18,7 +18,7 @@
 - Tout texte issu d'un finding ou d'une note passe par `html.escape` (bilan) ou `textContent` (page).
 - Cas d'essai en lecture seule : copier `…/Ezymob-Global/osho-mantis/audit-2026-10-29_12h07` dans `mktemp -d` avant tout rendu ou export.
 - Exports bruts (décision 4) : aucun contenu modifié ; exclus : `server.json`, `server.log`, `waiting.json`, `commands.jsonl`, `commands-done.jsonl`, `workspace/backups/`, `*.tmp`, liens symboliques.
-- Prix (par Mtok, entrée / sortie) : `claude-opus-5-5` 4 / 20, `claude-opus-4-8` 5 / 25, `claude-sonnet-5-5` 2 / 10, `claude-haiku-5-5` 0,10 / 0,50 ; cache lu 0,1×, écrit 5 min 1,25×, 1 h 2×. Temps actif : écarts < 120 s de la session principale.
+- Prix (par Mtok, entrée / sortie) : `claude-opus-5-5` 4 / 20, `claude-opus-4-8` 5 / 25, `claude-sonnet-5-5` 2 / 10, `claude-haiku-5-5` 0,10 / 0,50 ; cache lu par modèle (Opus 5.5 et Sonnet 5.5 : 0,20 ; Opus 4.8 : 0,50), écrit 5 min 1,25×, 1 h 2× le prix d'entrée. Temps actif : écarts < 120 s de la session principale.
 - Version du plugin : 0.4.0 (`plugin.json`), ligne dans `docs/skills.md`.
 - Commits sur `feat/mantis-dashboard-bilan` ; jamais de push ni de merge.
 
