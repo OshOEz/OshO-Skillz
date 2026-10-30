@@ -18,7 +18,7 @@ Le coût de l'audit (environ 294 $ en équivalent API, 2 h 46 de travail actif p
 
 ## Objectifs
 
-1. **Bilan** : un onglet « Bilan » du dashboard, aussi produit en `bilan.html` autonome, sur le modèle de la synthèse Kata (structure, ton, style), **sans** note ni plafond.
+1. **Bilan** : un onglet « Bilan » du dashboard, aussi produit en `bilan.html` autonome, sur le modèle de la synthèse Kata (structure et ton ; style du dashboard), **sans** note ni plafond.
 2. **Exports depuis le dashboard**, sans console :
    - **léger** : `bilan.html` + `dashboard.html` (zip de deux fichiers) ;
    - **complet** : zip de tout ce que l'audit a créé, nettoyé (voir §3).
@@ -31,14 +31,15 @@ Le coût de l'audit (environ 294 $ en équivalent API, 2 h 46 de travail actif p
 ## Non-objectifs
 
 - Pas de note globale, de lettre, ni de plafonnement des scores par les constats (explicitement écarté par l'utilisateur).
-- Pas de lancement de Claude par le serveur (sauf si la décision 3 en dispose autrement).
+- Jamais de lancement de Claude par le serveur (décision 3).
 - Pas de dépendance nouvelle : Python 3 stdlib, HTML/CSS/JS sans build. Pas de PDF.
 - Pas de modification des SKILL.md de Mantis amont ni du repo kata.
-- Pas de garantie absolue d'absence de secret dans l'export complet : un masquage par motifs, signalé (§3.3), pas un scanner exhaustif.
+- Pas de masquage dans les exports (décision 4) : le contenu part brut. La détection de secrets ne sert qu'à prévenir et à lister ce qu'il faut révoquer ; elle se fait par motifs, sans garantie d'exhaustivité.
 
 ## Anti-objectifs (échec même si « ça marche »)
 
-- Un export contient `server.json`, la clé de session, une commande, une valeur de secret reconnaissable ou le chemin `/Users/<nom>`.
+- Un export contient `server.json`, la clé de session ou une commande du dashboard.
+- Un export qui contient des secrets part sans avertissement visible ni liste des secrets à révoquer.
 - Le bilan affirme plus que les findings : un constat non reproduit présenté comme prouvé, un patch `MITIGATION_PROPOSED` présenté comme vérifié.
 - Un chiffre de coût présenté comme une facture : c'est une estimation au tarif public de l'API, à dire comme telle.
 - Une animation qui tourne alors que rien ne tourne (étape `done`, audit en pause ou sans session).
@@ -64,7 +65,7 @@ Nouveaux fichiers du dossier d'audit : `bilan.html`, `cost.json`, `RESUME.md`, `
 
 - Un seul générateur Python (`bilan.py`, fonction `bilan(snapshot, extras) -> str`), qui échappe tout texte issu des findings avec `html.escape` (repo potentiellement hostile). Pas de JS dans le bilan.
 - Le fichier autonome `bilan.html` est écrit par `render.py` à côté de `dashboard.html`. L'onglet « Bilan » du dashboard l'affiche dans une `iframe sandbox` : `src="/bilan"` en live, `src="bilan.html"` dans le `dashboard.html` final. Les liens d'un constat pointent vers `dashboard.html#<id>` (le bilan ne recopie pas les 248 fiches).
-- Style : celui de la synthèse Kata (décision 6) : bandeau noir, logo en dégradé, titres prune, cartes gris clair, pastilles de gravité, `max-width: 1040px`, clair et sombre, impression propre (`@media print`).
+- Style : celui du dashboard (décision 6), jetons Horizon recopiés de `dashboard.html` (fonds, cartes, accent bleu, couleurs de sévérité, Source Sans 3 / Geist Mono), clair et sombre, `max-width: 1040px`, impression propre (`@media print`). La synthèse Kata ne sert que de modèle de structure et de ton.
 
 ### 2.2 Plan (repris de Kata, adapté)
 
@@ -96,7 +97,7 @@ Section commune au bilan et au `LISEZMOI-DEV.md` de l'export complet :
 - **Prérequis par patch** : tableau patch → prérequis de déploiement et risques résiduels (champ `deploy_prerequisites` du finding s'il existe, sinon les notes rattachées).
 - **Patchs en conflit** : calculés par `export.py` en lisant les diffs : deux patchs qui touchent le même fichier avec des plages de lignes qui se chevauchent sont « en conflit probable » ; même fichier sans chevauchement : « à appliquer dans l'ordre ». Plus les conflits cités dans les notes.
 - **Rejouer une reproduction** : commande `docker run` du PoC (`workspace/reproducers/`), volume de dépendances à recréer (§6.4).
-- **Patchs contenant un secret masqué** (§3.3) : listés, avec la consigne « ce patch ne s'applique pas tel quel : remplacez la ligne à la main ».
+- **Secrets à révoquer** (§3.3) : findings et patchs qui contiennent une valeur de secret, listés, avec la consigne de révoquer ces secrets et de transmettre l'archive par un canal privé.
 
 ## 3. Exports
 
@@ -108,15 +109,16 @@ Section commune au bilan et au `LISEZMOI-DEV.md` de l'export complet :
 
 ### 3.2 Contenu
 
-- **Léger** : `bilan.html`, `dashboard.html`, tous deux régénérés et nettoyés (§3.3).
-- **Complet** : tout le dossier d'audit, sauf : `server.json`, `server.log`, `waiting.json`, `commands.jsonl`, `commands-done.jsonl`, `workspace/backups/`, fichiers `*.tmp`, et **tout lien symbolique** (jamais suivi). Ajout de `LISEZMOI-DEV.md` (§2.4) et `MANIFESTE.json` (liste des fichiers, exclusions, masquages).
+- **Léger** : `bilan.html`, `dashboard.html`, régénérés.
+- **Complet** : tout le dossier d'audit, sauf : `server.json`, `server.log`, `waiting.json`, `commands.jsonl`, `commands-done.jsonl`, `workspace/backups/`, fichiers `*.tmp`, et **tout lien symbolique** (jamais suivi). Ajout de `LISEZMOI-DEV.md` (§2.4) et `MANIFESTE.json` (liste des fichiers, exclusions, secrets repérés).
 - Garde : le dossier d'audit passe le contrôle « hostile » existant avant l'export ; chaque chemin ajouté au zip est résolu et doit rester sous `AUDIT`.
 
-### 3.3 Nettoyage (fichiers texte : `.json`, `.jsonl`, `.md`, `.html`, `.diff`, `.sh`, `.py`, `.txt`, `.java`, `.js`, `.ts`, `.yml`)
+### 3.3 Contenu brut, secrets signalés (décision 4)
 
-- Chemins : le chemin du repo (`campaign.repo`) devient `<REPO>`, le dossier personnel devient `~`, les chemins de shadow (`$TMPDIR/tmp.*`) deviennent `<SHADOW>`.
-- Secrets : motifs connus (clé Google `AIza…`, AWS `AKIA…`, clé privée PEM, jetons `ghp_`/`github_pat_`, `xox[bp]-`, JWT, `sk-…`, URL avec identifiants `://user:pass@`) remplacés par `«secret masqué»`. Chaque masquage est listé dans `MANIFESTE.json` (fichier, motif, jamais la valeur).
-- Fichiers binaires (`catalog.sqlite`…) : copiés tels quels, listés comme « non nettoyés » dans le manifeste.
+- Rien n'est masqué ni réécrit : les fichiers partent tels quels (seules les exclusions du §3.2 s'appliquent).
+- `export.py` repère les valeurs de secret par motifs (clé Google `AIza…`, AWS `AKIA…`, clé privée PEM, jetons `ghp_`/`github_pat_`, `xox[bp]-`, `sk-…`, URL avec identifiants `://user:pass@`) dans les fichiers texte, et rattache chaque fichier touché à son finding ou à son patch.
+- Avertissement, avant l'export dans la page (boîte de confirmation des deux boutons), en tête de `LISEZMOI-DEV.md` et dans le bilan : « Cette archive contient des secrets en clair et le détail d'exploits : à transmettre par un canal privé uniquement. Secrets à révoquer : … ». La liste donne le finding ou le patch, le type de secret et le fichier, pas la valeur.
+- `MANIFESTE.json` : fichiers inclus, exclusions, secrets repérés (fichier, type, finding).
 
 ## 4. Pilotage sans console
 
@@ -168,7 +170,7 @@ Tirée des `notes` et des `trajectory_insight` du cas d'essai.
 1. **Reprise après coupure.** `python3 guard.py resume <AUDIT>` (zéro jeton) écrit `RESUME.md` depuis `state.json` : tour, étapes, étape interrompue, `force_repro`, périmètres en cours, règles (volume Docker, Docker seul), commandes de vérification (conteneurs `mantis-<audit>-*` orphelins, `*.tmp`). Appelé à chaque passage d'étape à `running` et à l'arrêt. À la reprise : contrôle d'intégrité (`guard.py check`), nettoyage des conteneurs orphelins **de cet audit seulement** (noms préfixés), puis reprise.
 2. **`force_repro` force vraiment.** Un finding listé est reproduit même s'il a déjà un `repro_status`, sauf s'il a `repro_round` égal au tour courant (écrit par l'agent de reproduction). Il sort de `force_repro` une fois fait.
 3. **Sauvegarde et validation des findings.** Avant toute étape qui écrit des findings en parallèle (dedupe, review, critic, reproduce, patch, calibrate) : `guard.py backup <AUDIT> <étape>`. Après chaque lot : `guard.py check` (chaque JSON lisible, non vide, garde son `id` et au moins ses champs d'avant). Un fichier en défaut est restauré depuis la sauvegarde, avec une note. Règle ajoutée au prompt d'agent : « écrire dans un nouveau fichier, le valider, puis le renommer ; jamais `jq … > même_fichier` ; fichiers temporaires seulement sous `workspace/tmp/` ».
-4. **Volume Docker de dépendances** (Sharp+, décision 5) : pour les piles Maven, Gradle, npm, pip repérées par l'inventaire, un conteneur **avec réseau** remplit une fois `mantis-<repo>-deps` (`--ignore-scripts` pour npm, dépôt monté en lecture seule), puis toute reproduction monte ce volume en **lecture seule**, `--network=none`. Noté dans `state.json` (`deps_volume`).
+4. **Volume Docker de dépendances** (Sharp+, décision 5, automatique, sans question ; le journal et la page disent « remplissage du volume de dépendances, avec réseau ») : pour les piles Maven, Gradle, npm, pip repérées par l'inventaire, un conteneur **avec réseau** remplit une fois `mantis-<repo>-deps` (`--ignore-scripts` pour npm, dépôt monté en lecture seule), puis toute reproduction monte ce volume en **lecture seule**, `--network=none`. Noté dans `state.json` (`deps_volume`).
 5. **Doublures d'amont.** Ligne ajoutée au prompt de reproduction : AWS Secrets Manager, Google, etc. sont remplacés par des doublures dans le conteneur ou sur un réseau `docker network create --internal` ; jamais de vrai point d'accès. Les doublures écrites vont dans `workspace/reproducers/` pour être réutilisées.
 6. **Un shadow par finding.** Patch + re-attaque (Sharp+) : chaque finding a son propre `mktemp -d` (liste `shadows` dans `state.json`, même garde que le shadow principal), lots de `parallel` findings en parallèle au lieu d'un à la fois. Le contrôle `git apply` et le statut final restent faits par mantis-run.
 7. **Re-vérifier les patchs du tour 1.** Un finding devenu `reproduced` dont le patch est `MITIGATION_PROPOSED` entre dans patch + re-attaque.
@@ -191,7 +193,7 @@ Barre d'onglets sous la bannière : **Suivi** (pipeline + kanban + colonne de dr
 ## 9. Tests (auto-tests exécutables, comme les existants)
 
 - `test_bilan.py` : bilan sur un audit fictif (Light, Overkill 3 tours, en cours, aucun finding) ; XSS dans titre et notes ; verdict ; rattachement des notes ; pas de plafond ni de note.
-- `test_export.py` : exclusions (`server.json`, `commands*.jsonl`…), symlink ignoré, chemin hors `AUDIT` refusé, chemins réécrits, secrets masqués et listés sans valeur, conflits de patchs (chevauchement, même fichier sans chevauchement), zip lisible.
+- `test_export.py` : exclusions (`server.json`, `commands*.jsonl`…), symlink ignoré, chemin hors `AUDIT` refusé, contenu identique à la source, secrets repérés et listés avec leur finding, conflits de patchs (chevauchement, même fichier sans chevauchement), zip lisible.
 - `test_cost.py` : transcripts fictifs (doublons de `message.id`, fenêtre, modèle inconnu, sous-agents), temps actif, saisie manuelle prioritaire.
 - `test_guard.py` : backup / check / restore (fichier vidé, JSON tronqué), `RESUME.md`.
 - `test_commands.py`, `test_dashboard.py` : `launch`, `set_cost`, file sans session (acceptées / 409), `GET /export` sans clé = 403, `GET /bilan`, durée de vie du serveur.
@@ -202,11 +204,11 @@ Barre d'onglets sous la bannière : **Suivi** (pipeline + kanban + colonne de dr
 
 Découpage du JS, noms internes, formulation exacte des textes (français, sans tiret cadratin), forme exacte de `cost.json` et du manifeste, liste exacte des motifs de secrets, mise en page des cartes dans la largeur.
 
-## Décisions à valider
+## Décisions de l'utilisateur (2026-10-30)
 
-1. **Vue Cycle** : remplacer Réseau et Matrice, ou l'ajouter en troisième vue ? *Recommandé : remplacer (moins de code, une seule vue à tenir).*
-2. **Lancer l'audit** : la réponse à la question Volume lance directement l'audit (« Lancer en <niveau> » / « Plus tard »), ou un bouton séparé après le choix du niveau ? *Recommandé : réponse = lancement, bouton « Lancer l'audit » seulement après « Plus tard ».*
-3. **Sans session** : mettre en file les commandes et afficher la commande à taper, ou laisser le serveur démarrer `claude -p "/mantis-run …"` lui-même ? *Recommandé : file + consigne (un Claude lancé par un serveur web, sans terminal, avec Docker et les permissions, est un risque et un coût hors de vue).*
-4. **Secrets dans les exports** : masquer partout et signaler les patchs devenus non applicables, exclure ces patchs, ou ne rien masquer (l'équipe a déjà ces secrets dans son dépôt) ? *Recommandé : masquer et signaler.*
-5. **Volume Docker de dépendances** : le créer automatiquement en Sharp+ (le remplissage a du réseau, avec le dépôt en lecture seule), ou poser la question une fois sur le dashboard ? *Recommandé : question une fois, « Oui » pré-sélectionné.*
-6. **Style du bilan** : charte Nobori de la synthèse Kata (prune, bandeau noir), ou style Horizon du dashboard ? *Recommandé : charte Kata pour le bilan, c'est un livrable remis à un client.*
+1. Vue Cycle : remplace Réseau et Matrice.
+2. La réponse à la question Volume lance l'audit (« Lancer en <niveau> » / « Plus tard ») ; bouton « Lancer l'audit » seulement après « Plus tard ».
+3. Sans session : file + commande `/mantis-run` à taper ; le serveur ne lance jamais `claude -p`.
+4. Exports bruts, sans masquage ; avertissement clair (page, `LISEZMOI-DEV.md`, bilan) et liste des findings et patchs qui contiennent des secrets, à révoquer.
+5. Volume Docker de dépendances créé et rempli automatiquement en Sharp+, le remplissage avec réseau est signalé.
+6. Bilan au style du dashboard (Horizon) ; la synthèse Kata reste le modèle de structure et de contenu, sans plafond.
