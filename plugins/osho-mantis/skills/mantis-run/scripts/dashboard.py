@@ -22,6 +22,7 @@ from urllib.parse import parse_qs, urlparse
 
 import bilan
 import commands
+import cost
 import export
 import feed
 import render
@@ -57,6 +58,16 @@ def signature(audit):
         except OSError:
             pass
     return tuple(sig)
+
+
+COST_REFRESH_S = 300
+
+
+def cost_due(now, last, finished, has_auto):
+    """Coût recalculé depuis les transcripts toutes les 5 min pendant l'audit, une fois s'il manque à la fin"""
+    if finished:
+        return not has_auto and last is None
+    return last is None or now - last >= COST_REFRESH_S
 
 
 def should_stop(ended_for, idle, clients):
@@ -96,7 +107,7 @@ class Dash:
                 self.clients.remove(q)
 
     def watch(self):
-        sig, last_change, end_seen = signature(self.audit), time.time(), None
+        sig, last_change, end_seen, cost_at = signature(self.audit), time.time(), None, None
         try:
             while not self.stop_evt.wait(POLL_S):
                 if not self.audit.is_dir():
@@ -106,6 +117,12 @@ class Dash:
                 except Exception as e:  # une erreur de tick ne doit jamais empêcher l'arrêt automatique ci-dessous
                     print(f"watch: {e!r}", file=sys.stderr, flush=True)
                 m, idle = self.snap["meta"], time.time() - last_change
+                if cost_due(time.time(), cost_at, m["finished"], cost.load(self.audit).get("auto") is not None):
+                    cost_at = time.time()
+                    try:
+                        cost.save_auto(self.audit, cost.compute(self.audit))  # cost.json change : snapshot au tour suivant
+                    except Exception as e:
+                        print(f"coût : {e!r}", file=sys.stderr, flush=True)
                 if self.snap["listening"] == "fixes" or not (m["finished"] or m["stopped"]):
                     end_seen = None
                 elif end_seen is None:

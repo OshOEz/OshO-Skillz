@@ -474,6 +474,16 @@ def test_vie_serveur():
     assert dashboard.should_stop(ended_for=G + 1, idle=dashboard.HARD_IDLE_S + 1, clients=1) is True
 
 
+def test_cout_rafraichi():
+    import dashboard
+    R = dashboard.COST_REFRESH_S
+    assert dashboard.cost_due(now=1000, last=None, finished=False, has_auto=False) is True
+    assert dashboard.cost_due(now=1000, last=1000 - R + 1, finished=False, has_auto=True) is False
+    assert dashboard.cost_due(now=1000, last=1000 - R - 1, finished=False, has_auto=True) is True
+    assert dashboard.cost_due(now=1000, last=None, finished=True, has_auto=True) is False, "audit fini : coût figé"
+    assert dashboard.cost_due(now=1000, last=None, finished=True, has_auto=False) is True
+
+
 def test_help():
     out = cli("--help").stdout
     for w in ("serve", "stop", "alive", "command", "pending", "apply", "ack"):
