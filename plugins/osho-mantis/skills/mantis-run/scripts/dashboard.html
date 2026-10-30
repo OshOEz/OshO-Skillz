@@ -101,7 +101,7 @@ main{padding:14px 20px 40px;display:grid;gap:12px}
 .cy-card:hover,.cy-card:focus-visible{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in oklch,var(--primary) 20%,transparent)}
 .cy-card .code{font:600 11px var(--mono);letter-spacing:.06em;color:var(--faint)}
 .cy-card .nm{font-size:12.5px;font-weight:600;line-height:1.2;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
-.cy-card .st{margin-top:auto;font:10.5px var(--mono);color:var(--faint);white-space:nowrap}
+.cy-card .st{margin-top:auto;padding-top:2px;font:10.5px var(--mono);color:var(--faint);white-space:nowrap}
 .cy-card.done .code{color:var(--ok)}
 .cy-card.running{border:1.5px solid var(--primary)}.cy-card.running .code,.cy-card.running .st{color:var(--primary)}
 .cy-card.failed{border-color:var(--bad)}.cy-card.failed .code,.cy-card.failed .st{color:var(--bad)}
@@ -557,7 +557,7 @@ function wireState(target, listening) {
 }
 function cycleLayout(cyc, listening, agents) {
   // positions en pixels : rangée 0 = préparation, puis une rangée par tour ; courbes M x y C … (encart.ts de Kata)
-  const CY = {w: 116, h: 76, gx: 30, gy: 54, top: 30, left: 16}, MAX = 8;
+  const CY = {w: 116, h: 82, gx: 58, gy: 54, top: 30, left: 16}, MAX = 8;
   const lastRound = (cyc.rounds || []).length;
   let more = null;
   const rows = [{label: 'Préparation', stages: cyc.prep || [], round: 0}].concat((cyc.rounds || []).map(r => ({
@@ -585,7 +585,7 @@ function cycleLayout(cyc, listening, agents) {
           shown.forEach((g, i) => {
             const bb = [c.x, c.y + (i + 1) * c.h / (k + 1)], mx = (a[0] + bb[0]) / 2;
             wires.push({from: prev.id, to: c.id, state: g.done ? 'done' : st, a, b: bb, strand: i, done: !!g.done, who: g.who,
-              check: g.done ? [bb[0] - 9, bb[1]] : null, loop: false,
+              check: g.done ? [bb[0] - 14, bb[1]] : null, loop: false,
               d: `M ${a[0]} ${a[1]} C ${mx} ${a[1]}, ${mx} ${bb[1]}, ${bb[0]} ${bb[1]}`});
           });
           prev = c;
