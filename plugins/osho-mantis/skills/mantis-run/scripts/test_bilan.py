@@ -42,6 +42,7 @@ def test_sections():
         for s in SECTIONS:
             assert f'id="{s}"' in page, s
         assert "<script" not in page.lower(), "pas de JS dans le bilan"
+        assert 'class="top"' not in page, "pas de barre Mantis / repo : l'onglet Bilan ne la répète pas"
         assert "Java Spring" in page and "permitAll" in page
 
 

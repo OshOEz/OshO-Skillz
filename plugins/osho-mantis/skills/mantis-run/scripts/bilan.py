@@ -164,9 +164,8 @@ def build(audit_dir, snap=None, live=False):
     w("<!doctype html>\n<html lang=\"fr\"><head><meta charset=\"utf-8\"><base target=\"_top\">"
       "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
       f"<title>{e(repo)} : bilan de l'audit de sécurité</title><style>{CSS}</style>\n</head><body>")
-    w(f'<div class="top"><span class="logo">M</span>Mantis / {e(repo)} / {e(meta["audit_name"])}</div>')
     w(f'<header class="banner"><h1>{e(repo)} : bilan de l\'audit de sécurité</h1>'
-      f'<p class="engine">Moteur : Mantis {e(meta.get("mantis_commit") or "?")}, niveau {e(level)}, '
+      f'<p class="engine">Audit {e(meta["audit_name"])}. Moteur : Mantis {e(meta.get("mantis_commit") or "?")}, niveau {e(level)}, '
       f'{plural(rnd, "tour", "tours")}. Limite : {e(LIMITS.get(level, "niveau inconnu."))}</p></header>')
     if live:
         w(f'<p class="provisoire">Audit en cours, tour {e(rnd)} : bilan provisoire</p>')

@@ -98,7 +98,7 @@ main{padding:14px 20px 40px;display:grid;gap:12px}
   background:var(--card);box-shadow:var(--card-shadow);overflow:hidden}
 .cy-card:hover,.cy-card:focus-visible{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in oklch,var(--primary) 20%,transparent)}
 .cy-card .code{font:600 11px var(--mono);letter-spacing:.06em;color:var(--faint)}
-.cy-card .nm{font-size:12.5px;font-weight:600;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cy-card .nm{font-size:12.5px;font-weight:600;line-height:1.2;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
 .cy-card .st{margin-top:auto;font:10.5px var(--mono);color:var(--faint);white-space:nowrap}
 .cy-card.done .code{color:var(--ok)}
 .cy-card.running{border:1.5px solid var(--primary)}.cy-card.running .code,.cy-card.running .st{color:var(--primary)}
@@ -555,7 +555,7 @@ function wireState(target, listening) {
 }
 function cycleLayout(cyc, listening) {
   // positions en pixels : rangée 0 = préparation, puis une rangée par tour ; courbes M x y C … (encart.ts de Kata)
-  const CY = {w: 112, h: 62, gx: 30, gy: 54, top: 30, left: 16};
+  const CY = {w: 116, h: 76, gx: 30, gy: 54, top: 30, left: 16};
   const rows = [{label: 'Préparation', stages: cyc.prep || [], round: 0}].concat((cyc.rounds || []).map(r => ({
     label: 'Tour ' + r.round + (cyc.max_rounds > 1 ? ' / ' + cyc.max_rounds : ''), stages: r.stages || [], round: r.round})));
   const cards = [], wires = [], out = [];
