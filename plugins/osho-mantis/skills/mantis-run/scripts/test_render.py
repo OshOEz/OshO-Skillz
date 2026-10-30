@@ -329,26 +329,128 @@ assert.strictEqual(r.rec, false);
 
 
 def test_pipeline_hooks():
-    """Sélecteur de vue du pipeline : deux boutons-icônes avec aria-pressed."""
+    """Vue Cycle seule : plus de sélecteur Réseau / Matrice."""
     with tempfile.TemporaryDirectory() as tmp:
         html, _ = data(audit(tmp, [CRIT]))
-        for i in ("view-reseau", "view-matrice"):
-            assert re.search(r'id="' + i + r'"[^>]*aria-pressed=', html), i
-        assert 'aria-label="Vue réseau"' in html and 'aria-label="Vue matrice"' in html
+        assert 'id="view-reseau"' not in html and 'id="view-matrice"' not in html and "pv-rail" not in html
+        assert 'id="pv"' in html and "cy-wire" in html and "@keyframes dash" in html
 
 
-def test_stage_view():
-    """stageView : « reseau » par défaut et pour toute valeur inconnue."""
+CYCLE = """
+const st = (key, status, d) => ({key, code: key.slice(0, 3).toUpperCase(), name: key, status, duration_s: d});
+const cyc = {max_rounds: 3, prep: [st('triage', 'done', 1), st('history', 'done', 2)],
+  rounds: [{round: 1, stages: [st('plan', 'done', 3), st('review', 'done', 4), st('reflect', 'done', null)]},
+           {round: 2, stages: [st('plan', 'done', 5), st('review', 'running', null), st('reflect', 'pending', null)]}]};
+"""
+
+
+def test_cycle_layout():
+    """cycleLayout : une rangée par tour, une flèche par enchaînement, boucle reflect → plan du tour suivant."""
     if not shutil.which("node"):
         return
     with tempfile.TemporaryDirectory() as tmp:
         html, _ = data(audit(tmp, [CRIT]))
         js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
-        node_ok(tmp, fn(js, "stageView") + """
+        node_ok(tmp, fn(js, "wireState") + fn(js, "cycleLayout") + CYCLE + """
 const assert = require('assert');
-assert.strictEqual(stageView(null), 'reseau');
-assert.strictEqual(stageView('matrice'), 'matrice');
-assert.strictEqual(stageView('x'), 'reseau');
+const L = cycleLayout(cyc, 'working');
+assert.strictEqual(L.cards.length, 8);
+assert.deepStrictEqual([...new Set(L.cards.map(c => c.row))], [0, 1, 2]);
+assert.deepStrictEqual(L.rows.map(r => r.label), ['Préparation', 'Tour 1 / 3', 'Tour 2 / 3']);
+// 1 (prép) + 1 (prép → tour 1) + 2 + 1 (boucle) + 2
+assert.strictEqual(L.wires.length, 7);
+assert.ok(L.wires.every(w => /^M [0-9.]+ [0-9.]+ C /.test(w.d)));
+const into = k => L.wires.filter(w => w.to === k);
+assert.deepStrictEqual(into('2:review').map(w => w.state), ['flow'], 'flèche entrante de la tâche en cours : animée');
+assert.deepStrictEqual(into('2:reflect').map(w => w.state), ['pending']);
+assert.deepStrictEqual(into('2:plan').map(w => [w.from, w.state, w.loop]), [['1:reflect', 'done', true]]);
+assert.deepStrictEqual(into('1:plan').map(w => w.from), ['0:history']);
+const keys = new Set(L.cards.map(c => c.id));
+assert.ok(L.wires.every(w => keys.has(w.from) && keys.has(w.to)));
+assert.ok(L.width > 0 && L.height > 0 && L.cards.every(c => c.x + c.w <= L.width && c.y + c.h <= L.height));
+// en pause ou sans session : rien n'est animé
+assert.ok(cycleLayout(cyc, 'none').wires.every(w => w.state !== 'flow'));
+assert.strictEqual(cycleLayout(cyc, 'none').wires.find(w => w.to === '2:review').state, 'running');
+assert.strictEqual(wireState('skipped', 'working'), 'done');
+assert.strictEqual(wireState('failed', 'working'), 'done');
+""")
+
+
+def test_cycle_brins():
+    """Un brin par agent du lot vers l'étape en cours : animé tant qu'il tourne, coche quand il est revenu, 8 au plus."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        node_ok(tmp, fn(js, "wireState") + fn(js, "cycleLayout") + CYCLE + """
+const assert = require('assert');
+const ag = n => Array.from({length: n}, (_, i) => ({who: 'g' + i, done: i === 0}));
+let L = cycleLayout(cyc, 'working', ag(3));
+let into = L.wires.filter(w => w.to === '2:review');
+assert.strictEqual(into.length, 3);
+assert.deepStrictEqual(into.map(w => [w.state, !!w.done]), [['done', true], ['flow', false], ['flow', false]]);
+assert.ok(into[0].check && into[0].check.length === 2, 'coche placée au bout du brin revenu');
+assert.strictEqual(new Set(into.map(w => w.b[1])).size, 3, 'brins répartis sur la hauteur de la carte');
+assert.strictEqual(L.more, null);
+L = cycleLayout(cyc, 'working', ag(11));
+into = L.wires.filter(w => w.to === '2:review');
+assert.strictEqual(into.length, 8);
+assert.strictEqual(L.more.n, 3);
+L = cycleLayout(cyc, 'none', ag(2));
+assert.ok(L.wires.every(w => w.state !== 'flow'), 'sans session : rien ne bouge');
+assert.strictEqual(cycleLayout(cyc, 'working', []).wires.filter(w => w.to === '2:review').length, 1);
+""")
+
+
+FEED_STATIC = "Fil en direct disponible quand le dashboard est servi par Claude (mantis-run)"
+
+
+def test_fil_de_claude():
+    """Onglet en bas à droite, tiroir en lecture seule (aucun champ de saisie), masqué en mode final."""
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        assert 'id="feed-tab"' in html and 'id="feed"' in html
+        assert 'id="feed-tab" class="feed-tab" type="button" aria-expanded="false" aria-controls="feed" hidden' not in html, \
+            "onglet visible aussi dans le fichier final"
+        assert FEED_STATIC in html
+        drawer = html[html.index('<section id="feed"'):]
+        drawer = drawer[:drawer.index("</section>")]
+        assert "<input" not in drawer and "<textarea" not in drawer and "contenteditable" not in drawer
+        if not shutil.which("node"):
+            return
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        node_ok(tmp, fn(js, "appendFeed") + """
+const assert = require('assert');
+let st = {items: [], last: 0, unseen: 0};
+st = appendFeed(st, {items: [{seq: 1, text: 'a'}, {seq: 2, text: 'b'}], last: 2}, false, 3);
+assert.deepStrictEqual([st.items.length, st.last, st.unseen], [2, 2, 2]);
+st = appendFeed(st, {items: [{seq: 2, text: 'b'}, {seq: 3, text: 'c'}, {seq: 4, text: 'd'}], last: 4}, true, 3);
+assert.deepStrictEqual(st.items.map(i => i.text), ['b', 'c', 'd'], 'doublon ignoré, plafond respecté');
+assert.strictEqual(st.unseen, 0, 'panneau ouvert : tout est vu');
+""")
+
+
+def test_sans_session():
+    """Sans session : commande à taper, bouton Lancer seulement si l'audit n'a pas démarré ou a été arrêté."""
+    import commands
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        m = re.search(r"NO_SESSION_OK = new Set\(\[(.*?)\]\)", html).group(1)
+        assert set(re.findall(r"'(\w+)'", m)) == commands.SERVER_ACTIONS | commands.QUEUEABLE, "page et serveur alignés"
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        node_ok(tmp, fn(js, "runCommand") + fn(js, "canLaunch") + """
+const assert = require('assert');
+assert.strictEqual(runCommand({audit_path: '/a b/osho-mantis/audit-x'}), '/mantis-run "/a b/osho-mantis/audit-x"');
+const st = (k, s) => ({key: k, status: s});
+assert.strictEqual(canLaunch({meta: {}, stages: [st('triage', 'done'), st('plan', 'pending')]}), true);
+assert.strictEqual(canLaunch({meta: {}, stages: [st('triage', 'done'), st('plan', 'done')]}), false);
+assert.strictEqual(canLaunch({meta: {stopped: true}, stages: [st('plan', 'done')]}), true);
+assert.strictEqual(canLaunch({meta: {finished: true, stopped: true}, stages: []}), false);
 """)
 
 
@@ -462,7 +564,7 @@ def test_safe_id_triple_collision():
 def test_question_texte():
     """La bannière d'attente affiche w.text (phrase) plutôt que w.question (identifiant)."""
     triage = RENDER.parents[2] / "mantis-triage" / "SKILL.md"
-    assert '"text": "Quel niveau d\'audit ?"' in triage.read_text()
+    assert '"text": "Lancer l\'audit à quel niveau ?"' in triage.read_text()
     if not shutil.which("node"):
         return
     with tempfile.TemporaryDirectory() as tmp:
@@ -575,7 +677,7 @@ def test_fix_hooks():
     with tempfile.TemporaryDirectory() as tmp:
         html, _ = data(audit(tmp, [CRIT]))
         for s in ('id="fix-branch"', 'id="copy-merge"', "Correctif proposé", "Claude attend tes demandes de correction",
-                  "cmd.action !== 'merge_fix'"):
+                  "!NO_SESSION_OK.has(cmd.action)"):
             assert s in html, s
         assert "innerHTML" not in html and "\u2014" not in html
 
@@ -655,7 +757,10 @@ if __name__ == "__main__":
     test_conn_label()
     test_final_sans_eventsource()
     test_pipeline_hooks()
-    test_stage_view()
+    test_cycle_layout()
+    test_cycle_brins()
+    test_fil_de_claude()
+    test_sans_session()
     test_reduced_motion()
     test_aucun_finding()
     test_safe_id_collision()

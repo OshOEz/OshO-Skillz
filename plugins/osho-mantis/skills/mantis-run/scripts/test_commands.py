@@ -237,6 +237,46 @@ def test_apply_merge_deja_fusionne_sans_accuse():
         assert commands.apply(d, c["id"])["result"] == "applied"
 
 
+def test_set_cost():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = sharp(tmp)
+        s = build_snapshot(d)
+        for c in ({"action": "set_cost", "usd": 12.5}, {"action": "set_cost", "usd": None},
+                  {"action": "set_cost", "usd": 3, "note": "facture"}, {"action": "recompute_cost"}):
+            assert commands.validate(c, s) is None, c
+        for c in ({"action": "set_cost", "usd": -1}, {"action": "set_cost", "usd": "abc"},
+                  {"action": "set_cost", "usd": True}, {"action": "set_cost"},
+                  {"action": "set_cost", "usd": 1, "note": "x" * 201}, {"action": "set_cost", "usd": float("inf")}):
+            assert commands.validate(c, s), c
+        c = commands.append(d, {"action": "set_cost", "usd": 12.5, "note": "facture"}, "page")
+        assert commands.apply(d, c["id"])["result"] == "applied"
+        import cost
+        assert cost.summary(d)["usd"] == 12.5 and cost.summary(d)["source"] == "manuel"
+        assert build_snapshot(d)["meta"]["cost"]["usd"] == 12.5
+
+
+def test_launch():
+    with tempfile.TemporaryDirectory() as tmp:  # triage fini, « Plus tard » : pas de state.json
+        s = build_snapshot(audit(tmp, {"repo": "/x", "level": "Sharp"}, findings=[]))
+        assert commands.validate({"action": "launch"}, s) is None
+    with tempfile.TemporaryDirectory() as tmp:  # niveau non choisi : mantis-run posera la question
+        s = build_snapshot(audit(tmp, {"repo": "/x"}, findings=[]))
+        assert commands.validate({"action": "launch"}, s) is None
+    with tempfile.TemporaryDirectory() as tmp:
+        s = build_snapshot(audit(tmp, {"repo": "/x", "level": "Sharp"}, state={"stages": {"plan": "done"}, "stopped": True}))
+        assert commands.validate({"action": "launch"}, s) is None, "audit arrêté : relançable"
+    with tempfile.TemporaryDirectory() as tmp:
+        s = build_snapshot(audit(tmp, {"repo": "/x", "level": "Sharp"}, state={"stages": {"plan": "running"}}))
+        assert commands.validate({"action": "launch"}, s) == "l'audit est déjà lancé"
+    with tempfile.TemporaryDirectory() as tmp:
+        s = build_snapshot(audit(tmp, {"repo": "/x", "level": "Sharp"}, state={"stages": {"plan": "done"}, "finished": True}))
+        assert commands.validate({"action": "launch"}, s) == "l'audit est déjà terminé"
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp, {"repo": "/x", "level": "Sharp"}, findings=[])
+        commands.append(d, {"action": "launch"}, "page")
+        assert commands.validate({"action": "launch"}, build_snapshot(d)) == "lancement déjà demandé"
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

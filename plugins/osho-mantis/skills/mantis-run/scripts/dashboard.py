@@ -5,6 +5,9 @@
 import hmac
 import json
 import os
+import re
+import shutil
+import tempfile
 import queue
 import secrets
 import signal
@@ -17,7 +20,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import bilan
 import commands
+import cost
+import export
+import feed
 import render
 import snapshot
 
@@ -41,7 +48,7 @@ def now_iso():
 
 def signature(audit):
     paths = [audit / n for n in ("state.json", "campaign.json", "waiting.json", "commands.jsonl",
-                                 "commands-done.jsonl", "fixes.json")]
+                                 "commands-done.jsonl", "fixes.json", "cost.json")]
     paths += sorted((audit / "workspace" / "findings").glob("*.json"))
     sig = []
     for p in paths:
@@ -53,6 +60,36 @@ def signature(audit):
     return tuple(sig)
 
 
+COST_REFRESH_S = 300
+
+
+def cost_due(now, last, finished, has_auto):
+    """Coût recalculé depuis les transcripts toutes les 5 min pendant l'audit, une fois s'il manque à la fin"""
+    if finished:
+        return not has_auto and last is None
+    return last is None or now - last >= COST_REFRESH_S
+
+
+def should_stop(ended_for, idle, clients):
+    """Arrêt automatique : fin de l'audit depuis 30 min ou 4 h sans changement, seulement sans page connectée
+    (exports et correctifs restent possibles tant qu'elle est ouverte) ; 24 h sans changement dans tous les cas"""
+    if idle > HARD_IDLE_S:
+        return True
+    if clients:
+        return False
+    return (ended_for is not None and ended_for > END_GRACE_S) or idle > IDLE_S
+
+
+def batch_since(prev_key, key, stage_started_at, now):
+    """Début du lot d'agents : début de l'étape si le serveur découvre un lot déjà lancé, sinon maintenant"""
+    if prev_key is None and stage_started_at:
+        try:
+            return datetime.fromisoformat(stage_started_at).timestamp()
+        except ValueError:
+            pass
+    return now
+
+
 class Dash:
     def __init__(self, audit):
         self.audit, self.key = audit, secrets.token_hex(32)
@@ -61,10 +98,29 @@ class Dash:
         self.snap = snapshot.build_snapshot(audit)
         self.stop_evt = threading.Event()
         self.httpd = None
+        self.feed = feed.Feed(audit)
+        self.batch_key, self.batch_t, self.batch, self.agents_at = None, None, [], 0.0
 
     def fresh(self):
         with self.lock:
-            return snapshot.read_snapshot_safe(self.audit, self.snap)
+            return dict(snapshot.read_snapshot_safe(self.audit, self.snap), batch_agents=self.batch)
+
+    def refresh_agents(self):
+        """Agents du lot en cours (lancés, revenus) depuis les transcripts ; diffusé s'il change"""
+        cur = self.snap.get("current") if isinstance(self.snap.get("current"), dict) else {}
+        key = (cur.get("stage"), cur.get("batch")) if cur.get("stage") else None
+        if key != self.batch_key:
+            st = next((s.get("started_at") for s in self.snap["stages"] if s["key"] == cur.get("stage")), None)
+            self.batch_t = batch_since(self.batch_key, key, st, time.time()) if key else None
+            self.batch_key = key
+        new = feed.batch_agents(self.feed.agent_list(), self.batch_t, cur.get("workers")) if key else []
+        if new != self.batch:
+            with self.lock:
+                self.batch = new
+                self.snap = dict(self.snap, batch_agents=new)
+                msg = ("snapshot", json.dumps(self.snap, ensure_ascii=False))
+                for q in self.clients:
+                    q.put(msg)
 
     def subscribe(self):
         q = queue.Queue()
@@ -79,7 +135,7 @@ class Dash:
                 self.clients.remove(q)
 
     def watch(self):
-        sig, last_change, end_seen = signature(self.audit), time.time(), None
+        sig, last_change, end_seen, cost_at = signature(self.audit), time.time(), None, None
         try:
             while not self.stop_evt.wait(POLL_S):
                 if not self.audit.is_dir():
@@ -89,13 +145,23 @@ class Dash:
                 except Exception as e:  # une erreur de tick ne doit jamais empêcher l'arrêt automatique ci-dessous
                     print(f"watch: {e!r}", file=sys.stderr, flush=True)
                 m, idle = self.snap["meta"], time.time() - last_change
+                if time.time() - self.agents_at >= 2:
+                    self.agents_at = time.time()
+                    try:
+                        self.refresh_agents()
+                    except Exception as e:
+                        print(f"agents : {e!r}", file=sys.stderr, flush=True)
+                if cost_due(time.time(), cost_at, m["finished"], cost.load(self.audit).get("auto") is not None):
+                    cost_at = time.time()
+                    try:
+                        cost.save_auto(self.audit, cost.compute(self.audit))  # cost.json change : snapshot au tour suivant
+                    except Exception as e:
+                        print(f"coût : {e!r}", file=sys.stderr, flush=True)
                 if self.snap["listening"] == "fixes" or not (m["finished"] or m["stopped"]):
                     end_seen = None
                 elif end_seen is None:
                     end_seen = time.time()
-                if end_seen and time.time() - end_seen > END_GRACE_S:
-                    break
-                if (idle > IDLE_S and not self.clients) or idle > HARD_IDLE_S:
+                if should_stop(time.time() - end_seen if end_seen else None, idle, len(self.clients)):
                     break
         finally:
             self.shutdown()
@@ -113,6 +179,7 @@ class Dash:
             if events:
                 snapshot.append_activity(self.audit, events)
                 cur = snapshot.read_snapshot_safe(self.audit, cur)  # relu pour inclure le journal ; tronqué : on garde cur
+            cur["batch_agents"] = self.batch
             self.snap = cur
             msg = ("snapshot", json.dumps(cur, ensure_ascii=False))
             for q in self.clients:
@@ -167,7 +234,7 @@ class Handler(BaseHTTPRequestHandler):
         route = urlparse(self.path).path
         if route == "/health":
             self.send(200, {"ok": True})
-        elif route == "/":
+        elif route in ("/", "/dashboard.html"):
             page = (HERE / "dashboard.html").read_text(encoding="utf-8")
             page = page.replace("__DATA__", render.safe_json(self.dash.fresh()), 1)
             port = self.server.server_address[1]
@@ -175,8 +242,48 @@ class Handler(BaseHTTPRequestHandler):
             self.send(200, page, "text/html", [("Set-Cookie", cookie)] if via_query else [])
         elif route == "/events":
             self.events()
+        elif route == "/bilan":
+            snap = self.dash.fresh()
+            m = snap["meta"]
+            page = bilan.build(self.dash.audit, snap, live=not (m["finished"] or m["stopped"]))
+            self.send(200, page, "text/html", [("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'")])
+        elif route == "/export":
+            self.export()
+        elif route == "/feed":
+            try:
+                after = int(parse_qs(urlparse(self.path).query).get("after", ["0"])[0])
+            except ValueError:
+                return self.send(400, {"error": "curseur invalide"})
+            self.send(200, self.dash.feed.since(after))
         else:
             self.send(404, {"error": "introuvable"})
+
+    def export(self):
+        port = self.server.server_address[1]
+        origin = self.headers.get("Origin")
+        if origin and origin not in (f"http://127.0.0.1:{port}", f"http://localhost:{port}"):
+            return self.send(403, {"error": "accès refusé"})
+        kind = parse_qs(urlparse(self.path).query).get("kind", [""])[0]
+        if kind not in ("light", "full"):
+            return self.send(400, {"error": "export inconnu"})
+        name = self.dash.fresh()["meta"]["repo_name"]
+        fname = re.sub(r"[^A-Za-z0-9_.-]", "_", f"mantis-{name}-{self.dash.audit.name}-"
+                                                  f"{'leger' if kind == 'light' else 'complet'}.zip")
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "export.zip"
+            try:
+                export.build(kind, self.dash.audit, out)
+            except Exception as e:
+                print(f"GET /export: {e!r}", file=sys.stderr, flush=True)
+                return self.send(500, {"error": "export impossible"})
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Length", str(out.stat().st_size))
+            self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            with open(out, "rb") as fh:
+                shutil.copyfileobj(fh, self.wfile)
 
     def events(self):
         self.send_response(200)
@@ -216,7 +323,9 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, RecursionError):
             return self.send(400, {"error": "commande illisible"})
         snap = self.dash.fresh()
-        if snap["listening"] == "none" and not (isinstance(cmd, dict) and cmd.get("action") == "merge_fix"):  # merge_fix n'a pas besoin de Claude
+        action = cmd.get("action") if isinstance(cmd, dict) else None
+        # sans session : actions serveur appliquées, actions de QUEUEABLE mises en file, les autres refusées
+        if snap["listening"] == "none" and action not in commands.SERVER_ACTIONS | commands.QUEUEABLE:
             return self.send(409, {"error": "Aucune session active : relance /mantis-run"})
         reason = commands.validate(cmd, snap)
         if reason:
@@ -224,8 +333,8 @@ class Handler(BaseHTTPRequestHandler):
         appended = None
         try:
             cmd = appended = commands.append(self.dash.audit, cmd, "page")
-            if cmd["action"] == "merge_fix":
-                cmd = commands.apply(self.dash.audit, cmd["id"])  # le serveur fusionne lui-même, sans attendre Claude
+            if cmd["action"] in commands.SERVER_ACTIONS:
+                cmd = commands.apply(self.dash.audit, cmd["id"])  # le serveur l'applique lui-même, sans attendre Claude
         except Exception as e:
             print(f"POST /command: {e!r}", file=sys.stderr, flush=True)
             if appended:

@@ -24,7 +24,12 @@ Installé par le bootstrap (`osho-mantis@osho-skillz`). Lance les skills [google
 | `mantis-run` | Skill | Campagne au niveau choisi, un sous-agent par étape Mantis, reprise après coupure, rapport `README.md`, `patches/`, `dashboard.html` |
 | `check-visibility.sh` | Script | `local` / `private` / `public` / `unknown` via `gh` ; self-test : `bash skills/mantis-triage/scripts/test_check_visibility.sh` |
 | `inventory.py` | Script | Inventaire zéro token et estimations ; self-test : `python3 skills/mantis-triage/scripts/test_inventory.py` |
-| `render.py` | Script | Findings → README, patchs, dashboard ; self-test : `python3 skills/mantis-run/scripts/test_render.py` |
+| `render.py` | Script | Findings → README, patchs, dashboard, bilan ; self-test : `python3 skills/mantis-run/scripts/test_render.py` |
+| `bilan.py` | Script | Bilan HTML autonome (synthèse pour les développeurs, aussi onglet Bilan) ; self-test : `python3 skills/mantis-run/scripts/test_bilan.py` |
+| `export.py` | Script | Exports léger (bilan + dashboard) et complet (zip brut de l'audit, sans fichiers de session), secrets à révoquer listés ; self-test : `python3 skills/mantis-run/scripts/test_export.py` |
+| `cost.py` | Script | Coût estimé (tarif public de l'API) et temps actif depuis les transcripts Claude Code → `cost.json` ; self-test : `python3 skills/mantis-run/scripts/test_cost.py` |
+| `feed.py` | Script | Fil de Claude en lecture seule pour le dashboard (texte des messages, lancement et retour des agents) ; self-test : `python3 skills/mantis-run/scripts/test_feed.py` |
+| `guard.py` | Script | Sauvegarde, contrôle et restauration des findings, `RESUME.md` après une coupure ; self-test : `python3 skills/mantis-run/scripts/test_guard.py` |
 
 ## Adding a skill
 

@@ -196,6 +196,20 @@ def safe_json(obj):
             .replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e"))
 
 
+def pages_names():
+    return ["dashboard.html", "bilan.html"]
+
+
+def pages(audit_dir, payload=None):
+    """dashboard.html et bilan.html finaux, en texte, sans rien écrire"""
+    audit_dir = Path(audit_dir).resolve()
+    from snapshot import build_snapshot  # import tardif : snapshot importe render
+    import bilan
+    payload = payload or build_snapshot(audit_dir, mode="final")
+    page = Path(__file__).with_name("dashboard.html").read_text(encoding="utf-8")
+    return {"dashboard.html": page.replace("__DATA__", safe_json(payload), 1), "bilan.html": bilan.build(audit_dir, payload)}
+
+
 def render(audit_dir):
     audit_dir = Path(audit_dir).resolve()
     from snapshot import build_snapshot  # import tardif : snapshot importe render
@@ -207,12 +221,12 @@ def render(audit_dir):
         if f.get("patch_diff") and bucket(f) != "REJECTED":
             (audit_dir / "patches").mkdir(exist_ok=True)
             (audit_dir / "patches" / f"{f['_file']}.diff").write_text(str(f["patch_diff"]).rstrip("\n") + "\n")
-    page = Path(__file__).with_name("dashboard.html").read_text(encoding="utf-8")
-    (audit_dir / "dashboard.html").write_text(page.replace("__DATA__", safe_json(payload), 1), encoding="utf-8")
+    for name, text in pages(audit_dir, payload).items():
+        (audit_dir / name).write_text(text, encoding="utf-8")
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         sys.exit(__doc__)
     render(sys.argv[1])
-    print(f"README.md, dashboard.html écrits dans {Path(sys.argv[1]).resolve()}")
+    print(f"README.md, dashboard.html, bilan.html écrits dans {Path(sys.argv[1]).resolve()}")

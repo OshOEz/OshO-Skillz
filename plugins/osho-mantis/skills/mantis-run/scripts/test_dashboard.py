@@ -106,7 +106,7 @@ def test_auth():
 
 
 def test_post_409_sans_session():
-    with server({"stages": {"review": "done"}, "finished": True}) as (d, out, port, key):
+    with server({"stages": {"review": "done"}, "finished": True}) as (d, out, port, key):  # pause : pas de file
         s, body, _ = post(port, key, {"action": "pause"})
         assert s == 409 and json.loads(body)["error"] == "Aucune session active : relance /mantis-run"
 
@@ -341,13 +341,15 @@ def test_post_merge_fix_immediat():
             cli("stop", d, check=False)
 
 
-def test_post_fix_409_sans_session():
+def test_post_fix_en_file_sans_session():
+    """Sans session, « Corriger » est mis en file pour le prochain /mantis-run (spec lot 3, §4.3)"""
     import test_fixes
     with test_fixes.scratch() as tmp:
         d, repo = test_fixes.git_audit(tmp, state={"stages": {"review": "done"}, "finished": True})
         try:
             u = urlparse(json.loads(cli("serve", d).stdout)["url"])
-            assert post(u.port, parse_qs(u.query)["key"][0], {"action": "fix", "finding": "f1"})[0] == 409
+            assert post(u.port, parse_qs(u.query)["key"][0], {"action": "fix", "finding": "f1"})[0] == 200
+            assert [json.loads(x)["action"] for x in cli("pending", d).stdout.splitlines()] == ["fix"]
         finally:
             cli("stop", d, check=False)
 
@@ -400,6 +402,97 @@ def test_ack_crash():
         (d / "fixes.json").write_text("[")  # illisible : pas d'exception
         with redirect_stderr(io.StringIO()):
             dashboard.ack_crash(d, {"id": "zz"})
+
+
+def test_set_cost_sans_session():
+    with server({"stages": {"review": "done"}, "finished": True}) as (d, out, port, key):
+        s, body, _ = post(port, key, {"action": "set_cost", "usd": 42})
+        assert s == 200 and json.loads(body)["result"] == "applied", body
+        assert json.loads((d / "cost.json").read_text())["manual"]["usd"] == 42.0
+        assert post(port, key, {"action": "set_cost", "usd": -3})[0] == 400
+
+
+def test_bilan_route():
+    with server({"stages": {"review": "running"}, "round": 1}, findings=[{"title": "Faille <b>", "severity": "HIGH"}]) \
+            as (d, out, port, key):
+        assert req(port, "GET", "/bilan")[0] == 403
+        s, body, r = req(port, "GET", f"/bilan?key={key}")
+        assert s == 200 and "Faille &lt;b&gt;" in body and "bilan provisoire" in body
+        assert "default-src 'none'" in r.getheader("Content-Security-Policy")
+
+
+def test_export_route():
+    import zipfile
+    with server({"stages": {"review": "done"}, "finished": True}, findings=[{"title": "F", "severity": "LOW"}]) \
+            as (d, out, port, key):
+        assert req(port, "GET", "/export?kind=full")[0] == 403
+        assert req(port, "GET", f"/export?kind=full&key={key}", {"Origin": "http://evil"})[0] == 403
+        assert req(port, "GET", f"/export?kind=zzz&key={key}")[0] == 400
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        c.request("GET", f"/export?kind=full&key={key}")
+        r = c.getresponse()
+        data = r.read()
+        c.close()
+        assert r.status == 200 and r.getheader("Content-Type").startswith("application/zip")
+        assert "mantis-demo-audit-complet.zip" in r.getheader("Content-Disposition")
+        names = zipfile.ZipFile(io.BytesIO(data)).namelist()
+        assert "audit/LISEZMOI-DEV.md" in names and "audit/server.json" not in names
+        assert any(n == "audit/state.json" for n in names)
+
+
+def test_feed_route():
+    with server() as (d, out, port, key):
+        assert req(port, "GET", "/feed?after=0")[0] == 403
+        assert req(port, "GET", f"/feed?after=abc&key={key}")[0] == 400
+        s, body, _ = req(port, "GET", f"/feed?after=0&key={key}")
+        r = json.loads(body)
+        assert s == 200 and isinstance(r["items"], list) and isinstance(r["last"], int)
+
+
+def test_file_sans_session():
+    with server({"stages": {"plan": "failed"}, "stopped": True}, findings=[{"title": "F", "severity": "HIGH"}]) \
+            as (d, out, port, key):
+        for c in ({"action": "launch"}, {"action": "retry", "stage": "plan"}, {"action": "false_positive", "finding": "f0"}):
+            s, body, _ = post(port, key, c)
+            assert s == 200 and json.loads(body)["id"], (c, body)
+        for c in ({"action": "pause"}, {"action": "stop"}, {"action": "end_fixes"}):
+            assert post(port, key, c)[0] == 409, c
+        pend = [json.loads(x)["action"] for x in cli("pending", d).stdout.splitlines()]
+        assert pend == ["launch", "retry", "false_positive"]
+        snap = json.loads(req(port, "GET", f"/?key={key}")[1].split('type="application/json">', 1)[1].split("</script>", 1)[0])
+        assert snap["meta"]["audit_path"] == str(d.resolve())
+
+
+def test_vie_serveur():
+    import dashboard
+    G = dashboard.END_GRACE_S
+    # fin vue il y a plus de 30 min : arrêt seulement sans page connectée
+    assert dashboard.should_stop(ended_for=G + 1, idle=10, clients=0) is True
+    assert dashboard.should_stop(ended_for=G + 1, idle=10, clients=1) is False
+    assert dashboard.should_stop(ended_for=None, idle=dashboard.IDLE_S + 1, clients=0) is True
+    assert dashboard.should_stop(ended_for=None, idle=dashboard.IDLE_S + 1, clients=1) is False
+    assert dashboard.should_stop(ended_for=G + 1, idle=dashboard.HARD_IDLE_S + 1, clients=1) is True
+
+
+def test_cout_rafraichi():
+    import dashboard
+    R = dashboard.COST_REFRESH_S
+    assert dashboard.cost_due(now=1000, last=None, finished=False, has_auto=False) is True
+    assert dashboard.cost_due(now=1000, last=1000 - R + 1, finished=False, has_auto=True) is False
+    assert dashboard.cost_due(now=1000, last=1000 - R - 1, finished=False, has_auto=True) is True
+    assert dashboard.cost_due(now=1000, last=None, finished=True, has_auto=True) is False, "audit fini : coût figé"
+    assert dashboard.cost_due(now=1000, last=None, finished=True, has_auto=False) is True
+
+
+def test_debut_du_lot():
+    import dashboard
+    from datetime import datetime
+    st = "2026-10-29T12:00:00"
+    t_st = datetime.fromisoformat(st).timestamp()
+    # première vue (serveur relancé en plein lot) : début de l'étape ; lot suivant vu en direct : maintenant
+    assert dashboard.batch_since(None, ("reproduce", "2/6"), st, now=5000) == t_st
+    assert dashboard.batch_since(("reproduce", "1/6"), ("reproduce", "2/6"), st, now=5000) == 5000
+    assert dashboard.batch_since(None, ("reproduce", "2/6"), None, now=5000) == 5000
 
 
 def test_help():

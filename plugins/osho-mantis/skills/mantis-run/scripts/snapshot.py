@@ -9,6 +9,7 @@ from pathlib import Path
 
 import commands
 import fixes
+import cost
 import render
 
 _ALL = ["history", "structural-index", "architecture", "threat-model", "plan", "researcher", "dedupe",
@@ -94,6 +95,40 @@ def timing(activity, key, start=None, default_end=None):
         return start, None
 
 
+def stage_rounds(activity):
+    """{(étape, tour): durée cumulée} depuis le journal ; un événement sans « round » prend le tour
+    compté par les démarrages de plan (k-ième démarrage = tour k ; avant le premier, tour 1)"""
+    out, rnd = {}, 0
+    for e in activity:
+        if e.get("kind") != "stage":
+            continue
+        if "round" not in e and e.get("stage") == "plan" and e.get("to") == "running":
+            rnd += 1
+        r = e.get("round") or max(rnd, 1)
+        if e.get("to") == "done":
+            d = e.get("duration_s")
+            k = (e.get("stage"), r)
+            out[k] = (out.get(k) or 0) + d if isinstance(d, (int, float)) else out.get(k)
+    return out
+
+
+def cycle(stages, level, rnd, activity):
+    """Vue Cycle : préparation (jusqu'à threat-model), puis une rangée par tour (plan → dernière étape)"""
+    keys = [s["key"] for s in stages]
+    cut = keys.index("plan") if "plan" in keys else len(keys)
+    durs = stage_rounds(activity)
+    pick = lambda s, **kw: dict({k: s[k] for k in ("key", "code", "name", "status", "duration_s")}, **kw)
+    prep = [pick(s, duration_s=s["duration_s"] if (s["key"], 1) not in durs else durs[(s["key"], 1)])
+            for s in stages[:cut]]
+    rnd = rnd if isinstance(rnd, int) and rnd >= 1 else 1
+    rounds = []
+    for r in range(1, rnd + 1):
+        cur = r == rnd
+        rounds.append({"round": r, "stages": [pick(s, status=s["status"] if cur else "done", duration_s=durs.get((s["key"], r)))
+                                              for s in stages[cut:]]})
+    return {"prep": prep, "rounds": rounds, "max_rounds": 3 if level == "Overkill" else 1}
+
+
 def build_snapshot(audit_dir, mode="live", now=None, loaded=None):
     """loaded : campaign/state/waiting déjà lus (read_snapshot_safe), pour ne lire chaque fichier qu'une fois"""
     audit_dir = Path(audit_dir).resolve()
@@ -149,11 +184,12 @@ def build_snapshot(audit_dir, mode="live", now=None, loaded=None):
         listening = "waiting"
     else:
         listening = "working" if any(s["status"] == "running" for s in stages) else "none"
-    watched = [audit_dir / n for n in ("campaign.json", "state.json", "waiting.json", "activity.jsonl", "fixes.json")]
+    watched = [audit_dir / n for n in ("campaign.json", "state.json", "waiting.json", "activity.jsonl", "fixes.json",
+                                       "cost.json")]
     watched += [audit_dir / "workspace" / "findings"] + list((audit_dir / "workspace" / "findings").glob("*.json"))
     mtimes = [p.stat().st_mtime for p in watched if p.exists()]
     age = int(now - max(mtimes)) if mtimes else 0
-    meta = {"repo_name": Path(campaign.get("repo") or audit_dir.parent.parent).name,
+    meta = {"repo_name": Path(campaign.get("repo") or audit_dir.parent.parent).name, "audit_path": str(audit_dir),
             "audit_name": audit_dir.name, "level": level,
             "mantis_commit": campaign.get("mantis_commit"), "started_at": campaign.get("started_at"),
             "duration": render.duration(campaign.get("started_at"), campaign.get("finished_at")),
@@ -165,10 +201,12 @@ def build_snapshot(audit_dir, mode="live", now=None, loaded=None):
             "fixes_merged": sum(1 for e in fix_entries.values() if isinstance(e, dict) and e.get("status") == "merged"),
             "dirty_before": bool(state.get("git_status_before"))}
     meta["reproduce_done"] = "reproduce" in meta["stages"]
+    meta["cost"] = cost.summary(audit_dir)
     meta["level_banner"] = render.LEVEL_BANNERS.get(level, "")
     return {"mode": mode, "generated_at": datetime.fromtimestamp(now).isoformat(timespec="seconds"),
             "meta": meta, "stats": render.stats(findings), "labels": render.ENUM_LABELS, "stages": stages,
-            "current": state.get("current"), "waiting": waiting, "listening": listening,
+            "current": state.get("current"),
+            "cycle": cycle(stages, level, state.get("round"), activity), "waiting": waiting, "listening": listening,
             "stale": listening == "working" and age > STALE_S,
             "findings": [dict(f, _bucket=render.bucket(f), _summary=render.summary(f), _progress=progress(f))
                          for f in sorted(findings, key=render.sort_key)],
@@ -220,6 +258,8 @@ def diff_events(prev, cur, at):
             continue
         e = {"at": at, "kind": "stage", "stage": s["key"], "from": old, "to": s["status"],
              "text": f"Étape {s['name']} {texts[s['status']]}"}
+        if isinstance(cur["meta"].get("round"), int):
+            e["round"] = cur["meta"]["round"]
         if s["status"] == "done" and secs is not None:
             e["duration_s"] = secs
         ev.append(e)

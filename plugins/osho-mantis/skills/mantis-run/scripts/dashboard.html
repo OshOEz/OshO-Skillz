@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Audit Mantis</title>
+<link rel="icon" href="data:,">
 <style>
 /* Jetons Horizon OS (spec §6), recopiés sans dépendance */
 :root,[data-theme=dark]{
@@ -77,67 +78,39 @@ main{padding:14px 20px 40px;display:grid;gap:12px}
 #waiting-banner[hidden]{display:none}
 #pipeline{border-radius:10px;overflow:hidden;display:flex}
 
-/* Pipeline : sélecteur vertical, vues Réseau et Matrice */
-.pv-rail{flex:none;display:flex;flex-direction:column;gap:4px;padding:10px 7px;border-right:1px solid var(--border)}
-.pv-rail .icon-btn[aria-pressed=true]{background:var(--sel);color:var(--sel-fg);border-color:color-mix(in oklch,var(--primary) 40%,transparent)}
+/* Pipeline : vue Cycle (dessin du SIPOC de Kata) : cartes sur fond pointillé, courbes de Bézier, bouts ronds */
 #pv{flex:1;min-width:0;overflow-x:auto;padding:14px}
 .stg{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-align:inherit}
-.p1{position:relative;width:max-content;min-width:max(980px,100%);padding:26px 8px 8px;border:1px solid var(--border);border-radius:6px;
-  background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);
-  background-size:24px 24px;background-position:-1px -1px;mask-image:linear-gradient(90deg,transparent,#000 3%,#000 97%,transparent)}
-.p1 .row{display:flex;align-items:center;padding:0 6px}
-.node{position:relative;z-index:1;flex:none;width:84px;display:flex;flex-direction:column;align-items:center;gap:6px;border-radius:6px;padding:4px 0}
-.node:hover .c{border-color:var(--faint)}
-.node .c{position:relative;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--card);border:1.5px solid var(--input);font:600 10px var(--mono);color:var(--faint)}
-.node.done .c{border-color:var(--ok);color:var(--ok)}
-.node.running .c{border-color:var(--primary);color:var(--primary);box-shadow:0 0 0 4px color-mix(in oklch,var(--primary) 18%,transparent)}
-.node.running .c::after{content:"";position:absolute;inset:-1.5px;border-radius:50%;border:1.5px solid var(--primary);animation:ping 1.8s ease-out infinite}
-@keyframes ping{from{transform:scale(1);opacity:.8}to{transform:scale(2.1);opacity:0}}
-.node.skipped .c{border-style:dashed;opacity:.55}
-.node.failed .c{border-color:var(--bad);color:var(--bad);background:color-mix(in oklch,var(--bad) 12%,var(--card))}
-.node small{font:500 10px/1.25 var(--mono);color:var(--faint);text-transform:uppercase;letter-spacing:.04em;text-align:center;min-height:25px}
-.node.running small{color:var(--primary)} .node.failed small{color:var(--bad)}
-.node em{font:400 10px var(--mono);color:var(--faint);font-style:normal;height:12px;white-space:nowrap}
-.node.skipped small,.node.skipped em{text-decoration:line-through}
-.wire{flex:1;height:2px;background:var(--input);margin-bottom:46px;min-width:14px}
-.wire.done{background:var(--ok)}
-.wire.running{background:linear-gradient(90deg,var(--ok),var(--primary));position:relative;overflow:hidden}
-.wire.running::after{content:"";position:absolute;inset:0;width:30%;background:linear-gradient(90deg,transparent,color-mix(in oklch,var(--fg) 70%,transparent),transparent);animation:flow 1.4s linear infinite}
-@keyframes flow{from{transform:translateX(-100%)}to{transform:translateX(400%)}}
-.fork{flex:none;display:flex;flex-direction:column;gap:5px;padding:0 4px;margin-bottom:46px}
-.fork .lane{display:flex;align-items:center;gap:4px;font:500 10px/1 var(--mono);color:var(--primary)}
-.fork .lane i{width:18px;height:2px;background:var(--primary);opacity:.7}
-.pv-foot{display:flex;gap:28px;margin-top:14px;padding:10px 40px 2px;border-top:1px solid var(--border);font:12px var(--mono);color:var(--faint)}
+.cy-zone{border:1px solid var(--border);border-radius:10px;background-color:color-mix(in oklch,var(--muted-bg) 45%,transparent);
+  background-image:radial-gradient(var(--input) 1.3px,transparent 1.3px);background-size:18px 18px;overflow-x:auto}
+.cy{position:relative}
+.cy-wires{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}
+.cy-wire{fill:none;stroke-width:1.5}
+.cy-wire.done{stroke:color-mix(in oklch,var(--primary) 70%,transparent)}
+.cy-wire.running,.cy-wire.flow{stroke:var(--primary);stroke-width:2}
+.cy-wire.flow{stroke-dasharray:6 6;animation:dash 1s linear infinite}
+.cy-wire.pending{stroke:var(--input);stroke-dasharray:4 4}
+@keyframes dash{to{stroke-dashoffset:-12}}
+.cy-end{position:absolute;width:7px;height:7px;transform:translate(-50%,-50%);border:1.5px solid var(--input);border-radius:50%;background:var(--card)}
+.cy-end.done,.cy-end.running,.cy-end.flow{border-color:var(--primary)}
+.cy-check{position:absolute;transform:translate(-50%,-50%);font:700 11px/1 var(--sans);color:var(--ok);background:var(--card);border-radius:50%;padding:1px 2px}
+.cy-more{position:absolute;font:600 10px var(--mono);color:var(--primary)}
+.cy-label{position:absolute;font:700 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+.cy-card{position:absolute;display:flex;flex-direction:column;gap:2px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;
+  background:var(--card);box-shadow:var(--card-shadow);overflow:hidden}
+.cy-card:hover,.cy-card:focus-visible{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in oklch,var(--primary) 20%,transparent)}
+.cy-card .code{font:600 11px var(--mono);letter-spacing:.06em;color:var(--faint)}
+.cy-card .nm{font-size:12.5px;font-weight:600;line-height:1.2;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
+.cy-card .st{margin-top:auto;padding-top:2px;font:10.5px var(--mono);color:var(--faint);white-space:nowrap}
+.cy-card.done .code{color:var(--ok)}
+.cy-card.running{border:1.5px solid var(--primary)}.cy-card.running .code,.cy-card.running .st{color:var(--primary)}
+.cy-card.failed{border-color:var(--bad)}.cy-card.failed .code,.cy-card.failed .st{color:var(--bad)}
+.cy-card.pending{background:transparent;border-style:dashed}.cy-card.pending .nm{color:var(--muted)}
+.cy-card.skipped{border-style:dashed;opacity:.6}.cy-card.skipped .nm{text-decoration:line-through}
+.cy-card.appear,.cy-label.appear{animation:appear .5s var(--ease) both}
+@keyframes appear{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.pv-foot{display:flex;gap:28px;margin-top:12px;padding:10px 4px 2px;font:12px var(--mono);color:var(--faint)}
 .pv-foot b{color:var(--fg);font-weight:500}
-.p3{min-width:980px;border:1px solid var(--border);border-radius:6px;background:var(--card);overflow:hidden}
-.p3-top{display:flex;align-items:center;gap:16px;height:34px;padding:0 12px;border-bottom:1px solid var(--border);font:11px var(--mono);color:var(--faint);text-transform:uppercase;letter-spacing:.1em}
-.p3-top b{color:var(--fg);font-weight:600}
-.p3-top .r{margin-left:auto}
-.mx{display:grid;grid-template-columns:repeat(var(--n,12),minmax(0,1fr));gap:1px;background:var(--border)}
-.cell{position:relative;overflow:hidden;background:var(--card);padding:10px 8px 9px;min-height:96px;display:flex;flex-direction:column;gap:4px}
-.cell:hover{background:var(--elev)}
-.cell .code{font:600 15px var(--mono);letter-spacing:.04em;color:var(--faint)}
-.cell .nm{font-size:11px;color:var(--faint);line-height:1.2}
-.cell .st{margin-top:auto;font:10px var(--mono);color:var(--faint)}
-.cell.done .code,.cell.done .nm{color:var(--fg)} .cell.done .st{color:var(--ok)}
-.cell.failed .code{color:var(--bad)} .cell.failed .st{color:var(--bad)}
-.cell.failed{box-shadow:inset 0 2px 0 var(--bad)}
-.cell.running{background:var(--sel)}
-.cell.running .code,.cell.running .nm{color:var(--sel-fg)} .cell.running .st{color:var(--primary)}
-.cell.running::before,.cell.running::after{content:"";position:absolute;width:10px;height:10px;border:1.5px solid var(--primary)}
-.cell.running::before{top:4px;left:4px;border-right:0;border-bottom:0}
-.cell.running::after{bottom:4px;right:4px;border-left:0;border-top:0}
-.cell .scan{position:absolute;left:0;right:0;top:8%;height:1px;background:var(--primary);opacity:.6;animation:scan 2.4s ease-in-out infinite}
-@keyframes scan{0%,100%{top:8%}50%{top:92%}}
-.cell.skipped{background:repeating-linear-gradient(135deg,var(--card) 0 5px,var(--bg) 5px 10px)}
-.cell.skipped .code{text-decoration:line-through}
-.bars{display:flex;gap:2px;height:6px;margin-top:2px}
-.bars i{flex:1;height:100%;background:var(--ok);opacity:.55;border-radius:1px}
-.cell.running .bars i{background:var(--primary);opacity:.9}
-.p3-log{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid var(--border);font:11px/1.6 var(--mono);color:var(--faint)}
-.p3-log div{padding:8px 12px;border-right:1px solid var(--border);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.p3-log div:last-child{border-right:0}
-.p3-log b{color:var(--muted);font-weight:500;margin-right:6px}
 .split{display:grid;grid-template-columns:minmax(0,1fr) 240px;gap:12px;align-items:start}
 .side{display:grid;gap:12px}
 #actions{display:grid;gap:8px;padding:12px}
@@ -147,6 +120,10 @@ main{padding:14px 20px 40px;display:grid;gap:12px}
 #actions .sess{margin:0;font-size:13px;color:var(--fg)}
 #actions .stale{margin:-4px 0 0;font-size:12px;color:var(--warn)}
 #actions .btn{width:100%}
+#actions .hint{margin:0;font-size:12px;color:var(--muted)}
+#actions .runcmd{display:flex;gap:6px;align-items:center}
+#actions .runcmd code{flex:1;min-width:0;overflow-wrap:anywhere;font:11px var(--mono);background:var(--muted-bg);padding:4px 6px;border-radius:5px}
+#actions .runcmd .btn{width:auto}
 .cmds{list-style:none;margin:0;padding:8px 0 0;border-top:1px solid var(--border);display:grid;gap:4px;font-size:12px;overflow-wrap:anywhere}
 .cmd-err{font-size:12px;color:var(--bad);overflow-wrap:anywhere}
 .cmd-st{font-size:12px;align-self:center;overflow-wrap:anywhere}.cmd-st.ok{color:var(--ok)}.cmd-st.bad{color:var(--bad)}
@@ -192,7 +169,7 @@ main{padding:14px 20px 40px;display:grid;gap:12px}
 #filter::placeholder{color:var(--faint)}
 .seg{display:inline-flex;padding:2px;border-radius:6px;border:1px solid var(--input);background:var(--bg)}
 .seg button{height:24px;padding:0 10px;border:0;border-radius:4px;background:none;color:var(--muted);font-size:12px;cursor:pointer}
-.seg button[aria-pressed=true]{background:var(--sel);color:var(--sel-fg);font-weight:600}
+.seg button[aria-pressed=true],.seg button[aria-selected=true]{background:var(--sel);color:var(--sel-fg);font-weight:600}
 
 /* Kanban */
 #board{display:grid;grid-template-columns:repeat(var(--n,4),minmax(0,1fr)) auto;gap:10px;padding:10px;align-items:start}
@@ -279,6 +256,39 @@ code{font:12px var(--mono);background:var(--muted-bg);border-radius:4px;padding:
 .hist time{font:12px/1.65 var(--mono);color:var(--faint);flex:none}
 .peek-act{display:flex;gap:8px;flex-wrap:wrap;margin-top:26px;padding-top:18px;border-top:1px solid var(--border)}
 
+/* Onglets Suivi / Bilan, coût */
+#tabs{margin:12px 20px 0}
+#tabs[hidden],#panel-bilan[hidden],#panel-suivi[hidden],#cost-panel[hidden]{display:none}
+#cost-line{margin-top:6px}
+.linkish{border:0;background:none;padding:0;color:var(--primary);cursor:pointer;font:inherit;font-size:13px;text-decoration:underline dotted}
+#cost-panel{margin-top:10px;max-width:640px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:13px}
+#cost-panel table{width:100%;border-collapse:collapse;margin-bottom:10px}
+#cost-panel td,#cost-panel th{text-align:left;padding:3px 6px;border-bottom:1px solid var(--border)}
+#cost-panel .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+#cost-panel input{height:28px;border-radius:6px;border:1px solid var(--input);background:var(--bg);color:var(--fg);padding:0 8px;font:inherit}
+#cost-panel .err{color:var(--bad)}
+#bilan-frame{display:block;width:100%;height:78vh;border:0;border-top:1px solid var(--border);border-radius:0 0 10px 10px;background:var(--bg)}
+#export-note{font-size:12px;color:var(--muted)}
+
+/* Fil de Claude : onglet en bas à droite, tiroir en bas, lecture seule */
+body{padding-bottom:40px} /* la fin de page reste lisible sous l'onglet */
+.feed-tab{position:fixed;right:20px;bottom:0;z-index:5;height:34px;padding:0 14px;border:1px solid var(--border);border-bottom:0;
+  border-radius:8px 8px 0 0;background:var(--card);color:var(--fg);font:600 13px var(--sans);cursor:pointer;box-shadow:var(--lift)}
+.feed-tab[hidden],#feed[hidden],#feed-badge[hidden]{display:none}
+#feed-badge{margin-left:6px;padding:0 6px;border-radius:999px;background:var(--primary);color:var(--on-primary);font:600 11px var(--mono)}
+#feed{position:fixed;left:0;right:0;bottom:0;z-index:6;height:42vh;display:flex;flex-direction:column;background:var(--card);
+  border-top:1px solid var(--border);box-shadow:var(--lift);animation:appear .2s var(--ease) both}
+.feed-h{display:flex;align-items:center;gap:10px;padding:6px 10px 6px 20px;border-bottom:1px solid var(--border)}
+.feed-h h2{margin:0;font-size:13px}.feed-h .ro{font-size:12px;color:var(--faint)}.feed-h .icon-btn{margin-left:auto}
+#feed-list{list-style:none;margin:0;padding:14px 20px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;flex:1}
+#feed-list li{max-width:min(860px,92%);display:flex;flex-direction:column;gap:2px}
+#feed-list .meta{font:11px var(--mono);color:var(--faint)}
+#feed-list .bub{padding:8px 12px;border-radius:10px 10px 10px 2px;background:var(--elev);border:1px solid var(--border);
+  white-space:pre-wrap;overflow-wrap:anywhere;font-size:13.5px;line-height:1.45}
+#feed-list li.claude .bub{background:var(--sel);color:var(--sel-fg);border-color:transparent}
+#feed-list li.agent_start .bub,#feed-list li.agent_end .bub{background:none;border-style:dashed;color:var(--muted);font-size:12px;padding:4px 10px}
+#feed-list:empty::after{content:"Aucun message pour l'instant.";color:var(--faint);font-size:13px}
+
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -304,19 +314,30 @@ code{font:12px var(--mono);background:var(--muted-bg);border-radius:4px;padding:
     <div class="kpi"><b>0</b><span>reproduits</span></div>
     <div class="kpi"><b>0</b><span>patchs vérifiés</span></div>
   </div>
+  <p id="cost-line"><button id="cost-btn" class="linkish" type="button" aria-expanded="false" aria-controls="cost-panel">Coût et durée</button></p>
+  <div id="cost-panel" hidden></div>
 </section>
 
-<main>
-  <div id="waiting-banner" role="region" aria-label="Question en attente" hidden></div>
-  <section id="pipeline" class="tile" aria-label="Pipeline">
-    <div class="pv-rail" role="group" aria-label="Vue du pipeline">
-      <button id="view-reseau" class="icon-btn" type="button" data-v="reseau" aria-label="Vue réseau" aria-pressed="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="12" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="19" cy="18" r="2.5"/><path d="M7.3 11 16.7 7M7.3 13l9.4 4"/></svg>
-      </button>
-      <button id="view-matrice" class="icon-btn" type="button" data-v="matrice" aria-label="Vue matrice" aria-pressed="false">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-      </button>
+<div id="tabs" class="seg" role="tablist" aria-label="Vue du dashboard">
+  <button type="button" role="tab" data-t="suivi" aria-selected="true">Suivi</button>
+  <button type="button" role="tab" data-t="bilan" aria-selected="false">Bilan</button>
+</div>
+<main id="panel-bilan" hidden>
+  <section class="tile" aria-labelledby="bilan-title">
+    <div class="tile-h"><h2 id="bilan-title">Bilan</h2>
+      <div class="act" id="export-act">
+        <span id="export-note"></span>
+        <button id="export-light" class="btn sm" type="button">Exporter le bilan (HTML)</button>
+        <button id="export-full" class="btn sm" type="button">Exporter tout l'audit (zip)</button>
+      </div>
     </div>
+    <iframe id="bilan-frame" title="Bilan de l'audit" sandbox="allow-same-origin allow-top-navigation-by-user-activation"></iframe>
+  </section>
+</main>
+
+<main id="panel-suivi">
+  <div id="waiting-banner" role="region" aria-label="Question en attente" hidden></div>
+  <section id="pipeline" class="tile" aria-label="Pipeline" tabindex="-1">
     <div id="pv"></div>
   </section>
   <div class="split">
@@ -339,6 +360,12 @@ code{font:12px var(--mono);background:var(--muted-bg);border-radius:4px;padding:
   </div>
 </main>
 
+<button id="feed-tab" class="feed-tab" type="button" aria-expanded="false" aria-controls="feed">Fil de Claude<span id="feed-badge" hidden></span></button>
+<section id="feed" aria-label="Fil de Claude" hidden>
+  <div class="feed-h"><h2>Fil de Claude</h2><span class="ro">lecture seule, comme un journal</span>
+    <button id="feed-close" class="icon-btn" type="button" aria-label="Fermer le fil de Claude">✕</button></div>
+  <ol id="feed-list"></ol>
+</section>
 <div id="scrim" hidden>
   <div id="peek" role="dialog" aria-modal="true" aria-labelledby="peek-title" tabindex="-1"></div>
 </div>
@@ -357,6 +384,7 @@ const PROG = [['found', 'Trouvées', 'Trouvé'], ['reviewed', 'Revues', 'Revu'],
   ['reproduced', 'Reproduites', 'Reproduit'], ['proposed', 'Correctif proposé', 'Correctif proposé'], ['fixed', 'Corrigées', 'Corrigé']];
 const FIX_LABEL = {queued: 'En file…', running: 'Correction en cours', ready: 'Correctif prêt', failed: 'Échec de la correction',
   conflict: 'Conflit avec un autre correctif', merged: 'Corrigée'};
+const EXPORT_WARNING = "⚠️ Cette archive contient le détail d'exploits et des secrets en clair. Transmettez-la uniquement par un canal privé.";
 const PROPS = [['Statut', 'status'], ['Emplacement', 'code_paths'], ['CWE', 'cwe'], ['Exploitabilité', 'production_viability'],
   ['Reproduction', 'repro_status'], ['Patch', 'patch_status'], ['Re-attaque', 'reattack_status'], ['Score de risque', 'mantis_risk_score']];
 const MONO = new Set(['code_paths', 'cwe', 'mantis_risk_score', 'repro_file_path']);
@@ -368,7 +396,7 @@ const ICON = {
 const $ = id => document.getElementById(id);
 // état de l'interface, conservé d'un render(D) à l'autre
 const ui = {view: (new URLSearchParams(location.search).get('kb') ?? load('mantis.kbView')) === 'progress' ? 'progress' : 'severity', peek: null, full: false, back: null,
-  stage: null, stageView: stageView(new URLSearchParams(location.search).get('view') ?? load('mantis.stageView')), activityAll: false};
+  stage: null, activityAll: false, rounds: 0};
 let lastMsg = Date.now(); // dernier message du serveur (chargement, snapshot ou ping)
 const inflight = new Set(), cmdErr = new Map(); // commandes pas encore vues dans un snapshot, erreurs 400/409 par commande
 const sent = new Map(); // clé de commande -> id renvoyé par le POST, pour afficher son accusé à côté du bouton
@@ -481,9 +509,6 @@ function renderBanner() {
   $('kpis').children[1].classList.toggle('hot', kpis[1][0] > 0);
 }
 const ST_LABEL = {pending: 'En attente', running: 'En cours', done: 'Terminé', failed: 'Échec', skipped: 'Sauté'};
-function stageView(stored) {
-  return stored === 'matrice' ? 'matrice' : 'reseau';
-}
 function dur(s) {
   if (typeof s !== 'number' || s < 0) return '';
   if (s < 60) return s + ' s';
@@ -525,51 +550,102 @@ function stageButton(s, cls, ...kids) {
 function stat(label, v, cls) {
   return el('span', {}, label + ' ', el('b', cls ? {class: cls} : {}, v));
 }
-function reseau(stages) {
-  const row = el('div', {class: 'row'}), cur = D.current;
-  stages.forEach((s, i) => {
-    if (i) row.append(el('div', {class: 'wire ' + (s.status === 'running' ? 'running' : s.status === 'pending' ? '' : 'done')}));
-    if (s.status === 'running' && cur && cur.stage === s.key && cur.workers > 1) {
-      const fork = el('div', {class: 'fork', 'aria-hidden': 'true'});
-      for (let w = 1; w <= Math.min(cur.workers, 8); w++) fork.append(el('div', {class: 'lane'}, el('i'), 'W' + w));
-      row.append(fork);
-    }
-    row.append(stageButton(s, 'node', el('span', {class: 'c'}, s.code), el('small', {}, s.name), el('em', {}, stageSub(s))));
+function wireState(target, listening) {
+  // flèche entrante d'une étape : animée seulement si elle tourne et qu'une session Claude travaille
+  if (target === 'running') return listening === 'working' ? 'flow' : 'running';
+  return target === 'pending' ? 'pending' : 'done';
+}
+function cycleLayout(cyc, listening, agents) {
+  // positions en pixels : rangée 0 = préparation, puis une rangée par tour ; courbes M x y C … (encart.ts de Kata)
+  const CY = {w: 116, h: 82, gx: 58, gy: 54, top: 30, left: 16}, MAX = 8;
+  const lastRound = (cyc.rounds || []).length;
+  let more = null;
+  const rows = [{label: 'Préparation', stages: cyc.prep || [], round: 0}].concat((cyc.rounds || []).map(r => ({
+    label: 'Tour ' + r.round + (cyc.max_rounds > 1 ? ' / ' + cyc.max_rounds : ''), stages: r.stages || [], round: r.round})));
+  const cards = [], wires = [], out = [];
+  let width = 0, prev = null;
+  rows.forEach((r, ri) => {
+    if (!r.stages.length) return;
+    const y = CY.top + out.length * (CY.h + CY.gy + 18);
+    out.push({label: r.label, x: CY.left, y: y - 20, round: r.round});
+    r.stages.forEach((s, i) => {
+      const c = Object.assign({}, s, {id: r.round + ':' + s.key, row: out.length - 1, round: r.round,
+        x: CY.left + i * (CY.w + CY.gx), y, w: CY.w, h: CY.h});
+      cards.push(c);
+      width = Math.max(width, c.x + c.w + CY.left);
+      if (prev) {
+        const across = prev.row !== c.row, st = wireState(c.status, listening);
+        let a, b, d;
+        const team = !across && c.status === 'running' && c.round === lastRound && (agents || []).length ? agents : null;
+        if (team) {
+          // un brin par agent du lot : animé tant qu'il tourne, coché quand il est revenu
+          const shown = team.slice(0, MAX), k = shown.length;
+          if (team.length > MAX) more = {n: team.length - MAX, x: c.x - 22, y: c.y + c.h + 4};
+          a = [prev.x + prev.w, prev.y + prev.h / 2];
+          shown.forEach((g, i) => {
+            const bb = [c.x, c.y + (i + 1) * c.h / (k + 1)], mx = (a[0] + bb[0]) / 2;
+            wires.push({from: prev.id, to: c.id, state: g.done ? 'done' : st, a, b: bb, strand: i, done: !!g.done, who: g.who,
+              check: g.done ? [bb[0] - 14, bb[1]] : null, loop: false,
+              d: `M ${a[0]} ${a[1]} C ${mx} ${a[1]}, ${mx} ${bb[1]}, ${bb[0]} ${bb[1]}`});
+          });
+          prev = c;
+          return;
+        }
+        if (!across) {
+          a = [prev.x + prev.w, prev.y + prev.h / 2]; b = [c.x, c.y + c.h / 2];
+          const mx = (a[0] + b[0]) / 2;
+          d = `M ${a[0]} ${a[1]} C ${mx} ${a[1]}, ${mx} ${b[1]}, ${b[0]} ${b[1]}`;
+        } else {
+          a = [prev.x + prev.w / 2, prev.y + prev.h]; b = [c.x + c.w - 24, c.y]; // à droite du libellé de rangée
+          const my = (a[1] + b[1]) / 2;
+          d = `M ${a[0]} ${a[1]} C ${a[0]} ${my}, ${b[0]} ${my}, ${b[0]} ${b[1]}`;
+        }
+        wires.push({from: prev.id, to: c.id, state: st, d, a, b, loop: across && prev.round > 0});
+      }
+      prev = c;
+    });
   });
+  const height = out.length ? CY.top + out.length * (CY.h + CY.gy + 18) - CY.gy : 0;
+  return {cards, wires, rows: out, width, height, more};
+}
+function renderPipeline(D) {
+  const pv = $('pv'), cyc = D.cycle || {prep: D.stages || [], rounds: [], max_rounds: 1};
+  const focused = pv.contains(document.activeElement) ? document.activeElement.dataset.id : null;
+  const cur = D.current || {}, team = (D.batch_agents || []).length ? D.batch_agents
+    : cur.workers > 1 ? Array.from({length: cur.workers}, (_, i) => ({who: 'agent ' + (i + 1), done: false})) : [];
+  const L = cycleLayout(cyc, D.mode === 'final' ? 'none' : D.listening, D.mode === 'final' ? [] : team), n = (cyc.rounds || []).length, grew = ui.rounds && n > ui.rounds;
+  ui.rounds = n;
+  const box = el('div', {class: 'cy', style: `width:${L.width}px;height:${L.height}px`});
+  const NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('class', 'cy-wires'); svg.setAttribute('width', L.width); svg.setAttribute('height', L.height);
+  svg.setAttribute('aria-hidden', 'true');
+  for (const w of L.wires) {
+    const p = document.createElementNS(NS, 'path');
+    p.setAttribute('d', w.d); p.setAttribute('class', 'cy-wire ' + w.state);
+    svg.append(p);
+  }
+  box.append(svg);
+  for (const w of L.wires) for (const [x, y] of [w.a, w.b]) box.append(el('span', {class: 'cy-end ' + w.state, style: `left:${x}px;top:${y}px`, 'aria-hidden': 'true'}));
+  for (const w of L.wires) if (w.check) box.append(el('span', {class: 'cy-check', style: `left:${w.check[0]}px;top:${w.check[1]}px`, title: String(w.who || '') + ' : revenu'}, '✓'));
+  if (L.more) box.append(el('span', {class: 'cy-more', style: `left:${L.more.x}px;top:${L.more.y}px`}, '+' + L.more.n));
+  const last = L.rows.length - 1;
+  L.rows.forEach((r, i) => box.append(el('span', {class: 'cy-label' + (grew && i === last ? ' appear' : ''), style: `left:${r.x}px;top:${r.y}px`}, r.label)));
+  for (const c of L.cards) {
+    const b = stageButton(c, 'cy-card' + (grew && c.row === last ? ' appear' : ''), el('span', {class: 'code'}, c.code),
+      el('span', {class: 'nm'}, c.name), el('span', {class: 'st'}, c.round && c.round < (cyc.rounds || []).length ? (dur(c.duration_s) || 'fait') : (stageSub(c) || ST_LABEL[c.status] || '')));
+    b.dataset.id = c.id;
+    b.setAttribute('style', `left:${c.x}px;top:${c.y}px;width:${c.w}px;height:${c.h}px`);
+    if (c.round) b.setAttribute('aria-label', c.name + ', tour ' + c.round + ', ' + (ST_LABEL[c.status] || c.status));
+    box.append(b);
+  }
+  const stages = D.stages || [], t = elapsed();
   const run = stages.findIndex(s => s.status === 'running');
-  const i = run >= 0 ? run + 1 : stages.filter(s => s.status !== 'pending').length, t = elapsed();
+  const i = run >= 0 ? run + 1 : stages.filter(s => s.status !== 'pending').length;
   const foot = el('div', {class: 'pv-foot'}, t ? stat('T+', t, 'tplus') : null, stat('Étape', i + ' / ' + stages.length),
     D.meta.level === 'Overkill' ? stat('Tour', roundText()) : null,
     cur && cur.workers ? stat('Workers actifs', String(cur.workers)) : null, cur && cur.model ? stat('Modèle', String(cur.model)) : null);
-  return el('div', {class: 'p1'}, row, foot);
-}
-function matrice(stages) {
-  const t = elapsed();
-  const top = el('div', {class: 'p3-top'}, stat('Opération', 'Mantis'), D.meta.level ? stat('Niveau', D.meta.level) : null,
-    stat('Tour', roundText()), t ? el('span', {class: 'r'}, 'T+ ', el('b', {class: 'tplus'}, t)) : null);
-  const mx = el('div', {class: 'mx', style: '--n:' + stages.length});
-  for (const s of stages) {
-    const cur = curOf(s), n = s.status === 'running' ? Math.max(1, Math.min((cur && cur.workers) || 1, 8)) : s.status === 'done' ? 1 : 0;
-    const bars = n ? el('div', {class: 'bars', 'aria-hidden': 'true'}) : null;
-    for (let k = 0; k < n; k++) bars.append(el('i'));
-    const st = s.status === 'done' ? ('OK ' + dur(s.duration_s)).trim() : s.status === 'running' && cur && cur.batch ? 'Lot ' + cur.batch : ST_LABEL[s.status] || s.status;
-    mx.append(stageButton(s, 'cell', s.status === 'running' ? el('span', {class: 'scan', 'aria-hidden': 'true'}) : null,
-      el('span', {class: 'code'}, s.code), el('span', {class: 'nm'}, s.name), bars, el('span', {class: 'st'}, st)));
-  }
-  const code = Object.fromEntries(stages.map(s => [s.key, s.code]));
-  const log = el('div', {class: 'p3-log'});
-  for (const e of (D.activity || []).slice(-3).reverse()) {
-    const d = new Date(e.at), at = isNaN(d) ? '' : hhmm(e.at) + ':' + pad(d.getSeconds());
-    log.append(el('div', {}, el('b', {}, at), (code[e.stage] ? code[e.stage] + ' ' : '') + String(e.text || e.kind || '')));
-  }
-  return el('div', {class: 'p3'}, top, mx, log.children.length ? log : null);
-}
-function renderPipeline(D) {
-  const pv = $('pv'), stages = D.stages || [];
-  const focused = pv.contains(document.activeElement) ? document.activeElement.dataset.key : null;
-  pv.replaceChildren(ui.stageView === 'matrice' ? matrice(stages) : reseau(stages));
-  for (const b of $('pipeline').querySelectorAll('.pv-rail button')) b.setAttribute('aria-pressed', String(b.dataset.v === ui.stageView));
-  if (focused) { const b = stageFor(focused); if (b) b.focus({preventScroll: true}); }
+  pv.replaceChildren(el('div', {class: 'cy-zone'}, box), foot);
+  if (focused) { const b = [...pv.querySelectorAll('[data-id]')].find(x => x.dataset.id === focused); if (b) b.focus({preventScroll: true}); }
 }
 function stageFor(key) {
   return [...$('pv').querySelectorAll('[data-key]')].find(b => b.dataset.key === key) || null;
@@ -612,10 +688,12 @@ function openStage(key) {
   $('peek').scrollTop = 0;
   $('peek-close').focus({preventScroll: true});
 }
+// sans session : appliquées par le serveur ou mises en file (commands.SERVER_ACTIONS | QUEUEABLE)
+const NO_SESSION_OK = new Set(['merge_fix', 'set_cost', 'recompute_cost', 'launch', 'resume', 'retry', 'fix', 'false_positive', 'prioritize_repro']);
 function cmdButton(cmd, cls, ...kids) {
   // bouton d'action : grisé sans session, bloqué tant que la commande attend, état ou erreur affiché à côté
   const k = JSON.stringify(cmd), b = el('button', {class: cls, type: 'button', 'data-cmd': k}, ...kids);
-  if (D.listening === 'none' && cmd.action !== 'merge_fix') { b.disabled = true; b.setAttribute('aria-describedby', 'sess'); }
+  if (D.listening === 'none' && !NO_SESSION_OK.has(cmd.action)) { b.disabled = true; b.setAttribute('aria-describedby', 'sess'); }
   if (blocked(cmd)) b.setAttribute('aria-disabled', 'true'); // pas disabled : le focus reste sur le bouton
   b.addEventListener('click', () => sendCommand(cmd));
   const err = cmdErr.get(k), st = cmdState(k);
@@ -628,6 +706,7 @@ function cmdKey(c) {
 function sentText(c, inList) {
   // merge_fix : le serveur fusionne tout de suite ; Claude en attente (question, corrections) traite aussitôt
   if (c.action === 'merge_fix') return inList ? 'fusion en cours…' : 'Fusion en cours…';
+  if (D.listening === 'none') return inList ? "en file, en attente d'une session Claude" : "Mis en file : repris au prochain /mantis-run";
   if (D.listening === 'working') return inList ? 'en attente, prise en compte à la fin du lot en cours' : 'Envoyé, pris en compte à la fin du lot en cours';
   return inList ? 'en attente' : 'Envoyé';
 }
@@ -682,12 +761,36 @@ function sendCommand(cmd) {
 }
 const ACT_LABEL = {pause: 'Pause', resume: 'Reprise', stop: 'Arrêt', retry: 'Relance', answer: 'Réponse',
   false_positive: 'Faux positif', prioritize_repro: 'Priorité de reproduction', fix: 'Correction', merge_fix: 'Fusion',
-  end_fixes: 'Fin des corrections'};
+  end_fixes: 'Fin des corrections', launch: 'Lancement', set_cost: 'Coût saisi', recompute_cost: 'Recalcul du coût'};
 function cmdText(c) {
   // cible nommée : « Relance de Plan », « Faux positif <titre> » ; inconnue, son identifiant brut
   const s = c.stage && (D.stages || []).find(x => x.key === c.stage), f = c.finding && (D.findings || []).find(x => x._src === c.finding);
   return [ACT_LABEL[c.action] || String(c.action), s ? 'de ' + s.name : c.stage, f ? String(f.title) : c.finding, c.value]
     .filter(x => x != null && x !== '').join(' ');
+}
+function runCommand(m) {
+  return '/mantis-run "' + String(m.audit_path || '') + '"';
+}
+function canLaunch(D) {
+  const m = D.meta || {};
+  if (m.finished) return false;
+  return !!m.stopped || (D.stages || []).every(s => s.key === 'triage' || s.status === 'pending');
+}
+function noSession() {
+  // aucune session : la page met en file, la prochaine session /mantis-run la reprend
+  const m = D.meta, cmd = runCommand(m), failed = (D.stages || []).find(s => s.status === 'failed');
+  const copy = el('button', {class: 'btn sm', type: 'button'}, 'Copier');
+  copy.addEventListener('click', () => {
+    const done = t => { copy.textContent = t; setTimeout(() => { copy.textContent = 'Copier'; }, 1500); };
+    if (!navigator.clipboard) return done('Copie impossible');
+    navigator.clipboard.writeText(cmd).then(() => done('Copié'), () => done('Copie impossible'));
+  });
+  return [el('p', {class: 'sess', id: 'sess'}, "Aucune session Claude n'écoute."),
+    el('p', {class: 'hint'}, 'Ouvre Claude Code dans ' + String(m.repo_name || 'le dépôt') + ' et tape la commande : les actions en file seront reprises.'),
+    el('div', {class: 'runcmd'}, el('code', {}, cmd), copy),
+    ...(canLaunch(D) ? cmdButton({action: 'launch'}, 'btn pri', "Lancer l'audit") : []),
+    ...(m.paused ? cmdButton({action: 'resume'}, 'btn', 'Reprendre') : []),
+    ...(failed ? cmdButton({action: 'retry', stage: failed.key}, 'btn', "Relancer l'étape") : [])];
 }
 function renderActions() {
   const box = $('actions'), m = D.meta;
@@ -695,8 +798,8 @@ function renderActions() {
   if (D.mode === 'final') return;
   const failed = (D.stages || []).find(s => s.status === 'failed');
   const fixing = D.listening === 'fixes';
-  const kids = [el('p', {class: 'sess', id: 'sess'}, {working: 'Claude travaille', waiting: 'Claude attend ta réponse',
-    fixes: 'Claude attend tes demandes de correction'}[D.listening] || 'Aucune session active : relance /mantis-run'),
+  const kids = D.listening === 'none' ? noSession() : [el('p', {class: 'sess', id: 'sess'}, {working: 'Claude travaille', waiting: 'Claude attend ta réponse',
+    fixes: 'Claude attend tes demandes de correction'}[D.listening]),
     D.stale ? el('p', {class: 'stale'}, 'aucune activité depuis 20 min') : null,
     ...(fixing ? cmdButton({action: 'end_fixes'}, 'btn pri', 'Terminer') : [
       ...cmdButton({action: m.paused ? 'resume' : 'pause'}, 'btn pri', m.paused ? 'Reprendre' : 'Mettre en pause'),
@@ -1027,7 +1130,7 @@ function closePeek() {
   ui.peek = ui.stage = null;
   $('scrim').hidden = true;
   document.body.classList.remove('locked');
-  if (stage) return (stageFor(stage) || $('view-' + ui.stageView)).focus();
+  if (stage) return (stageFor(stage) || $('pipeline')).focus();
   if (location.hash) history.replaceState(null, '', location.pathname + location.search);
   (cardFor(ui.back) || $('filter')).focus(); // carte disparue (filtre, finding retiré) : retour au filtre
 }
@@ -1052,6 +1155,129 @@ function trapFocus(e) {
 }
 
 let rendered = false;
+function hm(s) {
+  if (s == null) return 'inconnu';
+  const m = Math.floor(s / 60);
+  return Math.floor(m / 60) + ' h ' + pad(m % 60) + ' min';
+}
+function usd(v) {
+  return v == null ? 'coût non calculé' : '≈ ' + Math.round(v).toLocaleString('fr-FR') + ' $';
+}
+function renderCost() {
+  const c = D.meta.cost || {};
+  $('cost-btn').textContent = usd(c.usd) + (c.source === 'manuel' ? ' (saisi)' : ' (équivalent API)') +
+    ' · ' + hm(c.active_s) + ' actives · ' + hm(c.wall_s) + ' au total';
+  const pn = $('cost-panel');
+  if (pn.hidden || pn.contains(document.activeElement)) return; // ne pas effacer une saisie en cours
+  fillCost(c);
+}
+function fillCost(c) {
+  const pn = $('cost-panel'), rows = Object.entries(c.by_model || {}).sort((a, b) => (b[1].usd || 0) - (a[1].usd || 0));
+  const kids = [el('p', {}, 'Estimation au tarif public de l\'API Claude, calculée depuis les transcripts de la session ; pas une facture. ' +
+    'Temps actif : travail de la session principale, hors pauses de plus de 2 min.')];
+  if (rows.length) kids.push(el('table', {}, el('thead', {}, el('tr', {}, el('th', {}, 'Modèle'), el('th', {}, 'Coût estimé'))),
+    el('tbody', {}, ...rows.map(([m, v]) => el('tr', {}, el('td', {class: 'mono'}, m), el('td', {class: 'mono'}, usd(v.usd)))))));
+  if ((c.unknown_models || []).length) kids.push(el('p', {}, 'Modèles sans tarif connu : ' + c.unknown_models.join(', ')));
+  if (c.note) kids.push(el('p', {}, 'Note : ' + c.note));
+  if (D.mode !== 'final') {
+    const amount = el('input', {type: 'number', min: '0', step: '0.01', id: 'cost-usd', 'aria-label': 'Coût en dollars', placeholder: 'Montant en $'});
+    const note = el('input', {type: 'text', maxlength: '200', id: 'cost-note', 'aria-label': 'Note', placeholder: 'Note (facultative)'});
+    const err = el('span', {class: 'err', role: 'status'});
+    const save = el('button', {class: 'btn sm pri', type: 'button'}, 'Enregistrer');
+    save.addEventListener('click', () => {
+      const v = Number(amount.value);
+      if (amount.value === '' || !(v >= 0)) { err.textContent = 'Montant invalide'; return; }
+      sendCommand({action: 'set_cost', usd: v, note: note.value || null});
+    });
+    const reset = el('button', {class: 'btn sm', type: 'button'}, 'Revenir au calcul automatique');
+    reset.addEventListener('click', () => sendCommand({action: 'set_cost', usd: null}));
+    const again = el('button', {class: 'btn sm', type: 'button'}, 'Recalculer');
+    again.addEventListener('click', () => sendCommand({action: 'recompute_cost'}));
+    kids.push(el('div', {class: 'row'}, amount, note, save, c.source === 'manuel' ? reset : null, again, err));
+  }
+  pn.replaceChildren(...kids.filter(Boolean));
+}
+function showTab(t) {
+  ui.tab = t === 'bilan' ? 'bilan' : 'suivi';
+  save('mantis.tab', ui.tab);
+  for (const b of $('tabs').querySelectorAll('button')) b.setAttribute('aria-selected', String(b.dataset.t === ui.tab));
+  $('panel-suivi').hidden = ui.tab !== 'suivi';
+  $('panel-bilan').hidden = ui.tab !== 'bilan';
+  if (ui.tab === 'bilan') loadBilan();
+}
+let bilanAt = 0;
+function loadBilan() {
+  // live : régénéré au plus toutes les 30 s pendant que l'onglet est ouvert ; final : le fichier voisin
+  const fr = $('bilan-frame');
+  if (D.mode === 'final') { if (!fr.getAttribute('src')) fr.src = 'bilan.html'; return; }
+  if (Date.now() - bilanAt < 30000 && fr.getAttribute('src')) return;
+  bilanAt = Date.now();
+  fr.src = '/bilan?t=' + bilanAt;
+}
+function renderExports() {
+  const fin = D.mode === 'final';
+  $('export-light').hidden = $('export-full').hidden = fin;
+  $('export-note').textContent = fin ? 'Exports disponibles avec le dashboard en direct' : '';
+}
+function exportAudit(kind) {
+  if (!confirm(EXPORT_WARNING + '\n\nLa liste des secrets à révoquer est dans le bilan et dans LISEZMOI-DEV.md. Continuer ?')) return;
+  location.href = '/export?kind=' + kind;
+}
+const FEED_DOM = 500;
+let feedSt = {items: [], last: 0, unseen: 0}, feedTimer = null;
+function appendFeed(st, r, open, max) {
+  // nouveaux messages du fil, sans doublon, plafonnés aux max derniers ; non lus comptés panneau fermé
+  const seen = new Set(st.items.map(i => i.seq)), add = (r.items || []).filter(i => !seen.has(i.seq));
+  return {items: st.items.concat(add).slice(-max), last: Math.max(st.last, r.last || 0), unseen: open ? 0 : st.unseen + add.length};
+}
+function feedOpen() {
+  return !$('feed').hidden;
+}
+function feedItem(i) {
+  const li = el('li', {class: (i.who === 'Claude' ? 'claude ' : '') + i.kind});
+  li.append(el('span', {class: 'meta'}, (hhmm(i.at) || '') + ' · ' + String(i.who || '')), el('div', {class: 'bub'}, String(i.text || '')));
+  return li;
+}
+function drawFeed(added) {
+  const list = $('feed-list'), atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+  for (const i of added) list.append(feedItem(i));
+  while (list.children.length > FEED_DOM) list.firstElementChild.remove();
+  if (atBottom) list.scrollTop = list.scrollHeight;
+  const b = $('feed-badge');
+  b.hidden = !feedSt.unseen;
+  b.textContent = feedSt.unseen > 99 ? '99+' : String(feedSt.unseen);
+}
+function pollFeed() {
+  clearTimeout(feedTimer);
+  fetch('/feed?after=' + feedSt.last, {credentials: 'same-origin'}).then(r => r.ok ? r.json() : null).catch(() => null).then(r => {
+    if (r) {
+      const before = new Set(feedSt.items.map(i => i.seq));
+      feedSt = appendFeed(feedSt, r, feedOpen(), FEED_DOM);
+      drawFeed(feedSt.items.filter(i => !before.has(i.seq)));
+    }
+    feedTimer = setTimeout(pollFeed, feedOpen() ? 2000 : 10000);
+  });
+}
+function toggleFeed(open) {
+  $('feed').hidden = !open;
+  $('feed-tab').hidden = open;
+  $('feed-tab').setAttribute('aria-expanded', String(open));
+  if (open) {
+    feedSt.unseen = 0;
+    if (D.mode === 'final') { // fichier figé : les transcripts ne sont jamais copiés, le fil n'existe qu'en direct
+      $('feed-list').replaceChildren(el('li', {class: 'agent_start'}, el('div', {class: 'bub'},
+        "Fil en direct disponible quand le dashboard est servi par Claude (mantis-run). Ce fichier est une copie figée : " +
+        "les messages de Claude n'y sont pas enregistrés.")));
+      $('feed-close').focus();
+      return;
+    }
+    drawFeed([]);
+    const list = $('feed-list');
+    list.scrollTop = list.scrollHeight;
+    $('feed-close').focus();
+    pollFeed();
+  } else $('feed-tab').focus();
+}
 function render(snap) {
   const first = !rendered;
   rendered = true;
@@ -1063,6 +1289,9 @@ function render(snap) {
   $('crumb-audit').textContent = m.audit_name || '';
   renderConn();
   renderBanner();
+  renderCost();
+  renderExports();
+  if (ui.tab === 'bilan') loadBilan();
   renderWaiting();
   renderPipeline(D);
   renderBoard(!first);
@@ -1104,22 +1333,28 @@ $('copy-merge').addEventListener('click', () => {
   if (!navigator.clipboard) return done('Copie impossible');
   navigator.clipboard.writeText('git merge ' + D.meta.audit_branch).then(() => done('Copié'), () => done('Copie impossible'));
 });
-$('pipeline').querySelector('.pv-rail').addEventListener('click', e => {
-  const b = e.target.closest('button');
-  if (!b || b.dataset.v === ui.stageView) return;
-  ui.stageView = b.dataset.v;
-  save('mantis.stageView', ui.stageView);
-  renderPipeline(D);
+$('feed-tab').addEventListener('click', () => toggleFeed(true));
+$('feed-close').addEventListener('click', () => toggleFeed(false));
+$('tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) showTab(b.dataset.t); });
+$('export-light').addEventListener('click', () => exportAudit('light'));
+$('export-full').addEventListener('click', () => exportAudit('full'));
+$('cost-btn').addEventListener('click', () => {
+  const pn = $('cost-panel'), open = pn.hidden;
+  pn.hidden = !open;
+  $('cost-btn').setAttribute('aria-expanded', String(open));
+  if (open) fillCost(D.meta.cost || {});
 });
 $('scrim').addEventListener('click', e => { if (e.target === $('scrim')) closePeek(); });
 document.addEventListener('keydown', e => {
-  if (!ui.peek && !ui.stage) return;
+  if (!ui.peek && !ui.stage) { if (e.key === 'Escape' && feedOpen()) toggleFeed(false); return; }
   if (e.key === 'Escape') { e.preventDefault(); closePeek(); } else if (e.key === 'Tab') trapFocus(e);
 });
 window.addEventListener('hashchange', openFromHash);
 render(D);
+showTab(location.hash === '#bilan' ? 'bilan' : load('mantis.tab'));
 openFromHash();
 if (D.mode === 'live') {
+  pollFeed();
   const es = new EventSource('/events'); // cookie de session envoyé : même origine
   es.addEventListener('snapshot', e => {
     lastMsg = Date.now();
