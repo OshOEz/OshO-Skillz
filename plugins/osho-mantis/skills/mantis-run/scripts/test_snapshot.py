@@ -348,37 +348,66 @@ def test_score_non_numerique():
     assert [f["id"] for f in s["findings"]] == ["c", "a", "b"]
 
 
+def _ev(at, stage, frm, to, dur=None, rnd=None):
+    e = {"at": f"2026-10-29T{at}", "kind": "stage", "stage": stage, "from": frm, "to": to}
+    if dur is not None:
+        e["duration_s"] = dur
+    if rnd is not None:
+        e["round"] = rnd
+    return e
+
+
+def test_cycle_overkill_journal_ancien():
+    act = [_ev("12:00:00", "history", "pending", "running"), _ev("12:05:00", "history", "running", "done", 300),
+           _ev("12:10:00", "plan", "pending", "running"), _ev("12:11:00", "plan", "running", "done", 60),
+           _ev("12:11:00", "reproduce", "pending", "running"), _ev("12:20:00", "reproduce", "running", "done", 540),
+           _ev("13:00:00", "plan", "pending", "running"), _ev("13:02:00", "plan", "running", "done", 120),
+           _ev("13:02:00", "reproduce", "pending", "running"), _ev("13:05:00", "reproduce", "pending", "running"),
+           _ev("13:09:00", "reproduce", "running", "done", 240)]
+    stages = {k: "done" for k in LEVEL_STAGES["Overkill"]}
+    stages.update({"reproduce": "done", "chain": "running", "patch": "pending", "calibrate": "pending", "reflect": "pending"})
+    s = snap({"repo": "/x", "level": "Overkill"}, state={"stages": stages, "round": 2}, activity=act)
+    c = s["cycle"]
+    assert [x["key"] for x in c["prep"]] == ["triage", "history", "structural-index", "architecture", "threat-model"]
+    assert c["max_rounds"] == 3 and [r["round"] for r in c["rounds"]] == [1, 2]
+    r1 = {x["key"]: x for x in c["rounds"][0]["stages"]}
+    r2 = {x["key"]: x for x in c["rounds"][1]["stages"]}
+    assert list(r1)[0] == "plan" and list(r1)[-1] == "reflect"
+    assert r1["plan"]["status"] == "done" and r1["plan"]["duration_s"] == 60 and r1["reproduce"]["duration_s"] == 540
+    assert r1["reflect"]["status"] == "done" and r1["reflect"]["duration_s"] is None, "tour passé : fait, durée inconnue"
+    assert r2["plan"]["duration_s"] == 120 and r2["reproduce"]["duration_s"] == 240
+    assert r2["chain"]["status"] == "running" and r2["patch"]["status"] == "pending"
+    assert {x["key"]: x for x in c["prep"]}["history"]["duration_s"] == 300
+
+
+def test_cycle_round_explicite():
+    act = [_ev("12:10:00", "plan", "pending", "running", rnd=1), _ev("12:11:00", "plan", "running", "done", 60, rnd=1),
+           _ev("12:12:00", "researcher", "pending", "running", rnd=2), _ev("12:14:00", "researcher", "running", "done", 99, rnd=2)]
+    s = snap({"repo": "/x", "level": "Savage"}, state={"stages": {"plan": "done", "researcher": "done"}, "round": 2},
+             activity=act)
+    r2 = {x["key"]: x for x in s["cycle"]["rounds"][1]["stages"]}
+    assert r2["researcher"]["duration_s"] == 99 and s["cycle"]["max_rounds"] == 1
+
+
+def test_cycle_light():
+    s = snap({"repo": "/x", "level": "Light"}, state={"stages": {"architecture": "done", "plan": "running"}})
+    c = s["cycle"]
+    assert [x["key"] for x in c["prep"]] == ["triage", "architecture", "threat-model"]
+    assert len(c["rounds"]) == 1 and [x["key"] for x in c["rounds"][0]["stages"]] == ["plan", "researcher", "review", "patch"]
+    assert c["rounds"][0]["stages"][0]["status"] == "running"
+
+
+def test_evenement_porte_le_tour():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp, {"repo": "/x", "level": "Overkill"}, state={"stages": {"plan": "pending"}, "round": 3})
+        prev = build_snapshot(d)
+        (d / "state.json").write_text(json.dumps({"stages": {"plan": "running"}, "round": 3}))
+        ev = [e for e in diff_events(prev, build_snapshot(d), "2026-10-29T12:00:00") if e["kind"] == "stage"]
+        assert ev and ev[0]["round"] == 3
+
+
 if __name__ == "__main__":
-    test_snapshot_triage_seul()
-    test_snapshot_sharp_en_cours()
-    test_niveau_inconnu()
-    test_snapshot_failed_et_waiting()
-    test_snapshot_fini()
-    test_progress_colonnes()
-    test_fix_colonnes()
-    test_fix_queued_derive()
-    test_listening_fixes()
-    test_meta_branche()
-    test_meta_branche_nom_invalide()
-    test_fixes_tronque_ignore()
-    test_diff_fix_fusionne()
-    test_overkill_tour_2()
-    test_src_et_file()
-    test_durees()
-    test_stale()
-    test_diff_etape()
-    test_textes_echec_et_saut()
-    test_lecture_unique()
-    test_diff_finding()
-    test_diff_premier_snapshot()
-    test_diff_waiting_et_commande()
-    test_json_tronque_ignore()
-    test_state_mauvaise_forme()
-    test_textes_sans_cadratin()
-    test_append_activity()
-    test_duree_inconnue()
-    test_textes_commandes_francais()
-    test_duree_triage()
-    test_finding_en_ecriture_garde()
-    test_score_non_numerique()
+    for name, fn in list(globals().items()):
+        if name.startswith("test_"):
+            fn()
     print("OK")
