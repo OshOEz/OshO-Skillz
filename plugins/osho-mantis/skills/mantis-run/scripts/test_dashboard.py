@@ -484,6 +484,17 @@ def test_cout_rafraichi():
     assert dashboard.cost_due(now=1000, last=None, finished=True, has_auto=False) is True
 
 
+def test_debut_du_lot():
+    import dashboard
+    from datetime import datetime
+    st = "2026-10-29T12:00:00"
+    t_st = datetime.fromisoformat(st).timestamp()
+    # première vue (serveur relancé en plein lot) : début de l'étape ; lot suivant vu en direct : maintenant
+    assert dashboard.batch_since(None, ("reproduce", "2/6"), st, now=5000) == t_st
+    assert dashboard.batch_since(("reproduce", "1/6"), ("reproduce", "2/6"), st, now=5000) == 5000
+    assert dashboard.batch_since(None, ("reproduce", "2/6"), None, now=5000) == 5000
+
+
 def test_help():
     out = cli("--help").stdout
     for w in ("serve", "stop", "alive", "command", "pending", "apply", "ack"):

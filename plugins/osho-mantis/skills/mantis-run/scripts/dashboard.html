@@ -93,6 +93,8 @@ main{padding:14px 20px 40px;display:grid;gap:12px}
 @keyframes dash{to{stroke-dashoffset:-12}}
 .cy-end{position:absolute;width:7px;height:7px;transform:translate(-50%,-50%);border:1.5px solid var(--input);border-radius:50%;background:var(--card)}
 .cy-end.done,.cy-end.running,.cy-end.flow{border-color:var(--primary)}
+.cy-check{position:absolute;transform:translate(-50%,-50%);font:700 11px/1 var(--sans);color:var(--ok);background:var(--card);border-radius:50%;padding:1px 2px}
+.cy-more{position:absolute;font:600 10px var(--mono);color:var(--primary)}
 .cy-label{position:absolute;font:700 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
 .cy-card{position:absolute;display:flex;flex-direction:column;gap:2px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;
   background:var(--card);box-shadow:var(--card-shadow);overflow:hidden}
@@ -553,9 +555,11 @@ function wireState(target, listening) {
   if (target === 'running') return listening === 'working' ? 'flow' : 'running';
   return target === 'pending' ? 'pending' : 'done';
 }
-function cycleLayout(cyc, listening) {
+function cycleLayout(cyc, listening, agents) {
   // positions en pixels : rangée 0 = préparation, puis une rangée par tour ; courbes M x y C … (encart.ts de Kata)
-  const CY = {w: 116, h: 76, gx: 30, gy: 54, top: 30, left: 16};
+  const CY = {w: 116, h: 76, gx: 30, gy: 54, top: 30, left: 16}, MAX = 8;
+  const lastRound = (cyc.rounds || []).length;
+  let more = null;
   const rows = [{label: 'Préparation', stages: cyc.prep || [], round: 0}].concat((cyc.rounds || []).map(r => ({
     label: 'Tour ' + r.round + (cyc.max_rounds > 1 ? ' / ' + cyc.max_rounds : ''), stages: r.stages || [], round: r.round})));
   const cards = [], wires = [], out = [];
@@ -572,6 +576,21 @@ function cycleLayout(cyc, listening) {
       if (prev) {
         const across = prev.row !== c.row, st = wireState(c.status, listening);
         let a, b, d;
+        const team = !across && c.status === 'running' && c.round === lastRound && (agents || []).length ? agents : null;
+        if (team) {
+          // un brin par agent du lot : animé tant qu'il tourne, coché quand il est revenu
+          const shown = team.slice(0, MAX), k = shown.length;
+          if (team.length > MAX) more = {n: team.length - MAX, x: c.x - 22, y: c.y + c.h + 4};
+          a = [prev.x + prev.w, prev.y + prev.h / 2];
+          shown.forEach((g, i) => {
+            const bb = [c.x, c.y + (i + 1) * c.h / (k + 1)], mx = (a[0] + bb[0]) / 2;
+            wires.push({from: prev.id, to: c.id, state: g.done ? 'done' : st, a, b: bb, strand: i, done: !!g.done, who: g.who,
+              check: g.done ? [bb[0] - 9, bb[1]] : null, loop: false,
+              d: `M ${a[0]} ${a[1]} C ${mx} ${a[1]}, ${mx} ${bb[1]}, ${bb[0]} ${bb[1]}`});
+          });
+          prev = c;
+          return;
+        }
         if (!across) {
           a = [prev.x + prev.w, prev.y + prev.h / 2]; b = [c.x, c.y + c.h / 2];
           const mx = (a[0] + b[0]) / 2;
@@ -587,12 +606,14 @@ function cycleLayout(cyc, listening) {
     });
   });
   const height = out.length ? CY.top + out.length * (CY.h + CY.gy + 18) - CY.gy : 0;
-  return {cards, wires, rows: out, width, height};
+  return {cards, wires, rows: out, width, height, more};
 }
 function renderPipeline(D) {
   const pv = $('pv'), cyc = D.cycle || {prep: D.stages || [], rounds: [], max_rounds: 1};
   const focused = pv.contains(document.activeElement) ? document.activeElement.dataset.id : null;
-  const L = cycleLayout(cyc, D.mode === 'final' ? 'none' : D.listening), n = (cyc.rounds || []).length, grew = ui.rounds && n > ui.rounds;
+  const cur = D.current || {}, team = (D.batch_agents || []).length ? D.batch_agents
+    : cur.workers > 1 ? Array.from({length: cur.workers}, (_, i) => ({who: 'agent ' + (i + 1), done: false})) : [];
+  const L = cycleLayout(cyc, D.mode === 'final' ? 'none' : D.listening, D.mode === 'final' ? [] : team), n = (cyc.rounds || []).length, grew = ui.rounds && n > ui.rounds;
   ui.rounds = n;
   const box = el('div', {class: 'cy', style: `width:${L.width}px;height:${L.height}px`});
   const NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg');
@@ -605,6 +626,8 @@ function renderPipeline(D) {
   }
   box.append(svg);
   for (const w of L.wires) for (const [x, y] of [w.a, w.b]) box.append(el('span', {class: 'cy-end ' + w.state, style: `left:${x}px;top:${y}px`, 'aria-hidden': 'true'}));
+  for (const w of L.wires) if (w.check) box.append(el('span', {class: 'cy-check', style: `left:${w.check[0]}px;top:${w.check[1]}px`, title: String(w.who || '') + ' : revenu'}, '✓'));
+  if (L.more) box.append(el('span', {class: 'cy-more', style: `left:${L.more.x}px;top:${L.more.y}px`}, '+' + L.more.n));
   const last = L.rows.length - 1;
   L.rows.forEach((r, i) => box.append(el('span', {class: 'cy-label' + (grew && i === last ? ' appear' : ''), style: `left:${r.x}px;top:${r.y}px`}, r.label)));
   for (const c of L.cards) {
@@ -615,7 +638,7 @@ function renderPipeline(D) {
     if (c.round) b.setAttribute('aria-label', c.name + ', tour ' + c.round + ', ' + (ST_LABEL[c.status] || c.status));
     box.append(b);
   }
-  const stages = D.stages || [], cur = D.current, t = elapsed();
+  const stages = D.stages || [], t = elapsed();
   const run = stages.findIndex(s => s.status === 'running');
   const i = run >= 0 ? run + 1 : stages.filter(s => s.status !== 'pending').length;
   const foot = el('div', {class: 'pv-foot'}, t ? stat('T+', t, 'tplus') : null, stat('Étape', i + ' / ' + stages.length),

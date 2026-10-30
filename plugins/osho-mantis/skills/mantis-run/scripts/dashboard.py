@@ -80,6 +80,16 @@ def should_stop(ended_for, idle, clients):
     return (ended_for is not None and ended_for > END_GRACE_S) or idle > IDLE_S
 
 
+def batch_since(prev_key, key, stage_started_at, now):
+    """Début du lot d'agents : début de l'étape si le serveur découvre un lot déjà lancé, sinon maintenant"""
+    if prev_key is None and stage_started_at:
+        try:
+            return datetime.fromisoformat(stage_started_at).timestamp()
+        except ValueError:
+            pass
+    return now
+
+
 class Dash:
     def __init__(self, audit):
         self.audit, self.key = audit, secrets.token_hex(32)
@@ -89,10 +99,28 @@ class Dash:
         self.stop_evt = threading.Event()
         self.httpd = None
         self.feed = feed.Feed(audit)
+        self.batch_key, self.batch_t, self.batch, self.agents_at = None, None, [], 0.0
 
     def fresh(self):
         with self.lock:
-            return snapshot.read_snapshot_safe(self.audit, self.snap)
+            return dict(snapshot.read_snapshot_safe(self.audit, self.snap), batch_agents=self.batch)
+
+    def refresh_agents(self):
+        """Agents du lot en cours (lancés, revenus) depuis les transcripts ; diffusé s'il change"""
+        cur = self.snap.get("current") if isinstance(self.snap.get("current"), dict) else {}
+        key = (cur.get("stage"), cur.get("batch")) if cur.get("stage") else None
+        if key != self.batch_key:
+            st = next((s.get("started_at") for s in self.snap["stages"] if s["key"] == cur.get("stage")), None)
+            self.batch_t = batch_since(self.batch_key, key, st, time.time()) if key else None
+            self.batch_key = key
+        new = feed.batch_agents(self.feed.agent_list(), self.batch_t, cur.get("workers")) if key else []
+        if new != self.batch:
+            with self.lock:
+                self.batch = new
+                self.snap = dict(self.snap, batch_agents=new)
+                msg = ("snapshot", json.dumps(self.snap, ensure_ascii=False))
+                for q in self.clients:
+                    q.put(msg)
 
     def subscribe(self):
         q = queue.Queue()
@@ -117,6 +145,12 @@ class Dash:
                 except Exception as e:  # une erreur de tick ne doit jamais empêcher l'arrêt automatique ci-dessous
                     print(f"watch: {e!r}", file=sys.stderr, flush=True)
                 m, idle = self.snap["meta"], time.time() - last_change
+                if time.time() - self.agents_at >= 2:
+                    self.agents_at = time.time()
+                    try:
+                        self.refresh_agents()
+                    except Exception as e:
+                        print(f"agents : {e!r}", file=sys.stderr, flush=True)
                 if cost_due(time.time(), cost_at, m["finished"], cost.load(self.audit).get("auto") is not None):
                     cost_at = time.time()
                     try:
@@ -145,6 +179,7 @@ class Dash:
             if events:
                 snapshot.append_activity(self.audit, events)
                 cur = snapshot.read_snapshot_safe(self.audit, cur)  # relu pour inclure le journal ; tronqué : on garde cur
+            cur["batch_agents"] = self.batch
             self.snap = cur
             msg = ("snapshot", json.dumps(cur, ensure_ascii=False))
             for q in self.clients:

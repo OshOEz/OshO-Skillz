@@ -120,6 +120,27 @@ def test_limite():
         assert len(r["items"]) == feed.LIMIT and r["items"][-1]["text"] == "msg 299"
 
 
+def test_agents_du_lot():
+    A = [{"who": "Correctif abc", "started_at": 100, "done": False},
+         {"who": "R2 reproduce g01", "started_at": 50, "done": True},
+         {"who": "R2 reproduce g02", "started_at": 120, "done": True},
+         {"who": "R2 reproduce g03", "started_at": 121, "done": False},
+         {"who": "R2 reproduce g04", "started_at": 122, "done": False}]
+    got = feed.batch_agents(A, since=110, workers=6)
+    assert [a["who"] for a in got] == ["R2 reproduce g02", "R2 reproduce g03", "R2 reproduce g04"]
+    assert [a["done"] for a in got] == [True, False, False]
+    assert len(feed.batch_agents(A, since=0, workers=2)) == 2, "au plus le nombre de workers du lot"
+    assert feed.batch_agents(A, since=None, workers=3) == []
+
+
+def test_liste_agents():
+    with tempfile.TemporaryDirectory() as tmp:
+        audit, projects, main, sub = setup(tmp)
+        f = feed.Feed(audit, projects)
+        ag = f.agent_list()
+        assert [(a["who"], a["done"]) for a in ag] == [("R2 critic groupe 02", False)] and ag[0]["started_at"] == T0 + 10
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

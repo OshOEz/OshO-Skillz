@@ -102,6 +102,7 @@ class Feed:
                     continue
                 if sub is not None and not self.agents[path]["started"]:
                     self.agents[path]["started"] = True
+                    self.agents[path]["started_at"] = t
                     model = self.agents[path]["model"]
                     new.append({"t": t, "who": who, "kind": "agent_start",
                                 "text": "Agent lancé" + (f" (modèle {model})" if model else "")})
@@ -131,8 +132,26 @@ class Feed:
             self.items.append({"seq": self.seq, "at": datetime.fromtimestamp(it.pop("t")).isoformat(timespec="seconds"),
                                **it})
 
+    def agent_list(self):
+        with self.lock:
+            self.update()
+            return [{"who": a["who"], "started_at": a["started_at"], "done": a["ended"]}
+                    for a in self.agents.values() if a["started"]]
+
     def since(self, after):
         with self.lock:
             self.update()
             items = [i for i in self.items if i["seq"] > after][-LIMIT:]
             return {"items": items, "last": self.seq}
+
+
+def batch_agents(agents, since, workers):
+    """Agents du lot en cours : lancés depuis le début du lot (5 s de marge), hors agents de correction,
+    les `workers` derniers ; [] si le début du lot est inconnu"""
+    if since is None:
+        return []
+    got = sorted((a for a in agents if a["started_at"] >= since - 5 and not str(a["who"]).startswith("Correctif")),
+                 key=lambda a: a["started_at"])
+    if workers:
+        got = got[-int(workers):]
+    return [{"who": a["who"], "done": bool(a["done"])} for a in got]

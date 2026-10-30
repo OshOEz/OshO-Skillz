@@ -376,6 +376,33 @@ assert.strictEqual(wireState('failed', 'working'), 'done');
 """)
 
 
+def test_cycle_brins():
+    """Un brin par agent du lot vers l'étape en cours : animé tant qu'il tourne, coche quand il est revenu, 8 au plus."""
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        node_ok(tmp, fn(js, "wireState") + fn(js, "cycleLayout") + CYCLE + """
+const assert = require('assert');
+const ag = n => Array.from({length: n}, (_, i) => ({who: 'g' + i, done: i === 0}));
+let L = cycleLayout(cyc, 'working', ag(3));
+let into = L.wires.filter(w => w.to === '2:review');
+assert.strictEqual(into.length, 3);
+assert.deepStrictEqual(into.map(w => [w.state, !!w.done]), [['done', true], ['flow', false], ['flow', false]]);
+assert.ok(into[0].check && into[0].check.length === 2, 'coche placée au bout du brin revenu');
+assert.strictEqual(new Set(into.map(w => w.b[1])).size, 3, 'brins répartis sur la hauteur de la carte');
+assert.strictEqual(L.more, null);
+L = cycleLayout(cyc, 'working', ag(11));
+into = L.wires.filter(w => w.to === '2:review');
+assert.strictEqual(into.length, 8);
+assert.strictEqual(L.more.n, 3);
+L = cycleLayout(cyc, 'none', ag(2));
+assert.ok(L.wires.every(w => w.state !== 'flow'), 'sans session : rien ne bouge');
+assert.strictEqual(cycleLayout(cyc, 'working', []).wires.filter(w => w.to === '2:review').length, 1);
+""")
+
+
 FEED_STATIC = "Fil en direct disponible quand le dashboard est servi par Claude (mantis-run)"
 
 
@@ -731,6 +758,7 @@ if __name__ == "__main__":
     test_final_sans_eventsource()
     test_pipeline_hooks()
     test_cycle_layout()
+    test_cycle_brins()
     test_fil_de_claude()
     test_sans_session()
     test_reduced_motion()
