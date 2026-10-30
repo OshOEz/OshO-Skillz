@@ -9,8 +9,10 @@ from datetime import datetime
 from pathlib import Path
 
 ACTIONS = {"pause", "resume", "stop", "retry", "answer", "false_positive", "prioritize_repro", "fix", "merge_fix", "end_fixes",
-           "set_cost", "recompute_cost"}
+           "set_cost", "recompute_cost", "launch"}
 SERVER_ACTIONS = {"merge_fix", "set_cost", "recompute_cost"}  # appliquées par le serveur, sans session Claude
+# sans session à l'écoute, mises en file pour la prochaine session mantis-run (les autres : 409)
+QUEUEABLE = {"launch", "resume", "retry", "fix", "false_positive", "prioritize_repro"}
 MAX_BYTES = 1024
 
 
@@ -59,6 +61,13 @@ def validate(cmd, snap):
             return "note invalide (200 caractères maximum)"
     elif action == "recompute_cost":
         pass
+    elif action == "launch":
+        if meta["finished"]:
+            return "l'audit est déjà terminé"
+        if not meta["stopped"] and any(s["status"] != "pending" for s in snap["stages"] if s["key"] != "triage"):
+            return "l'audit est déjà lancé"
+        if any(c.get("action") == "launch" for c in snap["commands"]["pending"]):
+            return "lancement déjà demandé"
     elif action == "end_fixes":
         if snap["listening"] != "fixes":
             return "le mode Corrections n'est pas actif"

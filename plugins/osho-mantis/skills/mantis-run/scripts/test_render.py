@@ -398,6 +398,29 @@ assert.strictEqual(st.unseen, 0, 'panneau ouvert : tout est vu');
 """)
 
 
+def test_sans_session():
+    """Sans session : commande à taper, bouton Lancer seulement si l'audit n'a pas démarré ou a été arrêté."""
+    import commands
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        m = re.search(r"NO_SESSION_OK = new Set\(\[(.*?)\]\)", html).group(1)
+        assert set(re.findall(r"'(\w+)'", m)) == commands.SERVER_ACTIONS | commands.QUEUEABLE, "page et serveur alignés"
+    if not shutil.which("node"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        node_ok(tmp, fn(js, "runCommand") + fn(js, "canLaunch") + """
+const assert = require('assert');
+assert.strictEqual(runCommand({audit_path: '/a b/osho-mantis/audit-x'}), '/mantis-run "/a b/osho-mantis/audit-x"');
+const st = (k, s) => ({key: k, status: s});
+assert.strictEqual(canLaunch({meta: {}, stages: [st('triage', 'done'), st('plan', 'pending')]}), true);
+assert.strictEqual(canLaunch({meta: {}, stages: [st('triage', 'done'), st('plan', 'done')]}), false);
+assert.strictEqual(canLaunch({meta: {stopped: true}, stages: [st('plan', 'done')]}), true);
+assert.strictEqual(canLaunch({meta: {finished: true, stopped: true}, stages: []}), false);
+""")
+
+
 def test_reduced_motion():
     with tempfile.TemporaryDirectory() as tmp:
         html, _ = data(audit(tmp, [CRIT]))
@@ -703,6 +726,7 @@ if __name__ == "__main__":
     test_pipeline_hooks()
     test_cycle_layout()
     test_fil_de_claude()
+    test_sans_session()
     test_reduced_motion()
     test_aucun_finding()
     test_safe_id_collision()

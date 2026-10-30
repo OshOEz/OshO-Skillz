@@ -59,6 +59,16 @@ def signature(audit):
     return tuple(sig)
 
 
+def should_stop(ended_for, idle, clients):
+    """Arrêt automatique : fin de l'audit depuis 30 min ou 4 h sans changement, seulement sans page connectée
+    (exports et correctifs restent possibles tant qu'elle est ouverte) ; 24 h sans changement dans tous les cas"""
+    if idle > HARD_IDLE_S:
+        return True
+    if clients:
+        return False
+    return (ended_for is not None and ended_for > END_GRACE_S) or idle > IDLE_S
+
+
 class Dash:
     def __init__(self, audit):
         self.audit, self.key = audit, secrets.token_hex(32)
@@ -100,9 +110,7 @@ class Dash:
                     end_seen = None
                 elif end_seen is None:
                     end_seen = time.time()
-                if end_seen and time.time() - end_seen > END_GRACE_S:
-                    break
-                if (idle > IDLE_S and not self.clients) or idle > HARD_IDLE_S:
+                if should_stop(time.time() - end_seen if end_seen else None, idle, len(self.clients)):
                     break
         finally:
             self.shutdown()
@@ -263,8 +271,9 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, RecursionError):
             return self.send(400, {"error": "commande illisible"})
         snap = self.dash.fresh()
-        server_side = isinstance(cmd, dict) and cmd.get("action") in commands.SERVER_ACTIONS
-        if snap["listening"] == "none" and not server_side:  # actions serveur : pas besoin de Claude
+        action = cmd.get("action") if isinstance(cmd, dict) else None
+        # sans session : actions serveur appliquées, actions de QUEUEABLE mises en file, les autres refusées
+        if snap["listening"] == "none" and action not in commands.SERVER_ACTIONS | commands.QUEUEABLE:
             return self.send(409, {"error": "Aucune session active : relance /mantis-run"})
         reason = commands.validate(cmd, snap)
         if reason:

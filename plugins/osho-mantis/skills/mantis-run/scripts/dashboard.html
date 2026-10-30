@@ -117,6 +117,10 @@ main{padding:14px 20px 40px;display:grid;gap:12px}
 #actions .sess{margin:0;font-size:13px;color:var(--fg)}
 #actions .stale{margin:-4px 0 0;font-size:12px;color:var(--warn)}
 #actions .btn{width:100%}
+#actions .hint{margin:0;font-size:12px;color:var(--muted)}
+#actions .runcmd{display:flex;gap:6px;align-items:center}
+#actions .runcmd code{flex:1;min-width:0;overflow-wrap:anywhere;font:11px var(--mono);background:var(--muted-bg);padding:4px 6px;border-radius:5px}
+#actions .runcmd .btn{width:auto}
 .cmds{list-style:none;margin:0;padding:8px 0 0;border-top:1px solid var(--border);display:grid;gap:4px;font-size:12px;overflow-wrap:anywhere}
 .cmd-err{font-size:12px;color:var(--bad);overflow-wrap:anywhere}
 .cmd-st{font-size:12px;align-self:center;overflow-wrap:anywhere}.cmd-st.ok{color:var(--ok)}.cmd-st.bad{color:var(--bad)}
@@ -659,10 +663,12 @@ function openStage(key) {
   $('peek').scrollTop = 0;
   $('peek-close').focus({preventScroll: true});
 }
+// sans session : appliquées par le serveur ou mises en file (commands.SERVER_ACTIONS | QUEUEABLE)
+const NO_SESSION_OK = new Set(['merge_fix', 'set_cost', 'recompute_cost', 'launch', 'resume', 'retry', 'fix', 'false_positive', 'prioritize_repro']);
 function cmdButton(cmd, cls, ...kids) {
   // bouton d'action : grisé sans session, bloqué tant que la commande attend, état ou erreur affiché à côté
   const k = JSON.stringify(cmd), b = el('button', {class: cls, type: 'button', 'data-cmd': k}, ...kids);
-  if (D.listening === 'none' && cmd.action !== 'merge_fix') { b.disabled = true; b.setAttribute('aria-describedby', 'sess'); }
+  if (D.listening === 'none' && !NO_SESSION_OK.has(cmd.action)) { b.disabled = true; b.setAttribute('aria-describedby', 'sess'); }
   if (blocked(cmd)) b.setAttribute('aria-disabled', 'true'); // pas disabled : le focus reste sur le bouton
   b.addEventListener('click', () => sendCommand(cmd));
   const err = cmdErr.get(k), st = cmdState(k);
@@ -675,6 +681,7 @@ function cmdKey(c) {
 function sentText(c, inList) {
   // merge_fix : le serveur fusionne tout de suite ; Claude en attente (question, corrections) traite aussitôt
   if (c.action === 'merge_fix') return inList ? 'fusion en cours…' : 'Fusion en cours…';
+  if (D.listening === 'none') return inList ? "en file, en attente d'une session Claude" : "Mis en file : repris au prochain /mantis-run";
   if (D.listening === 'working') return inList ? 'en attente, prise en compte à la fin du lot en cours' : 'Envoyé, pris en compte à la fin du lot en cours';
   return inList ? 'en attente' : 'Envoyé';
 }
@@ -729,12 +736,36 @@ function sendCommand(cmd) {
 }
 const ACT_LABEL = {pause: 'Pause', resume: 'Reprise', stop: 'Arrêt', retry: 'Relance', answer: 'Réponse',
   false_positive: 'Faux positif', prioritize_repro: 'Priorité de reproduction', fix: 'Correction', merge_fix: 'Fusion',
-  end_fixes: 'Fin des corrections'};
+  end_fixes: 'Fin des corrections', launch: 'Lancement', set_cost: 'Coût saisi', recompute_cost: 'Recalcul du coût'};
 function cmdText(c) {
   // cible nommée : « Relance de Plan », « Faux positif <titre> » ; inconnue, son identifiant brut
   const s = c.stage && (D.stages || []).find(x => x.key === c.stage), f = c.finding && (D.findings || []).find(x => x._src === c.finding);
   return [ACT_LABEL[c.action] || String(c.action), s ? 'de ' + s.name : c.stage, f ? String(f.title) : c.finding, c.value]
     .filter(x => x != null && x !== '').join(' ');
+}
+function runCommand(m) {
+  return '/mantis-run "' + String(m.audit_path || '') + '"';
+}
+function canLaunch(D) {
+  const m = D.meta || {};
+  if (m.finished) return false;
+  return !!m.stopped || (D.stages || []).every(s => s.key === 'triage' || s.status === 'pending');
+}
+function noSession() {
+  // aucune session : la page met en file, la prochaine session /mantis-run la reprend
+  const m = D.meta, cmd = runCommand(m), failed = (D.stages || []).find(s => s.status === 'failed');
+  const copy = el('button', {class: 'btn sm', type: 'button'}, 'Copier');
+  copy.addEventListener('click', () => {
+    const done = t => { copy.textContent = t; setTimeout(() => { copy.textContent = 'Copier'; }, 1500); };
+    if (!navigator.clipboard) return done('Copie impossible');
+    navigator.clipboard.writeText(cmd).then(() => done('Copié'), () => done('Copie impossible'));
+  });
+  return [el('p', {class: 'sess', id: 'sess'}, "Aucune session Claude n'écoute."),
+    el('p', {class: 'hint'}, 'Ouvre Claude Code dans ' + String(m.repo_name || 'le dépôt') + ' et tape la commande : les actions en file seront reprises.'),
+    el('div', {class: 'runcmd'}, el('code', {}, cmd), copy),
+    ...(canLaunch(D) ? cmdButton({action: 'launch'}, 'btn pri', "Lancer l'audit") : []),
+    ...(m.paused ? cmdButton({action: 'resume'}, 'btn', 'Reprendre') : []),
+    ...(failed ? cmdButton({action: 'retry', stage: failed.key}, 'btn', "Relancer l'étape") : [])];
 }
 function renderActions() {
   const box = $('actions'), m = D.meta;
@@ -742,8 +773,8 @@ function renderActions() {
   if (D.mode === 'final') return;
   const failed = (D.stages || []).find(s => s.status === 'failed');
   const fixing = D.listening === 'fixes';
-  const kids = [el('p', {class: 'sess', id: 'sess'}, {working: 'Claude travaille', waiting: 'Claude attend ta réponse',
-    fixes: 'Claude attend tes demandes de correction'}[D.listening] || 'Aucune session active : relance /mantis-run'),
+  const kids = D.listening === 'none' ? noSession() : [el('p', {class: 'sess', id: 'sess'}, {working: 'Claude travaille', waiting: 'Claude attend ta réponse',
+    fixes: 'Claude attend tes demandes de correction'}[D.listening]),
     D.stale ? el('p', {class: 'stale'}, 'aucune activité depuis 20 min') : null,
     ...(fixing ? cmdButton({action: 'end_fixes'}, 'btn pri', 'Terminer') : [
       ...cmdButton({action: m.paused ? 'resume' : 'pause'}, 'btn pri', m.paused ? 'Reprendre' : 'Mettre en pause'),

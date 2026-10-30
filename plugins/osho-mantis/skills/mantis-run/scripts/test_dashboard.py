@@ -106,7 +106,7 @@ def test_auth():
 
 
 def test_post_409_sans_session():
-    with server({"stages": {"review": "done"}, "finished": True}) as (d, out, port, key):
+    with server({"stages": {"review": "done"}, "finished": True}) as (d, out, port, key):  # pause : pas de file
         s, body, _ = post(port, key, {"action": "pause"})
         assert s == 409 and json.loads(body)["error"] == "Aucune session active : relance /mantis-run"
 
@@ -341,13 +341,15 @@ def test_post_merge_fix_immediat():
             cli("stop", d, check=False)
 
 
-def test_post_fix_409_sans_session():
+def test_post_fix_en_file_sans_session():
+    """Sans session, « Corriger » est mis en file pour le prochain /mantis-run (spec lot 3, §4.3)"""
     import test_fixes
     with test_fixes.scratch() as tmp:
         d, repo = test_fixes.git_audit(tmp, state={"stages": {"review": "done"}, "finished": True})
         try:
             u = urlparse(json.loads(cli("serve", d).stdout)["url"])
-            assert post(u.port, parse_qs(u.query)["key"][0], {"action": "fix", "finding": "f1"})[0] == 409
+            assert post(u.port, parse_qs(u.query)["key"][0], {"action": "fix", "finding": "f1"})[0] == 200
+            assert [json.loads(x)["action"] for x in cli("pending", d).stdout.splitlines()] == ["fix"]
         finally:
             cli("stop", d, check=False)
 
@@ -445,6 +447,31 @@ def test_feed_route():
         s, body, _ = req(port, "GET", f"/feed?after=0&key={key}")
         r = json.loads(body)
         assert s == 200 and isinstance(r["items"], list) and isinstance(r["last"], int)
+
+
+def test_file_sans_session():
+    with server({"stages": {"plan": "failed"}, "stopped": True}, findings=[{"title": "F", "severity": "HIGH"}]) \
+            as (d, out, port, key):
+        for c in ({"action": "launch"}, {"action": "retry", "stage": "plan"}, {"action": "false_positive", "finding": "f0"}):
+            s, body, _ = post(port, key, c)
+            assert s == 200 and json.loads(body)["id"], (c, body)
+        for c in ({"action": "pause"}, {"action": "stop"}, {"action": "end_fixes"}):
+            assert post(port, key, c)[0] == 409, c
+        pend = [json.loads(x)["action"] for x in cli("pending", d).stdout.splitlines()]
+        assert pend == ["launch", "retry", "false_positive"]
+        snap = json.loads(req(port, "GET", f"/?key={key}")[1].split('type="application/json">', 1)[1].split("</script>", 1)[0])
+        assert snap["meta"]["audit_path"] == str(d.resolve())
+
+
+def test_vie_serveur():
+    import dashboard
+    G = dashboard.END_GRACE_S
+    # fin vue il y a plus de 30 min : arrêt seulement sans page connectée
+    assert dashboard.should_stop(ended_for=G + 1, idle=10, clients=0) is True
+    assert dashboard.should_stop(ended_for=G + 1, idle=10, clients=1) is False
+    assert dashboard.should_stop(ended_for=None, idle=dashboard.IDLE_S + 1, clients=0) is True
+    assert dashboard.should_stop(ended_for=None, idle=dashboard.IDLE_S + 1, clients=1) is False
+    assert dashboard.should_stop(ended_for=G + 1, idle=dashboard.HARD_IDLE_S + 1, clients=1) is True
 
 
 def test_help():

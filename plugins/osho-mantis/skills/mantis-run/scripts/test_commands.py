@@ -255,6 +255,28 @@ def test_set_cost():
         assert build_snapshot(d)["meta"]["cost"]["usd"] == 12.5
 
 
+def test_launch():
+    with tempfile.TemporaryDirectory() as tmp:  # triage fini, « Plus tard » : pas de state.json
+        s = build_snapshot(audit(tmp, {"repo": "/x", "level": "Sharp"}, findings=[]))
+        assert commands.validate({"action": "launch"}, s) is None
+    with tempfile.TemporaryDirectory() as tmp:  # niveau non choisi : mantis-run posera la question
+        s = build_snapshot(audit(tmp, {"repo": "/x"}, findings=[]))
+        assert commands.validate({"action": "launch"}, s) is None
+    with tempfile.TemporaryDirectory() as tmp:
+        s = build_snapshot(audit(tmp, {"repo": "/x", "level": "Sharp"}, state={"stages": {"plan": "done"}, "stopped": True}))
+        assert commands.validate({"action": "launch"}, s) is None, "audit arrêté : relançable"
+    with tempfile.TemporaryDirectory() as tmp:
+        s = build_snapshot(audit(tmp, {"repo": "/x", "level": "Sharp"}, state={"stages": {"plan": "running"}}))
+        assert commands.validate({"action": "launch"}, s) == "l'audit est déjà lancé"
+    with tempfile.TemporaryDirectory() as tmp:
+        s = build_snapshot(audit(tmp, {"repo": "/x", "level": "Sharp"}, state={"stages": {"plan": "done"}, "finished": True}))
+        assert commands.validate({"action": "launch"}, s) == "l'audit est déjà terminé"
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp, {"repo": "/x", "level": "Sharp"}, findings=[])
+        commands.append(d, {"action": "launch"}, "page")
+        assert commands.validate({"action": "launch"}, build_snapshot(d)) == "lancement déjà demandé"
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

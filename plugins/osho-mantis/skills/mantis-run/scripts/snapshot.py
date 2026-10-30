@@ -189,7 +189,7 @@ def build_snapshot(audit_dir, mode="live", now=None, loaded=None):
     watched += [audit_dir / "workspace" / "findings"] + list((audit_dir / "workspace" / "findings").glob("*.json"))
     mtimes = [p.stat().st_mtime for p in watched if p.exists()]
     age = int(now - max(mtimes)) if mtimes else 0
-    meta = {"repo_name": Path(campaign.get("repo") or audit_dir.parent.parent).name,
+    meta = {"repo_name": Path(campaign.get("repo") or audit_dir.parent.parent).name, "audit_path": str(audit_dir),
             "audit_name": audit_dir.name, "level": level,
             "mantis_commit": campaign.get("mantis_commit"), "started_at": campaign.get("started_at"),
             "duration": render.duration(campaign.get("started_at"), campaign.get("finished_at")),
