@@ -644,7 +644,7 @@ def test_fix_hooks():
     with tempfile.TemporaryDirectory() as tmp:
         html, _ = data(audit(tmp, [CRIT]))
         for s in ('id="fix-branch"', 'id="copy-merge"', "Correctif proposé", "Claude attend tes demandes de correction",
-                  "cmd.action !== 'merge_fix'"):
+                  "!NO_SESSION_OK.has(cmd.action)"):
             assert s in html, s
         assert "innerHTML" not in html and "\u2014" not in html
 
