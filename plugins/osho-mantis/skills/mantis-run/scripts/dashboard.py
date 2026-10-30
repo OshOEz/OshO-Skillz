@@ -23,6 +23,7 @@ from urllib.parse import parse_qs, urlparse
 import bilan
 import commands
 import export
+import feed
 import render
 import snapshot
 
@@ -66,6 +67,7 @@ class Dash:
         self.snap = snapshot.build_snapshot(audit)
         self.stop_evt = threading.Event()
         self.httpd = None
+        self.feed = feed.Feed(audit)
 
     def fresh(self):
         with self.lock:
@@ -187,6 +189,12 @@ class Handler(BaseHTTPRequestHandler):
             self.send(200, page, "text/html", [("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'")])
         elif route == "/export":
             self.export()
+        elif route == "/feed":
+            try:
+                after = int(parse_qs(urlparse(self.path).query).get("after", ["0"])[0])
+            except ValueError:
+                return self.send(400, {"error": "curseur invalide"})
+            self.send(200, self.dash.feed.since(after))
         else:
             self.send(404, {"error": "introuvable"})
 

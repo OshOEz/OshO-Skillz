@@ -438,6 +438,15 @@ def test_export_route():
         assert any(n == "audit/state.json" for n in names)
 
 
+def test_feed_route():
+    with server() as (d, out, port, key):
+        assert req(port, "GET", "/feed?after=0")[0] == 403
+        assert req(port, "GET", f"/feed?after=abc&key={key}")[0] == 400
+        s, body, _ = req(port, "GET", f"/feed?after=0&key={key}")
+        r = json.loads(body)
+        assert s == 200 and isinstance(r["items"], list) and isinstance(r["last"], int)
+
+
 def test_help():
     out = cli("--help").stdout
     for w in ("serve", "stop", "alive", "command", "pending", "apply", "ack"):

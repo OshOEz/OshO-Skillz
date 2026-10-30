@@ -329,26 +329,72 @@ assert.strictEqual(r.rec, false);
 
 
 def test_pipeline_hooks():
-    """Sélecteur de vue du pipeline : deux boutons-icônes avec aria-pressed."""
+    """Vue Cycle seule : plus de sélecteur Réseau / Matrice."""
     with tempfile.TemporaryDirectory() as tmp:
         html, _ = data(audit(tmp, [CRIT]))
-        for i in ("view-reseau", "view-matrice"):
-            assert re.search(r'id="' + i + r'"[^>]*aria-pressed=', html), i
-        assert 'aria-label="Vue réseau"' in html and 'aria-label="Vue matrice"' in html
+        assert 'id="view-reseau"' not in html and 'id="view-matrice"' not in html and "pv-rail" not in html
+        assert 'id="pv"' in html and "cy-wire" in html and "@keyframes dash" in html
 
 
-def test_stage_view():
-    """stageView : « reseau » par défaut et pour toute valeur inconnue."""
+CYCLE = """
+const st = (key, status, d) => ({key, code: key.slice(0, 3).toUpperCase(), name: key, status, duration_s: d});
+const cyc = {max_rounds: 3, prep: [st('triage', 'done', 1), st('history', 'done', 2)],
+  rounds: [{round: 1, stages: [st('plan', 'done', 3), st('review', 'done', 4), st('reflect', 'done', null)]},
+           {round: 2, stages: [st('plan', 'done', 5), st('review', 'running', null), st('reflect', 'pending', null)]}]};
+"""
+
+
+def test_cycle_layout():
+    """cycleLayout : une rangée par tour, une flèche par enchaînement, boucle reflect → plan du tour suivant."""
     if not shutil.which("node"):
         return
     with tempfile.TemporaryDirectory() as tmp:
         html, _ = data(audit(tmp, [CRIT]))
         js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
-        node_ok(tmp, fn(js, "stageView") + """
+        node_ok(tmp, fn(js, "wireState") + fn(js, "cycleLayout") + CYCLE + """
 const assert = require('assert');
-assert.strictEqual(stageView(null), 'reseau');
-assert.strictEqual(stageView('matrice'), 'matrice');
-assert.strictEqual(stageView('x'), 'reseau');
+const L = cycleLayout(cyc, 'working');
+assert.strictEqual(L.cards.length, 8);
+assert.deepStrictEqual([...new Set(L.cards.map(c => c.row))], [0, 1, 2]);
+assert.deepStrictEqual(L.rows.map(r => r.label), ['Préparation', 'Tour 1 / 3', 'Tour 2 / 3']);
+// 1 (prép) + 1 (prép → tour 1) + 2 + 1 (boucle) + 2
+assert.strictEqual(L.wires.length, 7);
+assert.ok(L.wires.every(w => /^M [0-9.]+ [0-9.]+ C /.test(w.d)));
+const into = k => L.wires.filter(w => w.to === k);
+assert.deepStrictEqual(into('2:review').map(w => w.state), ['flow'], 'flèche entrante de la tâche en cours : animée');
+assert.deepStrictEqual(into('2:reflect').map(w => w.state), ['pending']);
+assert.deepStrictEqual(into('2:plan').map(w => [w.from, w.state, w.loop]), [['1:reflect', 'done', true]]);
+assert.deepStrictEqual(into('1:plan').map(w => w.from), ['0:history']);
+const keys = new Set(L.cards.map(c => c.id));
+assert.ok(L.wires.every(w => keys.has(w.from) && keys.has(w.to)));
+assert.ok(L.width > 0 && L.height > 0 && L.cards.every(c => c.x + c.w <= L.width && c.y + c.h <= L.height));
+// en pause ou sans session : rien n'est animé
+assert.ok(cycleLayout(cyc, 'none').wires.every(w => w.state !== 'flow'));
+assert.strictEqual(cycleLayout(cyc, 'none').wires.find(w => w.to === '2:review').state, 'running');
+assert.strictEqual(wireState('skipped', 'working'), 'done');
+assert.strictEqual(wireState('failed', 'working'), 'done');
+""")
+
+
+def test_fil_de_claude():
+    """Onglet en bas à droite, tiroir en lecture seule (aucun champ de saisie), masqué en mode final."""
+    with tempfile.TemporaryDirectory() as tmp:
+        html, _ = data(audit(tmp, [CRIT]))
+        assert 'id="feed-tab"' in html and 'id="feed"' in html
+        drawer = html[html.index('<section id="feed"'):]
+        drawer = drawer[:drawer.index("</section>")]
+        assert "<input" not in drawer and "<textarea" not in drawer and "contenteditable" not in drawer
+        if not shutil.which("node"):
+            return
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[0]
+        node_ok(tmp, fn(js, "appendFeed") + """
+const assert = require('assert');
+let st = {items: [], last: 0, unseen: 0};
+st = appendFeed(st, {items: [{seq: 1, text: 'a'}, {seq: 2, text: 'b'}], last: 2}, false, 3);
+assert.deepStrictEqual([st.items.length, st.last, st.unseen], [2, 2, 2]);
+st = appendFeed(st, {items: [{seq: 2, text: 'b'}, {seq: 3, text: 'c'}, {seq: 4, text: 'd'}], last: 4}, true, 3);
+assert.deepStrictEqual(st.items.map(i => i.text), ['b', 'c', 'd'], 'doublon ignoré, plafond respecté');
+assert.strictEqual(st.unseen, 0, 'panneau ouvert : tout est vu');
 """)
 
 
@@ -655,7 +701,8 @@ if __name__ == "__main__":
     test_conn_label()
     test_final_sans_eventsource()
     test_pipeline_hooks()
-    test_stage_view()
+    test_cycle_layout()
+    test_fil_de_claude()
     test_reduced_motion()
     test_aucun_finding()
     test_safe_id_collision()
