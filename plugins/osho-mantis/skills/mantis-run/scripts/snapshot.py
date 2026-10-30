@@ -9,6 +9,7 @@ from pathlib import Path
 
 import commands
 import fixes
+import cost
 import render
 
 _ALL = ["history", "structural-index", "architecture", "threat-model", "plan", "researcher", "dedupe",
@@ -149,7 +150,8 @@ def build_snapshot(audit_dir, mode="live", now=None, loaded=None):
         listening = "waiting"
     else:
         listening = "working" if any(s["status"] == "running" for s in stages) else "none"
-    watched = [audit_dir / n for n in ("campaign.json", "state.json", "waiting.json", "activity.jsonl", "fixes.json")]
+    watched = [audit_dir / n for n in ("campaign.json", "state.json", "waiting.json", "activity.jsonl", "fixes.json",
+                                       "cost.json")]
     watched += [audit_dir / "workspace" / "findings"] + list((audit_dir / "workspace" / "findings").glob("*.json"))
     mtimes = [p.stat().st_mtime for p in watched if p.exists()]
     age = int(now - max(mtimes)) if mtimes else 0
@@ -165,6 +167,7 @@ def build_snapshot(audit_dir, mode="live", now=None, loaded=None):
             "fixes_merged": sum(1 for e in fix_entries.values() if isinstance(e, dict) and e.get("status") == "merged"),
             "dirty_before": bool(state.get("git_status_before"))}
     meta["reproduce_done"] = "reproduce" in meta["stages"]
+    meta["cost"] = cost.summary(audit_dir)
     meta["level_banner"] = render.LEVEL_BANNERS.get(level, "")
     return {"mode": mode, "generated_at": datetime.fromtimestamp(now).isoformat(timespec="seconds"),
             "meta": meta, "stats": render.stats(findings), "labels": render.ENUM_LABELS, "stages": stages,

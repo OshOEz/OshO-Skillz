@@ -279,6 +279,20 @@ code{font:12px var(--mono);background:var(--muted-bg);border-radius:4px;padding:
 .hist time{font:12px/1.65 var(--mono);color:var(--faint);flex:none}
 .peek-act{display:flex;gap:8px;flex-wrap:wrap;margin-top:26px;padding-top:18px;border-top:1px solid var(--border)}
 
+/* Onglets Suivi / Bilan, coût */
+#tabs{margin:12px 20px 0}
+#tabs[hidden],#panel-bilan[hidden],#panel-suivi[hidden],#cost-panel[hidden]{display:none}
+#cost-line{margin-top:6px}
+.linkish{border:0;background:none;padding:0;color:var(--primary);cursor:pointer;font:inherit;font-size:13px;text-decoration:underline dotted}
+#cost-panel{margin-top:10px;max-width:640px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:13px}
+#cost-panel table{width:100%;border-collapse:collapse;margin-bottom:10px}
+#cost-panel td,#cost-panel th{text-align:left;padding:3px 6px;border-bottom:1px solid var(--border)}
+#cost-panel .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+#cost-panel input{height:28px;border-radius:6px;border:1px solid var(--input);background:var(--bg);color:var(--fg);padding:0 8px;font:inherit}
+#cost-panel .err{color:var(--bad)}
+#bilan-frame{display:block;width:100%;height:78vh;border:0;border-top:1px solid var(--border);border-radius:0 0 10px 10px;background:var(--bg)}
+#export-note{font-size:12px;color:var(--muted)}
+
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -304,9 +318,28 @@ code{font:12px var(--mono);background:var(--muted-bg);border-radius:4px;padding:
     <div class="kpi"><b>0</b><span>reproduits</span></div>
     <div class="kpi"><b>0</b><span>patchs vérifiés</span></div>
   </div>
+  <p id="cost-line"><button id="cost-btn" class="linkish" type="button" aria-expanded="false" aria-controls="cost-panel">Coût et durée</button></p>
+  <div id="cost-panel" hidden></div>
 </section>
 
-<main>
+<div id="tabs" class="seg" role="tablist" aria-label="Vue du dashboard">
+  <button type="button" role="tab" data-t="suivi" aria-selected="true">Suivi</button>
+  <button type="button" role="tab" data-t="bilan" aria-selected="false">Bilan</button>
+</div>
+<main id="panel-bilan" hidden>
+  <section class="tile" aria-labelledby="bilan-title">
+    <div class="tile-h"><h2 id="bilan-title">Bilan</h2>
+      <div class="act" id="export-act">
+        <span id="export-note"></span>
+        <button id="export-light" class="btn sm" type="button">Exporter le bilan (HTML)</button>
+        <button id="export-full" class="btn sm" type="button">Exporter tout l'audit (zip)</button>
+      </div>
+    </div>
+    <iframe id="bilan-frame" title="Bilan de l'audit" sandbox="allow-same-origin allow-top-navigation-by-user-activation"></iframe>
+  </section>
+</main>
+
+<main id="panel-suivi">
   <div id="waiting-banner" role="region" aria-label="Question en attente" hidden></div>
   <section id="pipeline" class="tile" aria-label="Pipeline">
     <div class="pv-rail" role="group" aria-label="Vue du pipeline">
@@ -357,6 +390,7 @@ const PROG = [['found', 'Trouvées', 'Trouvé'], ['reviewed', 'Revues', 'Revu'],
   ['reproduced', 'Reproduites', 'Reproduit'], ['proposed', 'Correctif proposé', 'Correctif proposé'], ['fixed', 'Corrigées', 'Corrigé']];
 const FIX_LABEL = {queued: 'En file…', running: 'Correction en cours', ready: 'Correctif prêt', failed: 'Échec de la correction',
   conflict: 'Conflit avec un autre correctif', merged: 'Corrigée'};
+const EXPORT_WARNING = "⚠️ Cette archive contient le détail d'exploits et des secrets en clair. Transmettez-la uniquement par un canal privé.";
 const PROPS = [['Statut', 'status'], ['Emplacement', 'code_paths'], ['CWE', 'cwe'], ['Exploitabilité', 'production_viability'],
   ['Reproduction', 'repro_status'], ['Patch', 'patch_status'], ['Re-attaque', 'reattack_status'], ['Score de risque', 'mantis_risk_score']];
 const MONO = new Set(['code_paths', 'cwe', 'mantis_risk_score', 'repro_file_path']);
@@ -1052,6 +1086,74 @@ function trapFocus(e) {
 }
 
 let rendered = false;
+function hm(s) {
+  if (s == null) return 'inconnu';
+  const m = Math.floor(s / 60);
+  return Math.floor(m / 60) + ' h ' + pad(m % 60) + ' min';
+}
+function usd(v) {
+  return v == null ? 'coût inconnu' : '≈ ' + Math.round(v).toLocaleString('fr-FR') + ' $';
+}
+function renderCost() {
+  const c = D.meta.cost || {};
+  $('cost-btn').textContent = usd(c.usd) + (c.source === 'manuel' ? ' (saisi)' : ' (équivalent API)') +
+    ' · ' + hm(c.active_s) + ' actives · ' + hm(c.wall_s) + ' au total';
+  const pn = $('cost-panel');
+  if (pn.hidden || pn.contains(document.activeElement)) return; // ne pas effacer une saisie en cours
+  fillCost(c);
+}
+function fillCost(c) {
+  const pn = $('cost-panel'), rows = Object.entries(c.by_model || {}).sort((a, b) => (b[1].usd || 0) - (a[1].usd || 0));
+  const kids = [el('p', {}, 'Estimation au tarif public de l\'API Claude, calculée depuis les transcripts de la session ; pas une facture. ' +
+    'Temps actif : travail de la session principale, hors pauses de plus de 2 min.')];
+  if (rows.length) kids.push(el('table', {}, el('thead', {}, el('tr', {}, el('th', {}, 'Modèle'), el('th', {}, 'Coût estimé'))),
+    el('tbody', {}, ...rows.map(([m, v]) => el('tr', {}, el('td', {class: 'mono'}, m), el('td', {class: 'mono'}, usd(v.usd)))))));
+  if ((c.unknown_models || []).length) kids.push(el('p', {}, 'Modèles sans tarif connu : ' + c.unknown_models.join(', ')));
+  if (c.note) kids.push(el('p', {}, 'Note : ' + c.note));
+  if (D.mode !== 'final') {
+    const amount = el('input', {type: 'number', min: '0', step: '0.01', id: 'cost-usd', 'aria-label': 'Coût en dollars', placeholder: 'Montant en $'});
+    const note = el('input', {type: 'text', maxlength: '200', id: 'cost-note', 'aria-label': 'Note', placeholder: 'Note (facultative)'});
+    const err = el('span', {class: 'err', role: 'status'});
+    const save = el('button', {class: 'btn sm pri', type: 'button'}, 'Enregistrer');
+    save.addEventListener('click', () => {
+      const v = Number(amount.value);
+      if (amount.value === '' || !(v >= 0)) { err.textContent = 'Montant invalide'; return; }
+      sendCommand({action: 'set_cost', usd: v, note: note.value || null});
+    });
+    const reset = el('button', {class: 'btn sm', type: 'button'}, 'Revenir au calcul automatique');
+    reset.addEventListener('click', () => sendCommand({action: 'set_cost', usd: null}));
+    const again = el('button', {class: 'btn sm', type: 'button'}, 'Recalculer');
+    again.addEventListener('click', () => sendCommand({action: 'recompute_cost'}));
+    kids.push(el('div', {class: 'row'}, amount, note, save, c.source === 'manuel' ? reset : null, again, err));
+  }
+  pn.replaceChildren(...kids.filter(Boolean));
+}
+function showTab(t) {
+  ui.tab = t === 'bilan' ? 'bilan' : 'suivi';
+  save('mantis.tab', ui.tab);
+  for (const b of $('tabs').querySelectorAll('button')) b.setAttribute('aria-selected', String(b.dataset.t === ui.tab));
+  $('panel-suivi').hidden = ui.tab !== 'suivi';
+  $('panel-bilan').hidden = ui.tab !== 'bilan';
+  if (ui.tab === 'bilan') loadBilan();
+}
+let bilanAt = 0;
+function loadBilan() {
+  // live : régénéré au plus toutes les 30 s pendant que l'onglet est ouvert ; final : le fichier voisin
+  const fr = $('bilan-frame');
+  if (D.mode === 'final') { if (!fr.getAttribute('src')) fr.src = 'bilan.html'; return; }
+  if (Date.now() - bilanAt < 30000 && fr.getAttribute('src')) return;
+  bilanAt = Date.now();
+  fr.src = '/bilan?t=' + bilanAt;
+}
+function renderExports() {
+  const fin = D.mode === 'final';
+  $('export-light').hidden = $('export-full').hidden = fin;
+  $('export-note').textContent = fin ? 'Exports disponibles avec le dashboard en direct' : '';
+}
+function exportAudit(kind) {
+  if (!confirm(EXPORT_WARNING + '\n\nLa liste des secrets à révoquer est dans le bilan et dans LISEZMOI-DEV.md. Continuer ?')) return;
+  location.href = '/export?kind=' + kind;
+}
 function render(snap) {
   const first = !rendered;
   rendered = true;
@@ -1063,6 +1165,9 @@ function render(snap) {
   $('crumb-audit').textContent = m.audit_name || '';
   renderConn();
   renderBanner();
+  renderCost();
+  renderExports();
+  if (ui.tab === 'bilan') loadBilan();
   renderWaiting();
   renderPipeline(D);
   renderBoard(!first);
@@ -1111,6 +1216,15 @@ $('pipeline').querySelector('.pv-rail').addEventListener('click', e => {
   save('mantis.stageView', ui.stageView);
   renderPipeline(D);
 });
+$('tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) showTab(b.dataset.t); });
+$('export-light').addEventListener('click', () => exportAudit('light'));
+$('export-full').addEventListener('click', () => exportAudit('full'));
+$('cost-btn').addEventListener('click', () => {
+  const pn = $('cost-panel'), open = pn.hidden;
+  pn.hidden = !open;
+  $('cost-btn').setAttribute('aria-expanded', String(open));
+  if (open) fillCost(D.meta.cost || {});
+});
 $('scrim').addEventListener('click', e => { if (e.target === $('scrim')) closePeek(); });
 document.addEventListener('keydown', e => {
   if (!ui.peek && !ui.stage) return;
@@ -1118,6 +1232,7 @@ document.addEventListener('keydown', e => {
 });
 window.addEventListener('hashchange', openFromHash);
 render(D);
+showTab(location.hash === '#bilan' ? 'bilan' : load('mantis.tab'));
 openFromHash();
 if (D.mode === 'live') {
   const es = new EventSource('/events'); // cookie de session envoyé : même origine

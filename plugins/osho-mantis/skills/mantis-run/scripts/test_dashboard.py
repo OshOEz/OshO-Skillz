@@ -402,6 +402,42 @@ def test_ack_crash():
             dashboard.ack_crash(d, {"id": "zz"})
 
 
+def test_set_cost_sans_session():
+    with server({"stages": {"review": "done"}, "finished": True}) as (d, out, port, key):
+        s, body, _ = post(port, key, {"action": "set_cost", "usd": 42})
+        assert s == 200 and json.loads(body)["result"] == "applied", body
+        assert json.loads((d / "cost.json").read_text())["manual"]["usd"] == 42.0
+        assert post(port, key, {"action": "set_cost", "usd": -3})[0] == 400
+
+
+def test_bilan_route():
+    with server({"stages": {"review": "running"}, "round": 1}, findings=[{"title": "Faille <b>", "severity": "HIGH"}]) \
+            as (d, out, port, key):
+        assert req(port, "GET", "/bilan")[0] == 403
+        s, body, r = req(port, "GET", f"/bilan?key={key}")
+        assert s == 200 and "Faille &lt;b&gt;" in body and "bilan provisoire" in body
+        assert "default-src 'none'" in r.getheader("Content-Security-Policy")
+
+
+def test_export_route():
+    import zipfile
+    with server({"stages": {"review": "done"}, "finished": True}, findings=[{"title": "F", "severity": "LOW"}]) \
+            as (d, out, port, key):
+        assert req(port, "GET", "/export?kind=full")[0] == 403
+        assert req(port, "GET", f"/export?kind=full&key={key}", {"Origin": "http://evil"})[0] == 403
+        assert req(port, "GET", f"/export?kind=zzz&key={key}")[0] == 400
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        c.request("GET", f"/export?kind=full&key={key}")
+        r = c.getresponse()
+        data = r.read()
+        c.close()
+        assert r.status == 200 and r.getheader("Content-Type").startswith("application/zip")
+        assert "mantis-demo-audit-complet.zip" in r.getheader("Content-Disposition")
+        names = zipfile.ZipFile(io.BytesIO(data)).namelist()
+        assert "audit/LISEZMOI-DEV.md" in names and "audit/server.json" not in names
+        assert any(n == "audit/state.json" for n in names)
+
+
 def test_help():
     out = cli("--help").stdout
     for w in ("serve", "stop", "alive", "command", "pending", "apply", "ack"):

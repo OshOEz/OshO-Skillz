@@ -59,7 +59,7 @@ Run the stages in this order, skipping those that are not in the level or are al
 ### Checkpoint
 
 Run before each stage, after each batch of agents returns, and in Patch Sharp+ between two findings. `python3 "$R/dashboard.py" pending "$AUDIT"` prints the unacknowledged commands, one JSON object per line (`{id, at, source, action, ...}`, `finding` = finding file stem); nothing printed → continue. Handle them in order; every command ends acknowledged:
-- `false_positive`, `prioritize_repro`, `merge_fix` → `python3 "$R/dashboard.py" apply "$AUDIT" <id>` (validates, writes the finding or `force_repro` or merges the fix, and acks it itself).
+- `false_positive`, `prioritize_repro`, `merge_fix`, `set_cost`, `recompute_cost` → `python3 "$R/dashboard.py" apply "$AUDIT" <id>` (validates, writes the finding or `force_repro` or merges the fix, and acks it itself).
 - `fix` → `apply` (queues the fix and acks), then **Launch fixes** (below).
 - `end_fixes` → `python3 "$R/dashboard.py" ack "$AUDIT" <id> refused "le mode Corrections n'est pas actif"`.
 - `pause` → set `paused: true` in `state.json`, `python3 "$R/dashboard.py" ack "$AUDIT" <id> applied`, then wait for the user (below) with `kind: "paused"`.
@@ -162,8 +162,8 @@ For each finding with `repro_status: reproduced`, one at a time (checkpoint befo
 1. Integrity: compare `git -C "$REPO" status --porcelain -- . ':(exclude)osho-mantis'` with `git_status_before`. If they differ, warn the user first, listing the files that changed, and do not discard anything.
 2. Shadow guard (2.4), then `rm -rf "$SHADOW"` (the path saved as `shadow` in `state.json`), then drop that key.
 3. Set `finished: true` in `state.json` and `finished_at` (`date +%Y-%m-%dT%H:%M:%S`) in `campaign.json`.
-4. `python3 "$R/render.py" "$AUDIT"` (no `open`: the live page is already open and shows « Audit terminé »).
-5. Report, 5 lines max: counts by severity, the top Critical or High finding, the `README.md` path, the `dashboard.html` path (for later reading). If `fixes.json` has `n` > 0 entries with `"status": "merged"`, add « <n> correctifs sur `mantis/<audit name>` : `git merge mantis/<audit name>` ». The commit line of `versioned` audits comes at the end of §5 Corrections (Exit), since it stops the server.
+4. `python3 "$R/cost.py" "$AUDIT"` (estimated cost and active time from this session's transcripts, into `cost.json`; never fatal), then `python3 "$R/render.py" "$AUDIT"` (writes `README.md`, `patches/`, `dashboard.html` and `bilan.html`; no `open`: the live page is already open and shows « Audit terminé »).
+5. Report, 5 lines max: counts by severity, the top Critical or High finding, the `bilan.html` path, the `dashboard.html` path (for later reading; its Bilan tab exports the light and full archives). If `fixes.json` has `n` > 0 entries with `"status": "merged"`, add « <n> correctifs sur `mantis/<audit name>` : `git merge mantis/<audit name>` ». The commit line of `versioned` audits comes at the end of §5 Corrections (Exit), since it stops the server.
 6. Enter 5 (Corrections).
 
 ## 5. Corrections

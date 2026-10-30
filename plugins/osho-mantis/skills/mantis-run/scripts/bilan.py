@@ -161,7 +161,7 @@ def build(audit_dir, snap=None, live=False):
     H = []
     w = H.append
 
-    w("<!doctype html>\n<html lang=\"fr\"><head><meta charset=\"utf-8\">"
+    w("<!doctype html>\n<html lang=\"fr\"><head><meta charset=\"utf-8\"><base target=\"_top\">"
       "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
       f"<title>{e(repo)} : bilan de l'audit de sécurité</title><style>{CSS}</style>\n</head><body>")
     w(f'<div class="top"><span class="logo">M</span>Mantis / {e(repo)} / {e(meta["audit_name"])}</div>')

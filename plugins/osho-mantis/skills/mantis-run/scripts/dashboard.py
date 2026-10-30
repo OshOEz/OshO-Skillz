@@ -5,6 +5,9 @@
 import hmac
 import json
 import os
+import re
+import shutil
+import tempfile
 import queue
 import secrets
 import signal
@@ -17,7 +20,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import bilan
 import commands
+import export
 import render
 import snapshot
 
@@ -41,7 +46,7 @@ def now_iso():
 
 def signature(audit):
     paths = [audit / n for n in ("state.json", "campaign.json", "waiting.json", "commands.jsonl",
-                                 "commands-done.jsonl", "fixes.json")]
+                                 "commands-done.jsonl", "fixes.json", "cost.json")]
     paths += sorted((audit / "workspace" / "findings").glob("*.json"))
     sig = []
     for p in paths:
@@ -167,7 +172,7 @@ class Handler(BaseHTTPRequestHandler):
         route = urlparse(self.path).path
         if route == "/health":
             self.send(200, {"ok": True})
-        elif route == "/":
+        elif route in ("/", "/dashboard.html"):
             page = (HERE / "dashboard.html").read_text(encoding="utf-8")
             page = page.replace("__DATA__", render.safe_json(self.dash.fresh()), 1)
             port = self.server.server_address[1]
@@ -175,8 +180,42 @@ class Handler(BaseHTTPRequestHandler):
             self.send(200, page, "text/html", [("Set-Cookie", cookie)] if via_query else [])
         elif route == "/events":
             self.events()
+        elif route == "/bilan":
+            snap = self.dash.fresh()
+            m = snap["meta"]
+            page = bilan.build(self.dash.audit, snap, live=not (m["finished"] or m["stopped"]))
+            self.send(200, page, "text/html", [("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'")])
+        elif route == "/export":
+            self.export()
         else:
             self.send(404, {"error": "introuvable"})
+
+    def export(self):
+        port = self.server.server_address[1]
+        origin = self.headers.get("Origin")
+        if origin and origin not in (f"http://127.0.0.1:{port}", f"http://localhost:{port}"):
+            return self.send(403, {"error": "accès refusé"})
+        kind = parse_qs(urlparse(self.path).query).get("kind", [""])[0]
+        if kind not in ("light", "full"):
+            return self.send(400, {"error": "export inconnu"})
+        name = self.dash.fresh()["meta"]["repo_name"]
+        fname = re.sub(r"[^A-Za-z0-9_.-]", "_", f"mantis-{name}-{self.dash.audit.name}-"
+                                                  f"{'leger' if kind == 'light' else 'complet'}.zip")
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "export.zip"
+            try:
+                export.build(kind, self.dash.audit, out)
+            except Exception as e:
+                print(f"GET /export: {e!r}", file=sys.stderr, flush=True)
+                return self.send(500, {"error": "export impossible"})
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Length", str(out.stat().st_size))
+            self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            with open(out, "rb") as fh:
+                shutil.copyfileobj(fh, self.wfile)
 
     def events(self):
         self.send_response(200)
@@ -216,7 +255,8 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, RecursionError):
             return self.send(400, {"error": "commande illisible"})
         snap = self.dash.fresh()
-        if snap["listening"] == "none" and not (isinstance(cmd, dict) and cmd.get("action") == "merge_fix"):  # merge_fix n'a pas besoin de Claude
+        server_side = isinstance(cmd, dict) and cmd.get("action") in commands.SERVER_ACTIONS
+        if snap["listening"] == "none" and not server_side:  # actions serveur : pas besoin de Claude
             return self.send(409, {"error": "Aucune session active : relance /mantis-run"})
         reason = commands.validate(cmd, snap)
         if reason:
@@ -224,8 +264,8 @@ class Handler(BaseHTTPRequestHandler):
         appended = None
         try:
             cmd = appended = commands.append(self.dash.audit, cmd, "page")
-            if cmd["action"] == "merge_fix":
-                cmd = commands.apply(self.dash.audit, cmd["id"])  # le serveur fusionne lui-même, sans attendre Claude
+            if cmd["action"] in commands.SERVER_ACTIONS:
+                cmd = commands.apply(self.dash.audit, cmd["id"])  # le serveur l'applique lui-même, sans attendre Claude
         except Exception as e:
             print(f"POST /command: {e!r}", file=sys.stderr, flush=True)
             if appended:

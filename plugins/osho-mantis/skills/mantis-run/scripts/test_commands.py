@@ -237,6 +237,24 @@ def test_apply_merge_deja_fusionne_sans_accuse():
         assert commands.apply(d, c["id"])["result"] == "applied"
 
 
+def test_set_cost():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = sharp(tmp)
+        s = build_snapshot(d)
+        for c in ({"action": "set_cost", "usd": 12.5}, {"action": "set_cost", "usd": None},
+                  {"action": "set_cost", "usd": 3, "note": "facture"}, {"action": "recompute_cost"}):
+            assert commands.validate(c, s) is None, c
+        for c in ({"action": "set_cost", "usd": -1}, {"action": "set_cost", "usd": "abc"},
+                  {"action": "set_cost", "usd": True}, {"action": "set_cost"},
+                  {"action": "set_cost", "usd": 1, "note": "x" * 201}, {"action": "set_cost", "usd": float("inf")}):
+            assert commands.validate(c, s), c
+        c = commands.append(d, {"action": "set_cost", "usd": 12.5, "note": "facture"}, "page")
+        assert commands.apply(d, c["id"])["result"] == "applied"
+        import cost
+        assert cost.summary(d)["usd"] == 12.5 and cost.summary(d)["source"] == "manuel"
+        assert build_snapshot(d)["meta"]["cost"]["usd"] == 12.5
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
