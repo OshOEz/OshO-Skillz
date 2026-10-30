@@ -117,6 +117,12 @@ def test_manuel_prioritaire():
         assert cost.summary(audit)["source"] == "auto"
 
 
+def test_en_cours():
+    with tempfile.TemporaryDirectory() as tmp:
+        audit, projects = setup(tmp, [msg(T0 + 10, "m1", out=1_000_000)], finished=False)
+        assert cost.summary(audit)["wall_s"] > 0, "audit en cours : temps écoulé jusqu'à maintenant"
+
+
 def test_resume_vide():
     with tempfile.TemporaryDirectory() as tmp:
         s = cost.summary(Path(tmp))
@@ -141,6 +147,7 @@ if __name__ == "__main__":
     test_temps_actif()
     test_sans_transcript()
     test_manuel_prioritaire()
+    test_en_cours()
     test_resume_vide()
     test_match()
     print("OK")

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Audit Mantis</title>
+<link rel="icon" href="data:,">
 <style>
 /* Jetons Horizon OS (spec §6), recopiés sans dépendance */
 :root,[data-theme=dark]{
@@ -166,7 +167,7 @@ main{padding:14px 20px 40px;display:grid;gap:12px}
 #filter::placeholder{color:var(--faint)}
 .seg{display:inline-flex;padding:2px;border-radius:6px;border:1px solid var(--input);background:var(--bg)}
 .seg button{height:24px;padding:0 10px;border:0;border-radius:4px;background:none;color:var(--muted);font-size:12px;cursor:pointer}
-.seg button[aria-pressed=true]{background:var(--sel);color:var(--sel-fg);font-weight:600}
+.seg button[aria-pressed=true],.seg button[aria-selected=true]{background:var(--sel);color:var(--sel-fg);font-weight:600}
 
 /* Kanban */
 #board{display:grid;grid-template-columns:repeat(var(--n,4),minmax(0,1fr)) auto;gap:10px;padding:10px;align-items:start}
@@ -268,6 +269,7 @@ code{font:12px var(--mono);background:var(--muted-bg);border-radius:4px;padding:
 #export-note{font-size:12px;color:var(--muted)}
 
 /* Fil de Claude : onglet en bas à droite, tiroir en bas, lecture seule */
+body{padding-bottom:40px} /* la fin de page reste lisible sous l'onglet */
 .feed-tab{position:fixed;right:20px;bottom:0;z-index:5;height:34px;padding:0 14px;border:1px solid var(--border);border-bottom:0;
   border-radius:8px 8px 0 0;background:var(--card);color:var(--fg);font:600 13px var(--sans);cursor:pointer;box-shadow:var(--lift)}
 .feed-tab[hidden],#feed[hidden],#feed-badge[hidden]{display:none}
@@ -575,7 +577,7 @@ function cycleLayout(cyc, listening) {
           const mx = (a[0] + b[0]) / 2;
           d = `M ${a[0]} ${a[1]} C ${mx} ${a[1]}, ${mx} ${b[1]}, ${b[0]} ${b[1]}`;
         } else {
-          a = [prev.x + prev.w / 2, prev.y + prev.h]; b = [c.x + c.w / 2, c.y];
+          a = [prev.x + prev.w / 2, prev.y + prev.h]; b = [c.x + c.w - 24, c.y]; // à droite du libellé de rangée
           const my = (a[1] + b[1]) / 2;
           d = `M ${a[0]} ${a[1]} C ${a[0]} ${my}, ${b[0]} ${my}, ${b[0]} ${b[1]}`;
         }
@@ -590,7 +592,7 @@ function cycleLayout(cyc, listening) {
 function renderPipeline(D) {
   const pv = $('pv'), cyc = D.cycle || {prep: D.stages || [], rounds: [], max_rounds: 1};
   const focused = pv.contains(document.activeElement) ? document.activeElement.dataset.id : null;
-  const L = cycleLayout(cyc, D.listening), n = (cyc.rounds || []).length, grew = ui.rounds && n > ui.rounds;
+  const L = cycleLayout(cyc, D.mode === 'final' ? 'none' : D.listening), n = (cyc.rounds || []).length, grew = ui.rounds && n > ui.rounds;
   ui.rounds = n;
   const box = el('div', {class: 'cy', style: `width:${L.width}px;height:${L.height}px`});
   const NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg');
@@ -1136,7 +1138,7 @@ function hm(s) {
   return Math.floor(m / 60) + ' h ' + pad(m % 60) + ' min';
 }
 function usd(v) {
-  return v == null ? 'coût inconnu' : '≈ ' + Math.round(v).toLocaleString('fr-FR') + ' $';
+  return v == null ? 'coût non calculé' : '≈ ' + Math.round(v).toLocaleString('fr-FR') + ' $';
 }
 function renderCost() {
   const c = D.meta.cost || {};

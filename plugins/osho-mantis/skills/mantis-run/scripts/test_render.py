@@ -531,7 +531,7 @@ def test_safe_id_triple_collision():
 def test_question_texte():
     """La bannière d'attente affiche w.text (phrase) plutôt que w.question (identifiant)."""
     triage = RENDER.parents[2] / "mantis-triage" / "SKILL.md"
-    assert '"text": "Quel niveau d\'audit ?"' in triage.read_text()
+    assert '"text": "Lancer l\'audit à quel niveau ?"' in triage.read_text()
     if not shutil.which("node"):
         return
     with tempfile.TemporaryDirectory() as tmp:

@@ -163,8 +163,9 @@ def summary(audit_dir):
     manual = data.get("manual") if isinstance(data.get("manual"), dict) else None
     c = _campaign(audit_dir)
     s, e = _ts(c.get("started_at")), _ts(c.get("finished_at"))
+    end = e if e is not None else time.time()  # audit en cours : temps écoulé jusqu'à maintenant
     out = {"usd": auto.get("usd"), "source": "auto" if auto.get("usd") is not None else None,
-           "active_s": auto.get("active_s") or None, "wall_s": int(e - s) if s is not None and e is not None else None,
+           "active_s": auto.get("active_s") or None, "wall_s": int(end - s) if s is not None else None,
            "note": None, "by_model": auto.get("by_model") or {}, "unknown_models": auto.get("unknown_models") or []}
     if manual and isinstance(manual.get("usd"), (int, float)):
         out.update(usd=manual["usd"], source="manuel", note=manual.get("note") or None)
