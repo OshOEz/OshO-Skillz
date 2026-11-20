@@ -18,6 +18,6 @@ case "$skill" in
   *) exit 0 ;;
 esac
 
-context="[revue-artefact] When you reach $moment, do not write it as a long terminal message nor chain AskUserQuestion calls: invoke the Skill osho-core:revue-artefact and publish it as an artifact page where the user ticks answers, then read them back when they say it is done. Keep using AskUserQuestion only for a single simple question."
+context="[revue-artefact] When you reach $moment, do not write it as a long terminal message nor chain AskUserQuestion calls: invoke the Skill osho-core:revue-artefact and publish it as an artifact page where the user ticks answers, then read them back when they say it is done; the page opens by itself; inside an Escouade ticket, leave the link in the user's box with ask_user. Keep using AskUserQuestion only for a single simple question."
 
 jq -n --arg c "$context" '{hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $c}}'
