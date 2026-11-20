@@ -79,7 +79,14 @@ From then on the graph stays up to date on every edit and every commit.
 
 Security audits with [google/mantis](https://github.com/google/mantis), run on your Claude Code subscription (no Google or API key needed). Installed by the bootstrap; Mantis itself is cloned to `~/.local/share/mantis` on first use, pinned to the commit in `plugins/osho-mantis/mantis.lock`. Every skill and script is listed in [docs/skills.md](docs/skills.md).
 
-In a repo, say *"mantis triage"*: a short pass recommends a level (Light, Sharp, Savage, Overkill) with a quota estimate for your subscription. Then *"mantis run"* runs the audit. If it is interrupted (quota, error), say *"mantis run"* again to resume where it stopped.
+In a repo, say *"mantis triage"*: a short pass recommends a level with a quota estimate for your subscription. Then *"mantis run"* runs the audit. If it is interrupted (quota, error), say *"mantis run"* again to resume where it stopped.
+
+| Level | Adds | Needs |
+|---|---|---|
+| **Light** | Static only: architecture, threat model, plan, research, review, unverified patch diffs | — |
+| **Sharp** | + critic, reproduction of High/Critical findings, patches verified by re-attack, risk scoring | Docker |
+| **Savage** | + git history, reproduction of every viable finding, exploit chains | Docker |
+| **Overkill** | + one investigation per source file, up to 3 rounds of replanning | Docker |
 
 Without Docker, reproduction is skipped and noted in the report. Reproduction runs in `docker run --network=none` on a temporary copy; your repo is never modified.
 
