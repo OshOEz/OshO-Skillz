@@ -58,12 +58,12 @@ Si une dépendance reste absente, la procédure peut continuer : le script **sig
 ### 1. Cadrer
 
 - Quelle source, pour produire quoi, pour tester quoi
-- **L'accord de la personne qui porte le client** : se servir de ses documents comme patron, même sans en garder le contenu, doit être couvert. Le demander si ce n'est pas dit
+- **L'accord de la personne qui porte le client** : se servir de ses documents comme patron, même sans en garder le contenu, doit être couvert. Il couvre aussi le fait que **lire un document l'envoie au fournisseur du modèle**. Le demander si ce n'est pas dit
 - Où iront les sorties (dans le projet, dossier de jeux de test) et **la zone isolée** : un sous-dossier `isole/` du dossier temporaire de session, jamais le projet, jamais un dossier synchronisé
 
 ### 2. Lire en local, dans la zone isolée
 
-- Ne rien envoyer à un service en ligne : pas de lecture web, pas de page publiée, pas d'agent d'un autre outil
+- Ne rien envoyer à un service en ligne : pas de lecture web, pas de page publiée, pas d'agent d'un autre outil. Ce que l'agent lit part quand même chez le fournisseur du modèle : afficher le moins de contenu possible
 - Lire en mémoire quand c'est possible. Si une extraction sur disque est nécessaire, **uniquement dans la zone isolée**
 - Les noms de fichiers des archives Windows sont souvent mal encodés : le script les corrige, une extraction `unzip` classique peut échouer
 - Afficher des comptes et des structures, pas des pages de contenu client dans la conversation

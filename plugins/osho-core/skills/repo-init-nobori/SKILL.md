@@ -27,6 +27,7 @@ Source: [Process Git & CI sur GitHub Nobori](https://app.notion.com/p/nobori/Pro
 **Rules**
 
 - Flow `feat/<topic>` → `dev` → `prod`. `prod` = production, `dev` = integration. No other environment branch (`staging`, `main`, `master`…).
+- The production branch is `prod` by default. If the repo's CLAUDE.md or AGENTS.md names another one (for example `main`), use that name everywhere below and do not report it as a gap.
 - One CI command (`make ci`, or the stack's own runner, e.g. `npm run ci`) runs locally before each push, from `.githooks/pre-push`. If the full suite needs services (database, browser), the pre-push runs the fast subset (typecheck, lint, unit) and the full suite stays a manual step.
 - GitHub Actions only on pull requests to `prod` (CI) and pushes to `prod` (deploy only, no tests). If the host deploys by itself on a push to `prod` (Render, Vercel…), no deploy workflow.
 - `ubuntu-latest` only, one job per workflow, `timeout-minutes` everywhere, `concurrency` (`cancel-in-progress: true` for CI, `false` for deploy). No `schedule` without a validated reason.
@@ -35,7 +36,7 @@ Source: [Process Git & CI sur GitHub Nobori](https://app.notion.com/p/nobori/Pro
 **Steps**
 
 1. **Read only.** Collect: `.github/workflows/*.yml` (`on:`, branches, `runs-on`, `timeout-minutes`, `concurrency`, jobs), the CI command, `.githooks/` and `.git/hooks/`, the rules in CLAUDE.md / AGENTS.md, and with `gh`: `gh repo view <owner/repo> --json visibility,mergeCommitAllowed,defaultBranchRef`, the remote branches, `gh api repos/<owner/repo>/actions/workflows` (a workflow may be `disabled_manually`), `gh run list -L 100 --json workflowName,event,headBranch`.
-2. **Report** each gap: 🔴 burns minutes or may deploy by mistake (push trigger on `dev`/`feat`, macOS/Windows runner, job without timeout, tests rerun on deploy); 🟠 rule not tooled (no CI command, no pre-push, no rules for agents, missing `dev`/`prod`, merge commit disabled); ⚪ the rest. Each with its proof (file line or `gh` output).
+2. **Report** each gap: 🔴 burns minutes or may deploy by mistake (push trigger on `dev`/`feat`, macOS/Windows runner, job without timeout, tests rerun on deploy); 🟠 rule not tooled (no CI command, no pre-push, no rules for agents, missing `dev`/`prod`, merge commit disabled); ⚪ the rest. Each with its proof (file line or `gh` output). A `main` branch is not a gap when it is the declared production branch.
 3. **Plan, then wait for approval**: files created, GitHub settings changed, branches to delete. Ask before choosing the pre-push scope and the deploy target.
 4. **Apply** on a `feat/ci-rules` branch from `dev`, PR to `dev`:
    - the CI command; `.githooks/pre-push` (`#!/bin/sh` then `exec <ci command>`), plus a one-line install target for collaborators without OshO (`make hooks` / `npm run hooks`) noted in the README; then rerun the script of Part 1;
