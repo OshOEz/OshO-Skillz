@@ -1,6 +1,6 @@
 # Decisions
 
-**Reference upstream, never vendor.** Third-party plugins are installed from their own marketplaces with `autoUpdate: true`, so we always get the latest version.
+**Reference upstream plugins, never vendor them.** Third-party plugins are installed from their own marketplaces with `autoUpdate: true`, so we always get the latest version. Mantis is the exception, pinned on purpose (see below).
 
 **Hooks live in the osho-core plugin, not in `settings.json`.** Versioned, and installed or removed in one command. Exception: rtk's hook, which `rtk init -g` manages itself.
 
@@ -8,10 +8,12 @@
 
 **Superpowers is installed but not injected.** Its SessionStart hook loads the full `using-superpowers` skill into every session. We empty that hook and instead offer Superpowers once per session when the task warrants it. The first session after a Superpowers update still gets the bootstrap once.
 
-**Escouade merges, the PR only audits.** An Escouade ticket lives on `ticket/<key>`, which the Kanban merges into the local base. Merging the audit PR on GitHub as well merged a project's tickets twice and split local `dev` from `origin/dev`. In an Escouade ticket, `audit-loop` opens the PR from the ticket branch, never merges it, and pulls the fixes back into the local branch.
+**The audit of an Escouade ticket runs from the main session, by send-back.** Majors go back to the same agent (`reject_ticket`), the user approves from the session (`approve_ticket`), and there is no audit pull request. A ticket created per finding would start from a branch that does not hold the audited code, and an audit PR merged on GitHub as well as by the Kanban merged a project's tickets twice.
 
 **Homebrew Python and Node, first on PATH.** No pyenv/nvm; `uv tool` runs on Homebrew's Python.
 
-**Mantis is referenced in `~/.local/share/mantis`, not installed as skills.** Each osho-mantis subagent reads the `SKILL.md` of its stage. Its 19 descriptions cost nothing in other sessions, and Mantis (Apache-2.0) stays outside this MIT repo.
+**Mantis is pinned to an accepted commit of the fork `OshOEz/mantis` (`plugins/osho-mantis/mantis.lock`), updated only through `/mantis-update` on the maintainer's yes.** Each osho-mantis subagent reads the `SKILL.md` of its stage from the clone in `~/.local/share/mantis`; its 19 descriptions cost nothing in other sessions, and Mantis (Apache-2.0) stays outside this MIT repo. Subagents follow those prompts, so third-party text runs only once reviewed, and the fork survives if upstream disappears.
 
 **Audit folders are versioned by default, with a guard for public repos.** An audit contains detailed vulnerabilities and exploits. The skill checks visibility with `gh`, recommends not versioning when the repo is public, and asks when visibility is unknown.
+
+**Audit findings on a public repo stay local on request.** An issue on a public repository publishes the flaw before it is fixed, so `audit-loop` offers to keep the findings in a local state file instead.

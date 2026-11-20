@@ -21,6 +21,9 @@ h1{font-size:28px;line-height:1.2;margin:0;text-wrap:balance}
 h2{font-size:19px;margin:0 0 12px;text-wrap:balance}
 .sur{font:500 12px/1 "IBM Plex Mono",monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--doux);margin:0 0 8px}
 .chapo{color:var(--doux);margin:8px 0 0;max-width:62ch}
+.bref{margin-top:16px;padding:12px 16px;border-left:3px solid var(--accent);border-radius:0 8px 8px 0;background:var(--accent-doux)}
+.bref p{font:500 12px/1 "IBM Plex Mono",monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin:0 0 8px}
+.bref ul{margin:0;padding-left:18px;display:grid;gap:4px}
 .chiffres{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
 .puce{font:500 13px/1 "IBM Plex Mono",monospace;padding:7px 10px;border-radius:6px;background:var(--ok-doux);color:var(--ok)}
 .puce.alerte{background:var(--alerte-doux);color:var(--alerte)}
@@ -43,7 +46,11 @@ ul.liste.neutre li::before{content:"·";color:var(--doux)}
 .reco{font:500 11px/1 "IBM Plex Mono",monospace;color:var(--accent);margin-left:6px;text-transform:uppercase;letter-spacing:.06em}
 textarea{width:100%;min-height:72px;font:inherit;color:var(--encre);background:var(--fond);border:1px solid var(--trait);border-radius:8px;padding:10px}
 button{font:600 15px/1 "IBM Plex Sans",sans-serif;background:var(--accent);color:var(--surface);border:0;border-radius:8px;padding:13px 18px;cursor:pointer}
-button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+details.technique{margin-top:14px;border-top:1px dashed var(--trait);padding-top:10px}
+details.technique summary{font:500 13px/1.4 "IBM Plex Mono",monospace;color:var(--accent);cursor:pointer;width:fit-content}
+details.technique p{margin:8px 0 0;font-size:14px;color:var(--doux);max-width:62ch}
+.q details.technique{margin:0 0 12px}
+button:focus-visible,summary:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .etat{margin-top:12px;font-weight:500}
 .etat.ok{color:var(--ok)} .etat.ko{color:var(--alerte)}
 pre{white-space:pre-wrap;background:var(--fond);border:1px solid var(--trait);border-radius:8px;padding:12px;font:13px/1.5 "IBM Plex Mono",monospace}
@@ -67,12 +74,19 @@ const el = (tag, attrs = {}, ...enfants) => {
   for (const e of enfants) if (e) n.append(e);
   return n;
 };
+// Folded technical detail, shown only when the JSON carries one.
+const technique = t => el('details', { class: 'technique' }, el('summary', { text: 'Détail technique' }), el('p', { text: t }));
 
 // Header
 const tete = el('header');
 if (C.sur) tete.append(el('p', { class: 'sur', text: C.sur }));
 tete.append(el('h1', { text: C.titre }));
 if (C.chapo) tete.append(el('p', { class: 'chapo', text: C.chapo }));
+if (C.enBref?.length) {
+  const ul = el('ul');
+  for (const l of C.enBref.slice(0, 3)) ul.append(el('li', { text: l }));
+  tete.append(el('div', { class: 'bref' }, el('p', { text: 'En 30 secondes' }), ul));
+}
 if (C.puces?.length) {
   const box = el('div', { class: 'chiffres' });
   for (const p of C.puces) box.append(el('span', { class: 'puce' + (p.ton === 'alerte' ? ' alerte' : ''), text: p.texte ?? p }));
@@ -89,6 +103,7 @@ for (const s of C.sections ?? []) {
     for (const i of s.items) ul.append(el('li', { text: i }));
     sec.append(ul);
   }
+  if (s.technique) sec.append(technique(s.technique));
   page.append(sec);
 }
 
@@ -97,6 +112,7 @@ const form = el('form', { id: 'form' });
 for (const q of C.questions ?? []) {
   const bloc = el('div', { class: 'q' }, el('h3', { text: q.titre }));
   if (q.contexte) bloc.append(el('p', { text: q.contexte }));
+  if (q.technique) bloc.append(technique(q.technique));
   if (q.choix?.length) {
     const choix = el('div', { class: 'choix' });
     q.choix.forEach((c, i) => {

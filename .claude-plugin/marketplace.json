@@ -10,12 +10,12 @@
     {
       "name": "osho-core",
       "source": "./plugins/osho-core",
-      "description": "Core hooks, skills and agents: repo-init-nobori (with Nobori's Git & CI process), donnees-fictives, audit-loop (auditor agent), escouade (Escouade ticket method), tache (Horizon Kanban task ↔ Claude Code session), code-review-graph auto-update, per-session Superpowers offer, revue-artefact (plans, specs, dev reports and questions as an artifact page the user ticks)."
+      "description": "Core hooks, skills and agents: repo-init-nobori (with Nobori's Git & CI process), donnees-fictives, audit-loop (auditor agent), escouade (Escouade ticket method), code-review-graph auto-update, per-session Superpowers offer, revue-artefact (plans, specs, dev reports and questions as an artifact page the user ticks)."
     },
     {
       "name": "osho-mantis",
       "source": "./plugins/osho-mantis",
-      "description": "Mantis security audits from Claude Code, no API key: quick triage, Light→Overkill campaign, live dashboard (follow and steer the audit from the browser, Cycle view per round, read-only Claude feed, launch without the terminal), one-click fixes merged into a local audit branch, French report and bilan, developer exports (HTML or full zip), estimated cost and time, crash-safe resume."
+      "description": "Mantis security audits from Claude Code, no API key: quick triage, Light→Overkill campaign, live dashboard (follow and steer the audit from the browser, Cycle view per round, read-only Claude feed, launch without the terminal), one-click fixes merged into a local audit branch, French report and bilan, developer exports (HTML or full zip), estimated cost and time, crash-safe resume. Mantis is pinned to an accepted commit (mantis.lock); the maintainer skill mantis-update analyses upstream changes before moving the pin."
     }
   ]
 }

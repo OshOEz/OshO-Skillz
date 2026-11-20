@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Auto-test de guard.py : sauvegarde, contrôle et restauration des findings, RESUME.md
+"""Auto-test de guard.py : sauvegarde, contrôle et restauration des findings, RESUME.md, garde du shadow
   python3 test_guard.py
 """
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -119,6 +120,156 @@ def test_cli():
         assert run("restore", str(d)).returncode == 0 and run("check", str(d)).returncode == 0
         assert run("resume", str(d)).returncode == 0 and (d / "RESUME.md").exists()
         assert run("nope", str(d)).returncode != 0
+
+
+def tmp_d():
+    return os.path.dirname(subprocess.run(["mktemp", "-u"], capture_output=True, text=True, check=True).stdout.strip())
+
+
+def state(d):
+    return json.loads((d / "state.json").read_text())
+
+
+def git_repo(repo):
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    (repo / "suivi.txt").write_text("suivi")
+    (repo / "libre.txt").write_text("non suivi")
+    os.symlink("suivi.txt", repo / "lien")
+    subprocess.run(["git", "-C", str(repo), "add", "suivi.txt", "lien"], check=True)
+
+
+def test_shadow_guard_accepts_own_mktemp():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp)
+        s = guard.shadow_new(d)
+        try:
+            assert guard.shadow_ok(str(s)) and state(d)["shadow"] == str(s)
+        finally:
+            shutil.rmtree(s)
+
+
+def test_shadow_guard_rejects():
+    D = tmp_d()
+    real = subprocess.run(["mktemp", "-d"], capture_output=True, text=True, check=True).stdout.strip()
+    suffixe = f"{os.getpid()}-{os.urandom(4).hex()}"
+    voisin, lien = os.path.join(D, f"com.apple.x{suffixe}"), os.path.join(D, f"tmp.lien{suffixe}")
+    try:
+        os.mkdir(voisin)
+        os.symlink(real, lien)
+        with tempfile.TemporaryDirectory() as tmp:
+            ailleurs = os.path.join(tmp, "tmp.x")
+            os.mkdir(ailleurs)
+            for p in ("", None, os.path.join(D, "tmp.inexistant"), os.path.expanduser("~"),
+                      D + "/../../../../etc/x", voisin, lien, ailleurs, ["x"], 3):
+                assert not guard.shadow_ok(p), p
+    finally:
+        if os.path.islink(lien):
+            os.unlink(lien)
+        for p in (voisin, real):
+            if os.path.isdir(p):
+                os.rmdir(p)
+
+
+def test_shadow_reset_copies_tracked_only():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp)
+        git_repo(Path(tmp) / "repo")
+        s = guard.shadow_new(d)
+        try:
+            (s / "reste.txt").write_text("passage précédent")
+            assert guard.shadow_reset(d) == s
+            assert sorted(os.listdir(s)) == ["suivi.txt"], os.listdir(s)
+        finally:
+            shutil.rmtree(s)
+
+
+def test_shadow_reset_refused_path_is_left_alone():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp)
+        git_repo(Path(tmp) / "repo")
+        hors = Path(tmp) / "tmp.hors"
+        hors.mkdir()
+        (hors / "temoin").write_text("x")
+        (d / "state.json").write_text(json.dumps({"shadow": str(hors), "notes": []}))
+        s = guard.shadow_reset(d)
+        try:
+            assert (hors / "temoin").exists() and s != hors
+            st = state(d)
+            assert st["shadow"] == str(s) and st["notes"] == ["shadow recréé : ancien chemin refusé ou absent"]
+            assert os.listdir(s) == ["suivi.txt"]
+        finally:
+            shutil.rmtree(s)
+
+
+def test_shadow_reset_refused_list_entry_replaced_in_place():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp)
+        git_repo(Path(tmp) / "repo")
+        hors = Path(tmp) / "tmp.hors"
+        hors.mkdir()
+        (d / "state.json").write_text(json.dumps({"shadow": "garde", "shadows": ["a", str(hors), "b"]}))
+        s = guard.shadow_reset(d, str(hors))
+        try:
+            st = state(d)
+            assert hors.is_dir() and st["shadows"] == ["a", str(s), "b"] and st["shadow"] == "garde", st
+        finally:
+            shutil.rmtree(s)
+
+
+def test_shadow_commands_refuse_unreadable_state():
+    D = tmp_d()
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp)
+        s = guard.shadow_new(d)
+        try:
+            for bad in ('{"round": 2, "stag', "[1, 2]"):
+                (d / "state.json").write_text(bad)
+                before = {n for n in os.listdir(D) if n.startswith("tmp.")}
+                for cmd in (["shadow-new"], ["shadow-reset"], ["shadow-drop", str(s)]):
+                    r = subprocess.run([sys.executable, str(GUARD), cmd[0], str(d), *cmd[1:]], capture_output=True, text=True)
+                    assert r.returncode != 0 and "state.json illisible" in r.stderr, (cmd, r.stderr)
+                    assert (d / "state.json").read_text() == bad and s.is_dir()
+                assert {n for n in os.listdir(D) if n.startswith("tmp.")} == before, "aucun shadow créé"
+        finally:
+            shutil.rmtree(s)
+
+
+def test_shadow_reset_copy_failure_says_so():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp)  # tmp/repo n'est pas un dépôt git : git ls-files échoue
+        s = guard.shadow_new(d)
+        try:
+            r = subprocess.run([sys.executable, str(GUARD), "shadow-reset", str(d)], capture_output=True, text=True)
+            assert r.returncode != 0 and "incomplet" in r.stderr and "git ls-files" in r.stderr, r.stderr
+        finally:
+            shutil.rmtree(s)
+
+
+def test_shadow_drop():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp)
+        s = guard.shadow_new(d)
+        assert guard.shadow_drop(d) and not s.exists() and "shadow" not in state(d)
+        hors = Path(tmp) / "tmp.hors"
+        hors.mkdir()
+        (d / "state.json").write_text(json.dumps({"shadow": str(hors)}))
+        before = (d / "state.json").read_text()
+        r = subprocess.run([sys.executable, str(GUARD), "shadow-drop", str(d)], capture_output=True, text=True)
+        assert r.returncode == 2 and r.stderr and hors.is_dir() and (d / "state.json").read_text() == before
+
+
+def test_shadow_list():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp)
+        run = lambda *a: subprocess.run([sys.executable, str(GUARD), *a], capture_output=True, text=True)
+        a, b = (run("shadow-new", str(d), "--list").stdout.strip() for _ in range(2))
+        try:
+            assert state(d)["shadows"] == [a, b] and "shadow" not in state(d)
+            assert run("shadow-drop", str(d), a).returncode == 0
+            assert state(d)["shadows"] == [b] and not os.path.exists(a)
+        finally:
+            for p in (a, b):
+                shutil.rmtree(p, ignore_errors=True)
 
 
 if __name__ == "__main__":

@@ -58,16 +58,7 @@ Third-party plugins are **referenced, never copied**: they auto-update from upst
 
 ## osho-core
 
-| Component | Type | What it does |
-|---|---|---|
-| `repo-init-nobori` | Skill | After `git init` / `git clone`, or on request: builds the code-review-graph, installs its pre-commit hook and the versioned pre-push relay, then audits and aligns the repo on Nobori's Git & CI process |
-| `donnees-fictives` | Skill | Builds invented test data from confidential client documents, with an automatic leak check and purge |
-| `audit-loop` | Skill + agent | Say *"audit loop on PR #12"*: a senior auditor files issues for production-breaking problems only, a dev fixes them, repeat up to 3 rounds, then it proposes the merge |
-| `tache` | Skill | Paste *"/tache <id>"* from a card of Horizon's Kanban: the session starts from the card's context and leaves a session log on it when done. Needs the `horizon-kanban` MCP server (Horizon → Kanban → Accès Claude Code) and Tailscale |
-| `revue-artefact` | Skill + hook | Plans, specs, end-of-work reports and questions come as an artifact page: a plain-language summary, then the questions with Claude's recommendation pre-ticked. Tick, *Envoyer*, say *"c'est fait"*: Claude reads the answers back. The hook brings it up when a Superpowers skill starts that ends in a review or a decision |
-| `escouade` | Skill | In an Escouade ticket: one ticket per batch, sub-tasks shown in the agent header, the PR only for the audit; the Kanban merges, never GitHub as well |
-| `superpowers-offer` | Hooks | Removes Superpowers' always-on bootstrap; on substantial dev work, asks once per session whether to use it |
-| `crg` | Hooks | Shows the graph status at session start and updates it after each edit, only in repos where it was built |
+Our own skills, agent and hooks: repo setup on Nobori's Git & CI process, invented test data from confidential documents, the audit loop, the Escouade method, and reviews as an artifact page. Every component is listed in [docs/skills.md](docs/skills.md).
 
 ### Activate a repo
 
@@ -86,7 +77,7 @@ From then on the graph stays up to date on every edit and every commit.
 
 ## osho-mantis
 
-Security audits with [google/mantis](https://github.com/google/mantis), run on your Claude Code subscription (no Google or API key needed). Installed by the bootstrap; Mantis itself is cloned to `~/.local/share/mantis` on first use.
+Security audits with [google/mantis](https://github.com/google/mantis), run on your Claude Code subscription (no Google or API key needed). Installed by the bootstrap; Mantis itself is cloned to `~/.local/share/mantis` on first use, pinned to the commit in `plugins/osho-mantis/mantis.lock`. Every skill and script is listed in [docs/skills.md](docs/skills.md).
 
 In a repo, say *"mantis triage"*: a short pass recommends a level with a quota estimate for your subscription. Then *"mantis run"* runs the audit. If it is interrupted (quota, error), say *"mantis run"* again to resume where it stopped.
 
@@ -125,6 +116,8 @@ bootstrap/Brewfile                CLI tools
 bootstrap/claude/OSHO.md          global instructions, imported from ~/.claude/CLAUDE.md
 docs/                             skills catalogue and design decisions
 ```
+
+Contributing: run `make hooks` once per clone, so every `git push` first runs `make ci` (the repo's own tests and checks).
 
 ## Learn more
 
