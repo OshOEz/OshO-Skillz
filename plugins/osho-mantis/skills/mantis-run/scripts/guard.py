@@ -160,15 +160,29 @@ def _save_state(audit, st):
     os.replace(tmp, Path(audit) / "state.json")
 
 
+def _state(audit):
+    """state.json absent : on part de {} ; présent mais illisible : refusé, pour ne jamais écraser la campagne."""
+    p = Path(audit) / "state.json"
+    if not p.exists() and not p.is_symlink():
+        return {}
+    try:
+        st = json.loads(p.read_text())
+    except (OSError, ValueError):
+        st = None
+    if not isinstance(st, dict):
+        raise RuntimeError("state.json illisible")
+    return st
+
+
 def shadow_ok(path):
     """Seul un `mktemp -d` encore présent passe ; le parent se compare sans résoudre les liens."""
-    return bool(path) and os.path.isdir(path) and not os.path.islink(path) and ".." not in path \
+    return isinstance(path, str) and bool(path) and os.path.isdir(path) and not os.path.islink(path) and ".." not in path \
         and os.path.dirname(path) == os.path.dirname(_mktemp("-u")) and os.path.basename(path).startswith("tmp.")
 
 
 def shadow_new(audit, as_list=False):
+    st = _state(audit)
     path = _mktemp("-d")
-    st = _load(Path(audit) / "state.json", {})
     if as_list:
         st["shadows"] = list(st.get("shadows") or []) + [path]
     else:
@@ -191,11 +205,11 @@ def _copy(audit, shadow):
 
 
 def shadow_reset(audit, path=None):
-    st = _load(Path(audit) / "state.json", {})
+    st = _state(audit)
     path = path or st.get("shadow")
     if shadow_ok(path):
         shutil.rmtree(path)
-        os.mkdir(path)
+        os.mkdir(path, 0o700)
     else:
         # Le chemin refusé n'est jamais supprimé ni modifié : un shadow neuf prend sa place dans state.json.
         old, path = path, _mktemp("-d")
@@ -215,7 +229,7 @@ def shadow_reset(audit, path=None):
 
 
 def shadow_drop(audit, path=None):
-    st = _load(Path(audit) / "state.json", {})
+    st = _state(audit)
     path = path or st.get("shadow")
     if not shadow_ok(path):
         return False
@@ -248,17 +262,18 @@ def main(argv):
         files = argv[3:] or [p["file"] for p in check(audit)]
         for name in restore(audit, files):
             print(name)
-    elif cmd == "shadow-new":
-        print(shadow_new(audit, as_list=argv[3:] == ["--list"]))
-    elif cmd == "shadow-reset":
+    elif cmd in shadow_cmds:
+        path = argv[3] if len(argv) > 3 and cmd != "shadow-new" else None
         try:
-            print(shadow_reset(audit, argv[3] if len(argv) > 3 else None))
+            if cmd == "shadow-new":
+                print(shadow_new(audit, as_list=argv[3:] == ["--list"]))
+            elif cmd == "shadow-reset":
+                print(shadow_reset(audit, path))
+            elif not shadow_drop(audit, path):
+                print("shadow refusé par la garde : rien supprimé", file=sys.stderr)
+                sys.exit(2)
         except RuntimeError as e:
             sys.exit(str(e))
-    elif cmd == "shadow-drop":
-        if not shadow_drop(audit, argv[3] if len(argv) > 3 else None):
-            print("shadow refusé par la garde : rien supprimé", file=sys.stderr)
-            sys.exit(2)
     else:
         print(resume(audit))
 

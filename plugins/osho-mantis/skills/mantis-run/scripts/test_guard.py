@@ -151,20 +151,23 @@ def test_shadow_guard_accepts_own_mktemp():
 def test_shadow_guard_rejects():
     D = tmp_d()
     real = subprocess.run(["mktemp", "-d"], capture_output=True, text=True, check=True).stdout.strip()
-    voisin, lien = os.path.join(D, "com.apple.x"), os.path.join(D, "tmp.lien")
-    os.mkdir(voisin)
-    os.symlink(real, lien)
+    suffixe = f"{os.getpid()}-{os.urandom(4).hex()}"
+    voisin, lien = os.path.join(D, f"com.apple.x{suffixe}"), os.path.join(D, f"tmp.lien{suffixe}")
     try:
+        os.mkdir(voisin)
+        os.symlink(real, lien)
         with tempfile.TemporaryDirectory() as tmp:
             ailleurs = os.path.join(tmp, "tmp.x")
             os.mkdir(ailleurs)
             for p in ("", None, os.path.join(D, "tmp.inexistant"), os.path.expanduser("~"),
-                      D + "/../../../../etc/x", voisin, lien, ailleurs):
+                      D + "/../../../../etc/x", voisin, lien, ailleurs, ["x"], 3):
                 assert not guard.shadow_ok(p), p
     finally:
-        os.unlink(lien)
-        os.rmdir(voisin)
-        os.rmdir(real)
+        if os.path.islink(lien):
+            os.unlink(lien)
+        for p in (voisin, real):
+            if os.path.isdir(p):
+                os.rmdir(p)
 
 
 def test_shadow_reset_copies_tracked_only():
@@ -194,6 +197,39 @@ def test_shadow_reset_refused_path_is_left_alone():
             st = state(d)
             assert st["shadow"] == str(s) and st["notes"] == ["shadow recréé : ancien chemin refusé ou absent"]
             assert os.listdir(s) == ["suivi.txt"]
+        finally:
+            shutil.rmtree(s)
+
+
+def test_shadow_reset_refused_list_entry_replaced_in_place():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp)
+        git_repo(Path(tmp) / "repo")
+        hors = Path(tmp) / "tmp.hors"
+        hors.mkdir()
+        (d / "state.json").write_text(json.dumps({"shadow": "garde", "shadows": ["a", str(hors), "b"]}))
+        s = guard.shadow_reset(d, str(hors))
+        try:
+            st = state(d)
+            assert hors.is_dir() and st["shadows"] == ["a", str(s), "b"] and st["shadow"] == "garde", st
+        finally:
+            shutil.rmtree(s)
+
+
+def test_shadow_commands_refuse_unreadable_state():
+    D = tmp_d()
+    with tempfile.TemporaryDirectory() as tmp:
+        d = audit(tmp)
+        s = guard.shadow_new(d)
+        try:
+            for bad in ('{"round": 2, "stag', "[1, 2]"):
+                (d / "state.json").write_text(bad)
+                before = {n for n in os.listdir(D) if n.startswith("tmp.")}
+                for cmd in (["shadow-new"], ["shadow-reset"], ["shadow-drop", str(s)]):
+                    r = subprocess.run([sys.executable, str(GUARD), cmd[0], str(d), *cmd[1:]], capture_output=True, text=True)
+                    assert r.returncode != 0 and "state.json illisible" in r.stderr, (cmd, r.stderr)
+                    assert (d / "state.json").read_text() == bad and s.is_dir()
+                assert {n for n in os.listdir(D) if n.startswith("tmp.")} == before, "aucun shadow créé"
         finally:
             shutil.rmtree(s)
 
