@@ -17,7 +17,7 @@ HOSTILE = "<img src=x onerror=alert(1)>"
 def audit(tmp, findings, finished=True, notes=(), level="Overkill", rnd=3):
     d = Path(tmp) / "repo" / "osho-mantis" / "audit-x"
     (d / "workspace" / "findings").mkdir(parents=True)
-    camp = {"repo": str(Path(tmp) / "repo"), "level": level, "mantis_commit": "f3162c0",
+    camp = {"repo": str(Path(tmp) / "repo"), "level": level, "mantis_commit": "f3162c0bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "started_at": "2026-10-29T12:10:09"}
     if finished:
         camp["finished_at"] = "2026-10-30T08:07:47"
@@ -44,6 +44,7 @@ def test_sections():
         assert "<script" not in page.lower(), "pas de JS dans le bilan"
         assert 'class="top"' not in page, "pas de barre Mantis / repo : l'onglet Bilan ne la répète pas"
         assert "Java Spring" in page and "permitAll" in page
+        assert "Mantis f3162c0," in page and "f3162c0bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" not in page, "commit Mantis court"
 
 
 def test_verdict_ouvert():

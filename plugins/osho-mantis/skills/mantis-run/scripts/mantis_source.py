@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Copie de Mantis figée sur le commit accepté de mantis.lock, retard sur l'amont, contrat des skills
   python3 mantis_source.py ensure|behind|diff [--lock <fichier>] [--dir <dossier>]
+  python3 mantis_source.py ensure --commit <sha>   reprise d'un audit : le commit de son départ, pas celui du lock
 """
 import json
 import os
@@ -122,11 +123,11 @@ def diff(lock, d):
 
 
 def main(argv):
-    args, opts = [], {"--lock": LOCK, "--dir": DIR}
+    args, opts = [], {"--lock": LOCK, "--dir": DIR, "--commit": None}
     it = iter(argv[1:])
     for a in it:
         if a in opts:
-            opts[a] = Path(next(it, ""))
+            opts[a] = next(it, "") if a == "--commit" else Path(next(it, ""))
         else:
             args.append(a)
     if len(args) != 1 or args[0] not in ("ensure", "behind", "diff"):
@@ -137,6 +138,10 @@ def main(argv):
         return 0
     try:
         lock = load_lock(opts["--lock"])
+        if opts["--commit"] is not None:
+            if args[0] != "ensure" or not re.fullmatch(r"[0-9a-f]{40}", opts["--commit"]):
+                raise ValueError("--commit : un sha complet de 40 caractères, avec ensure seulement")
+            lock["commit"] = opts["--commit"]
         print(json.dumps(globals()[args[0]](lock, opts["--dir"]), ensure_ascii=False))
     except (ValueError, RuntimeError, OSError) as err:
         print(err, file=sys.stderr)

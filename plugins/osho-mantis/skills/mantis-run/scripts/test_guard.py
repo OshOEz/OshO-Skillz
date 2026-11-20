@@ -11,6 +11,10 @@ import tempfile
 import time
 from pathlib import Path
 
+# Un GIT_DIR hérité (hook pre-push d'un worktree lié) ferait écrire les dépôts de test dans le vrai dépôt.
+for _k in subprocess.run(["git", "rev-parse", "--local-env-vars"], capture_output=True, text=True).stdout.split():
+    os.environ.pop(_k, None)
+
 import guard
 
 GUARD = Path(__file__).with_name("guard.py")
@@ -217,20 +221,28 @@ def test_shadow_reset_refused_list_entry_replaced_in_place():
 
 
 def test_shadow_commands_refuse_unreadable_state():
-    D = tmp_d()
     with tempfile.TemporaryDirectory() as tmp:
         d = audit(tmp)
         s = guard.shadow_new(d)
+        # Les `mktemp -d` de guard sont notés ici, pas comptés dans le dossier temporaire partagé avec d'autres processus.
+        made, real = [], guard._mktemp
+        guard._mktemp = lambda *a: made.append(a) or real(*a)
         try:
             for bad in ('{"round": 2, "stag', "[1, 2]"):
                 (d / "state.json").write_text(bad)
-                before = {n for n in os.listdir(D) if n.startswith("tmp.")}
                 for cmd in (["shadow-new"], ["shadow-reset"], ["shadow-drop", str(s)]):
                     r = subprocess.run([sys.executable, str(GUARD), cmd[0], str(d), *cmd[1:]], capture_output=True, text=True)
                     assert r.returncode != 0 and "state.json illisible" in r.stderr, (cmd, r.stderr)
                     assert (d / "state.json").read_text() == bad and s.is_dir()
-                assert {n for n in os.listdir(D) if n.startswith("tmp.")} == before, "aucun shadow créé"
+                for fn, args in ((guard.shadow_new, ()), (guard.shadow_reset, ()), (guard.shadow_drop, (str(s),))):
+                    try:
+                        fn(d, *args)
+                        raise AssertionError(f"{fn.__name__} a accepté un state.json illisible")
+                    except RuntimeError as err:
+                        assert "state.json illisible" in str(err), err
+                assert ("-d",) not in made, "aucun shadow créé"
         finally:
+            guard._mktemp = real
             shutil.rmtree(s)
 
 
