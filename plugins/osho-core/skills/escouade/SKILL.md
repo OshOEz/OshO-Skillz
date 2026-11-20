@@ -1,11 +1,11 @@
 ---
 name: escouade
-description: Méthode pour travailler avec Escouade (Kanban de tickets qui lance un agent Claude Code par ticket, dans un worktree sur la branche ticket/<clé>). Utiliser dès qu'une session tourne sur une branche ticket/<clé> ou commence par « Tu travailles en autonomie sur le ticket », quand l'utilisateur veut découper un travail en tickets Escouade, demande comment utiliser Escouade, ou veut fusionner, auditer ou clore un ticket.
+description: Méthode pour travailler avec Escouade (Kanban de tickets qui lance un agent Claude Code par ticket, dans un worktree sur la branche ticket/<clé>). Utiliser dès qu'une session tourne sur une branche ticket/<clé> ou commence par « Tu travailles en autonomie sur le ticket », quand l'utilisateur veut découper un travail en tickets Escouade, demande comment utiliser Escouade, veut fusionner, auditer ou clore un ticket, quand un ticket est renvoyé après un audit, ou pour laisser une demande dans « À toi ».
 ---
 
 # escouade
 
-Escouade fait foi pour le suivi **et pour la fusion** : un ticket se fusionne depuis le Kanban, jamais par une PR GitHub en plus. Une PR sert seulement à l'audit.
+Escouade fait foi pour le suivi, l'audit et la fusion : un ticket s'audite et se fusionne depuis le Kanban, jamais par une PR GitHub en plus.
 
 Contexte du dépôt (sort 1 hors d'un ticket) :
 
@@ -18,29 +18,43 @@ bash "${CLAUDE_PLUGIN_ROOT}/skills/escouade/scripts/contexte.sh" [chemin] [base]
 
 ## Découper : un ticket = un lot
 
-- **Un ticket Kanban par lot livrable** (une PR, un bilan), pas par tâche. Les tâches du lot sont des sous-tâches de la session (`TaskCreate`, une par tâche du plan) : elles s'affichent en haut de l'agent dans Escouade.
-- **Plusieurs tickets** seulement pour des lots indépendants (fichiers disjoints, testables seuls), qui peuvent tourner en parallèle. Si un lot dépend d'un autre, crée-le **après** la fusion du premier, pour qu'il parte d'une base à jour.
-- Chaque ticket porte ses critères d'acceptation vérifiables (une commande, un test, un écran).
-- Le découpage se fait depuis une session classique (hors ticket), avec superpowers:brainstorming puis writing-plans si c'est complexe, puis le MCP Escouade pour créer les tickets.
+- **Un ticket par lot livrable** (un bilan), pas par tâche, ses critères vérifiables (une commande, un test, un écran) dans `criteria`.
+- Un lot qui dépend d'un autre se crée **tout de suite** avec `after` : il démarre quand ceux-là sont finis.
+- `model` et `effort` par ticket quand le lot le demande.
+- Lis la cible et l'action dans `get_board`, ne les suppose pas.
+- Avant `create_ticket`, mets la branche cible **locale** à jour, car avec l'autopilote le ticket démarre aussitôt depuis elle : `git branch --show-current` affiche `<cible>` → `git pull --ff-only` ; sinon → `git fetch origin <cible>:<cible>`.
+- Un ticket qui attend une décision de l'utilisateur : `ask_user` avec `tickets`, pour que l'autopilote le laisse en attente.
+- Le découpage se fait depuis une session classique (hors ticket), avec superpowers:brainstorming puis writing-plans si c'est complexe.
 
 ## Dans un ticket (agent lancé par Escouade)
 
-1. **Rattraper la base.** `contexte.sh` donne un `retard` supérieur à 0 → `git fetch origin && git merge origin/<base>` sur la branche du ticket. Ne jamais `reset` la branche ni travailler sur une autre : Escouade suit `ticket/<clé>` et c'est elle qu'il fusionne.
-2. **Plan.** Lot complexe : superpowers (brainstorming, writing-plans, subagent-driven-development). Une décision à prendre → l'outil de question, qui est le seul canal vers l'utilisateur ; sinon tiens les décisions du plan pour acquises et note-les dans le bilan.
-3. **Sous-tâches.** `TaskCreate` pour chaque tâche du plan, et `TaskUpdate` au fil de l'eau.
-4. **Ports et secrets.** Utilise les ports réservés que donne le prompt (`ESCOUADE_PORT_BASE`, `ESCOUADE_PORT_END`) en variables d'environnement, jamais dans un fichier versionné. Ne commite pas les fichiers qu'Escouade copie depuis le projet (`.env`…).
-5. **Commits** sur `ticket/<clé>`, avec `[<CLÉ>]` à la fin du message de commit qui clôt chaque étape.
-6. **Audit.** `git push -u origin ticket/<clé>`, PR depuis cette branche (`gh pr create --base <base> --head ticket/<clé> --fill`), puis `osho-core:audit-loop`. En mode Escouade, il ne fusionne pas et ramène les correctifs sur la branche locale.
-7. **Fin.** Le bilan demandé par le prompt (bloc `escouade`, critères vérifiés par une commande, `lancement`). Ne fusionne rien : la fusion se fait dans le Kanban.
+1. **Mémoire.** `search_memory` sur le sujet du ticket, pour reprendre les façons de faire et les pièges déjà notés.
+2. **Rattraper la base.** `contexte.sh` donne un `retard` supérieur à 0 → `git fetch origin && git merge origin/<base>` sur la branche du ticket. Ne jamais `reset` la branche ni changer de branche dans le worktree : Escouade suit `ticket/<clé>` et c'est elle qu'il fusionne.
+3. **Plan, puis tâches.** Lot complexe : superpowers (brainstorming, writing-plans, subagent-driven-development). `TaskCreate` par tâche **dès le plan approuvé, avant le premier sous-agent**, car elles s'affichent en haut de l'agent dans Escouade ; `TaskUpdate` et `report_progress` à chaque tâche.
+4. **Sous-agents dans le worktree du ticket**, jamais dans un autre, car Escouade ne voit que `ticket/<clé>` ; une tâche commitée à la fois, `[<CLÉ>]` à la fin du message.
+5. **Ne jamais finir un tour pour surveiller** ou attendre un sous-agent, car chaque fin de tour compte comme une boucle et un ticket qui épuise ses boucles est tenu pour fini. Une demande `ask_user` ne s'attend pas non plus : continue, sa réponse te réveillera.
+6. **Deux canaux vers l'utilisateur.** La question qui te bloque → l'outil de question ; ce que tu attends sans être bloqué (un choix, un feu vert, un essai qu'il est seul à pouvoir faire) → `ask_user`, avec ta recommandation, jamais un secret.
+7. **Décisions et méthode.** Une décision sur le produit → `propose_decision`. Une façon de travailler apprise → `write_memory`.
+8. **Ports et secrets.** Utilise les ports réservés du prompt (`ESCOUADE_PORT_BASE`, `ESCOUADE_PORT_END`) en variables d'environnement, jamais dans un fichier versionné ; arrête tes serveurs par PID ou par tes propres ports, jamais par un motif (`pkill -f`), car tu tuerais ceux des autres tickets. Ne commite pas les fichiers qu'Escouade copie depuis le projet (`.env`…).
+9. **Hors du lot.** Du travail qui reste et sort du lot → `split_ticket`.
+10. **Fin.** Le bilan demandé par le prompt (bloc `escouade`, critères vérifiés par une commande). N'audite pas ton propre ticket et ne fusionne rien.
+11. **Ticket renvoyé après un audit** (le commentaire liste des constats `F1`, `F2`…) : un commit par constat, avec `Refs F<n>` dans son message. Un constat que tu juges faux ne se corrige pas : conteste-le, avec la raison. Puis termine ton dernier message par ce bloc, **en toutes dernières lignes**, car l'auditeur ne reçoit que le début et la fin d'un long message :
 
-## Fusionner un ticket (humain ou session principale)
+   ```
+   AUDIT:
+   F1 corrigé 3f2a9c1
+   F2 contesté : le cas vide est déjà refusé par la route
+   ```
 
-1. Fusionner depuis le Kanban d'Escouade.
-2. `git push origin <base>` : sinon la base locale diverge d'`origin` et les tickets suivants partent d'une base fausse.
-3. Fermer la PR d'audit : `gh pr close <n> --comment "Fusionné via le Kanban d'Escouade (<sha>)."`
+## Auditer et fusionner (session principale)
 
-Ne jamais fusionner aussi la PR sur GitHub : sur un projet, deux tickets ont été fusionnés deux fois (squash local par le Kanban et PR sur `origin/dev`) ; le `dev` local avait alors 2 commits d'avance et 40 de retard.
+1. **Auditer** un ticket « À revoir » : `osho-core:audit-loop <CLÉ>` depuis la session principale. L'agent du ticket n'audite ni n'approuve jamais son propre ticket (Escouade le refuse de toute façon).
+2. **Approuver** : `approve_ticket`, puis selon l'`action` de `get_board` :
+   - `merge` → `git push origin <cible>`, sinon la cible locale diverge d'`origin` et les tickets suivants partent d'une base fausse ;
+   - `pr` → donne à l'utilisateur le lien de la PR ouverte par Escouade et arrête-toi : ne la fusionne jamais toi-même ;
+   - `push`, `keep` → dis ce qu'Escouade a fait, rien de plus.
+3. **Conflit de fusion** → `resolve_conflict`.
 
 ## Hors Escouade
 
-Rien ne change : branche `feat/…`, PR, `audit-loop` qui propose la fusion de la PR.
+Branche `feat/…`, PR, puis `osho-core:audit-loop` en mode PR.
