@@ -29,6 +29,7 @@ const titre = n.find(x => x.textContent === 'En 30 secondes');
 const bref = titre ? n.find(x => x.enfants.includes(titre)) : null;
 const details = n.filter(x => x.tag === 'details' && x.enfants.some(e => e.tag === 'summary' && e.textContent === 'Détail technique'));
 console.log(JSON.stringify({
+  titre: n.find(x => x.tag === 'h1')?.textContent, chapo: n.find(x => x.className === 'chapo')?.textContent ?? null,
   bref: bref ? tous(bref).filter(x => x.tag === 'li').map(x => x.textContent) : null,
   details: details.map(d => tous(d).filter(x => x.tag === 'p').map(x => x.textContent).join('')),
   vides: n.filter(x => x.tag === 'details' || x.className === 'bref').length - details.length - (bref ? 1 : 0),
@@ -54,12 +55,20 @@ grep -q "<details" "$gabarit" || grep -q "'details'" "$gabarit" || fail "details
 printf '%s' '{"questions":[]}' > "$t/sans.json"
 if bash "$script" "$t/sans.json" "$t/sans.html" 2>/dev/null; then fail "sans titre accepté"; else [ $? -eq 1 ] || fail "code attendu 1"; fi
 
+# « <!-- » dans une chaîne ne doit pas avaler le script de la page : il ne reste pas brut dans la page
+printf '%s' '{"titre":"Revue piege","chapo":"avant <!--<script> après","questions":[]}' > "$t/piege.json"
+bash "$script" "$t/piege.json" "$t/piege.html" >/dev/null || fail "contenu piège refusé"
+grep -q '<!--<script>' "$t/piege.html" && fail "<!-- laissé brut dans la page"
+
 # Rendu dans un faux DOM : 3 lignes au plus, un repli par champ technique, rien sans ces champs
 if command -v node >/dev/null 2>&1; then
   out=$(rendre "$t/riche.html") || fail "rendu riche"
-  [ "$out" = '{"bref":["a1","b2","c3"],"details":["détail-section","détail-question"],"vides":0}' ] || fail "rendu riche"
+  [ "$out" = '{"titre":"Revue riche","chapo":null,"bref":["a1","b2","c3"],"details":["détail-section","détail-question"],"vides":0}' ] || fail "rendu riche"
   out=$(rendre "$t/avant.html") || fail "rendu d'avant"
-  [ "$out" = '{"bref":null,"details":[],"vides":0}' ] || fail "rendu d'avant"
+  [ "$out" = '{"titre":"Revue simple","chapo":null,"bref":null,"details":[],"vides":0}' ] || fail "rendu d'avant"
+  # Le texte piège revient intact une fois la page rendue
+  out=$(rendre "$t/piege.html") || fail "rendu piège"
+  [ "$out" = '{"titre":"Revue piege","chapo":"avant <!--<script> après","bref":null,"details":[],"vides":0}' ] || fail "rendu piège"
 else
   echo "SKIP (node absent)"
 fi

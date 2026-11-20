@@ -54,10 +54,11 @@ conversation : la page est publiée et ouverte comme plus haut, puis :
 - **Les réponses ne bloquent pas la suite** : `ask_user` de `kind: "task"`, titre « Réponds sur la page : <titre> »,
   le lien dans `body`, `steps` « Ouvrir la page », « Cocher tes réponses », « Envoyer », et `unblocks` qui dit ce que
   les réponses débloquent. Continue ensuite le travail et finis le ticket normalement, sans attendre : un tour qui
-  s'arrête pour attendre compte dans les boucles du ticket. Sa réponse te réveille : lis alors la page (`ArtifactData`
-  `get`, comme à l'étape 7) et agis.
-- **Les réponses bloquent la suite** : pas d'`ask_user` ; pose la question avec l'outil de question : « Réponds sur la
-  page <lien>, puis valide ici ».
+  s'arrête pour attendre compte dans les boucles du ticket ; à la fin, dis dans ton bilan que les réponses sont en
+  attente. Sa réponse te réveille : lis alors la page (`ArtifactData` `get`, comme à l'étape 7) et agis. Si le ticket
+  est déjà fini (« À revoir »), applique ce qu'elles changent sur la même branche, commite, et note-les comme à l'étape 8.
+- **Les réponses bloquent la suite** : pas d'`ask_user` ; pose la question avec `AskUserQuestion` : « Réponds sur la
+  page <lien>, puis valide ici », puis lis la page comme à l'étape 7.
 
 ## Format de `contenu.json`
 
