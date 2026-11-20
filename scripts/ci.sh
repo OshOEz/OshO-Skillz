@@ -20,7 +20,7 @@ for f in $(find plugins bootstrap scripts .githooks -name '*.sh' | sort); do
 done
 
 # 4. JSON validity (mantis.lock once it exists).
-for f in $(find .claude-plugin plugins -name '*.json' | sort) $(ls mantis.lock 2>/dev/null); do
+for f in $(find .claude-plugin plugins -name '*.json' | sort) $(find plugins -name mantis.lock); do
   jq empty "$f" 2>/dev/null || fail "invalid JSON: $f"
 done
 
