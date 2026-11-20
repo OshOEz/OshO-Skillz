@@ -49,7 +49,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/skills/escouade/scripts/contexte.sh" [chemin] [base]
 ## Auditer et fusionner (session principale)
 
 1. **Auditer** un ticket « À revoir » : `osho-core:audit-loop <CLÉ>` depuis la session principale. L'agent du ticket n'audite ni n'approuve jamais son propre ticket (Escouade le refuse de toute façon).
-2. **Approuver** : `approve_ticket` répond dès le début de l'approbation (tests, commit, action du Kanban) ; `wait_ticket` jusqu'à ce que le ticket soit fini ou bloqué, puis lis son issue dans `get_ticket` (lien de la PR compris, blocage sur un conflit). Selon l'`action` de `get_board` :
+2. **Approuver** : `approve_ticket` répond dès le début de l'approbation (tests, commit, action du Kanban) ; `wait_ticket` jusqu'à ce que le ticket soit fini ou bloqué (240 s au plus par appel, repris avec `since`), puis lis son issue dans `get_ticket` (lien de la PR compris, blocage sur un conflit). Selon l'`action` de `get_board` :
    - `merge` → `git push origin <cible>`, sinon la cible locale diverge d'`origin` et les tickets suivants partent d'une base fausse ;
    - `pr` → donne à l'utilisateur le lien de la PR ouverte par Escouade et arrête-toi : ne la fusionne jamais toi-même ;
    - `push`, `keep` → dis ce qu'Escouade a fait, rien de plus.
