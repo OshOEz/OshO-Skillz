@@ -20,7 +20,7 @@ Stage folders mantis-run runs (same list as `STAGE_DIRS` in `mantis_source.py`):
    - no stage folder and no file cited by a stage changed, and the contract check is empty → `take`, reason « rien de ce que mantis-run utilise n'a changé », the Light trial of 7.6 optional: the pin then moves past reviewed content, so the "commits behind" line stops growing and the same commits are not analysed again.
 5. **Review.** Use `osho-core:revue-artefact`, written in your own words (never paste upstream text): title « Mise à jour de Mantis », `sur` = `<commits> commits, <from 7>..<to 7>`, three sections in plain French (`USEFUL` as « Ce qui sert », `BREAKING` as « Ce qui change pour mantis-run » with `ton: alerte`, `SUSPECT` as « Points suspects » with `ton: alerte`; omit an empty one), then one question `decision` with choices `take` « Prendre », `wait` « Attendre », `reject` « Ne pas prendre », the recommendation checked (`reco: true`) and its one-line reason as `contexte`.
 
-Steps 6 and 7 act on the `decision` answer read back from the page (revue-artefact step 6, `ArtifactData get`), never on the recommendation. No answer, or the page could not be published → change nothing, give the recommendation in the terminal and stop.
+Steps 6 and 7 act on the `decision` answer read back from the page (revue-artefact step 7, `ArtifactData get`), never on the recommendation. No answer, or the page could not be published → change nothing, give the recommendation in the terminal and stop.
 
 6. **Wait or reject:** change nothing; say the pin stays on `<from 7>`. Stop.
 7. **Take.** The pin moves to `to`, the commit analysed, even if upstream moved again since: the user accepted that commit, not a newer one.

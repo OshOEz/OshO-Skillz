@@ -33,7 +33,8 @@ done
 
 # 6. Escouade tools quoted in osho-core must exist, or an agent calls a tool that is not there.
 for f in plugins/osho-core/skills/*/SKILL.md plugins/osho-core/agents/*.md; do
-  for w in $(grep -o -E '`[a-z]+_(ticket|user|progress|memory|decision|board|conflict|agent_summary)`' "$f" | tr -d '`' | sort -u); do
+  # Plain (`get_ticket`) and call form (`get_ticket(ticket)`).
+  for w in $(grep -o -E '`[a-z]+_(ticket|user|progress|memory|decision|board|conflict|agent_summary|projects)[`(]' "$f" | tr -d '`(' | sort -u); do
     grep -qx "$w" scripts/escouade-tools.txt || fail "$f: unknown Escouade tool '$w'"
   done
 done
