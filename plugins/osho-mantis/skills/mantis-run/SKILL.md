@@ -9,7 +9,7 @@ Visibility of the current directory's repo, computed when this skill loaded: !`b
 
 Paths: `T="${CLAUDE_PLUGIN_ROOT}/skills/mantis-triage/scripts"`, `R="${CLAUDE_PLUGIN_ROOT}/skills/mantis-run/scripts"`, `M="$HOME/.local/share/mantis"`.
 
-References: `wait.md`, `fixes.md` and `patch-reattack.md` live in `${CLAUDE_PLUGIN_ROOT}/skills/mantis-run/references/`. A section marked `(references/<file>.md)` is in that file: read it before acting on that section.
+References: `wait.md`, `fixes.md` and `patch-reattack.md` live in `${CLAUDE_PLUGIN_ROOT}/skills/mantis-run/references/`. A section marked `(references/<file>.md)` is in that file: read it when you reach a step tagged with it, not before.
 
 ## 1. Select the audit
 
@@ -35,7 +35,7 @@ References: `wait.md`, `fixes.md` and `patch-reattack.md` live in `${CLAUDE_PLUG
 
 ## 3. Stages
 
-Run the stages in this order, skipping those that are not in the level or are already `done`. Before each stage, run the checkpoint (below), then set the stage to `"running"` and run `python3 "$R/guard.py" resume "$AUDIT"`. **Findings guard**: before dedupe, review, critic, reproduce, patch and calibrate, `python3 "$R/guard.py" backup "$AUDIT" <stage>`; after every batch of these stages returns, `python3 "$R/guard.py" check "$AUDIT"`, and if it prints lines, `python3 "$R/guard.py" restore "$AUDIT"` then rerun those findings in the next batch and add the note « <stage> : findings abîmés par un agent, restaurés : <files> ». Before dispatching each batch of agents (one message of parallel Agent calls; a single agent is batch `1/1`; in Patch Sharp+, one finding is one batch), write `current: {"stage": "<stage>", "batch": "<k>/<n>", "workers": <agents in this batch>, "model": "<model>"}` into `state.json`; after each batch returns, run the checkpoint. After the stage, drop `current`, run the check, then set the stage to `"done"`. Before the reproduce stage specifically, wipe and recopy the shadow (2.4) first (`python3 "$R/guard.py" shadow-reset "$AUDIT"`) — a clean copy, since a prior patch run may have left its diff applied (matters most for Overkill rounds 2–3, where reproduce reruns after a patch round).
+Run the stages in this order, skipping those that are not in the level or are already `done`. Before each stage, run the checkpoint (below), then set the stage to `"running"` and run `python3 "$R/guard.py" resume "$AUDIT"`. **Findings guard**: before dedupe, review, critic, reproduce, patch and calibrate, `python3 "$R/guard.py" backup "$AUDIT" <stage>`; after every batch of these stages returns, `python3 "$R/guard.py" check "$AUDIT"`, and if it prints lines, `python3 "$R/guard.py" restore "$AUDIT"` then rerun those findings in the next batch and add the note « <stage> : findings abîmés par un agent, restaurés : <files> ». Before dispatching each batch of agents (one message of parallel Agent calls; a single agent is batch `1/1`; in Patch Sharp+ (references/patch-reattack.md), one finding is one batch), write `current: {"stage": "<stage>", "batch": "<k>/<n>", "workers": <agents in this batch>, "model": "<model>"}` into `state.json`; after each batch returns, run the checkpoint. After the stage, drop `current`, run the check, then set the stage to `"done"`. Before the reproduce stage specifically, wipe and recopy the shadow (2.4) first (`python3 "$R/guard.py" shadow-reset "$AUDIT"`) — a clean copy, since a prior patch run may have left its diff applied (matters most for Overkill rounds 2–3, where reproduce reruns after a patch round).
 
 | Stage | Mantis dir | Model | Levels | Scope | Check after |
 |---|---|---|---|---|---|
@@ -57,16 +57,16 @@ Run the stages in this order, skipping those that are not in the level or are al
 - "whole repo" scope (history, structural-index, architecture, threat-model, plan, researcher) always means `<REPO>` **excluding the `osho-mantis/` folder** (previous audits and this campaign's own files, not target code); say so in the Scope line. For plan, `<out_of_scope>` always includes `osho-mantis/` in addition to whatever triage set.
 - Dispatch parallel groups as several Agent calls in one message (`subagent_type: general-purpose`, with the model from the table).
 - A finding is "rejected" if `status` is `FALSE_POSITIVE` or `DUPLICATE`, or if `production_viability` is `NON_VIABLE` or `SAMPLE_OR_TEST`. Rejected findings skip all later stages.
-- **Fix scope:** findings printed by `python3 "$R/fixes.py" busy "$AUDIT"` (fix `running`, `ready` or `merged`) are out of scope of critic, reproduce, patch and calibrate, like rejected ones. Rerun it at the start of each of these stages and before each finding in Patch Sharp+; a stage's Check after uses the scope computed at that stage's start.
+- **Fix scope:** findings printed by `python3 "$R/fixes.py" busy "$AUDIT"` (fix `running`, `ready` or `merged`) are out of scope of critic, reproduce, patch and calibrate, like rejected ones. Rerun it at the start of each of these stages and before each finding in Patch Sharp+ (references/patch-reattack.md); a stage's Check after uses the scope computed at that stage's start.
 - Per-finding stages are resumable: on a rerun, only the findings in scope that still lack the checked field are processed.
-- **Patch scope, later passes** (Sharp+): a finding whose `repro_status` became `reproduced` while its `patch_status` is `MITIGATION_PROPOSED` (round-1 proposal never re-attacked) goes through patch + re-attack. Overkill rounds 2 and 3 also take every `VERIFICATION_FAILED` finding (move its `patch_diff`, `reattack_status` and `reattack_output` summary into a `previous_patches` list on the finding before the patch agent runs; the patch level line then adds: `A previous patch was bypassed (see previous_patches). Before writing the diff, list every sibling of the vulnerable primitive (other routes, loggers, callers, limiters) and fix them at the shared choke point.`) and every non-rejected `LOW` with `mantis_risk_score` ≥ 5.0 that has no `patch_status`.
+- **Patch scope, later passes** (Sharp+): a finding whose `repro_status` became `reproduced` while its `patch_status` is `MITIGATION_PROPOSED` (round-1 proposal never re-attacked) goes through patch + re-attack (references/patch-reattack.md). Overkill rounds 2 and 3 also take every `VERIFICATION_FAILED` finding (move its `patch_diff`, `reattack_status` and `reattack_output` summary into a `previous_patches` list on the finding before the patch agent runs; the patch level line then adds: `A previous patch was bypassed (see previous_patches). Before writing the diff, list every sibling of the vulnerable primitive (other routes, loggers, callers, limiters) and fix them at the shared choke point.`) and every non-rejected `LOW` with `mantis_risk_score` ≥ 5.0 that has no `patch_status`.
 - **API refusal** (an agent stops on a safety filter): note « <stage> : refus du filtre de l'API pour <ids> », leave those findings as they are (`statically_confirmed` stays), no automatic retry.
 - **Overkill:** the plan stage gets one investigation per source file. After reflect, if `round` < 3, increment `round`, reset plan, researcher, dedupe, review, critic, reproduce, patch, calibrate and reflect to `"pending"`, and run them again (plan then replans from `learnings.jsonl`).
 - **Failure** (an agent errors, hits the quota, or the check fails) → set the stage to `"failed"`, drop `current`, write `waiting.json` as `{"kind": "failed", "stage": "<stage>", "reason": "<why, 2 lines>", "since": "<date +%Y-%m-%dT%H:%M:%S>"}`, then wait for the user (below) (references/wait.md) with the options « relancer » and « arrêter ». Do not retry on your own.
 
 ### Checkpoint
 
-Run before each stage, after each batch of agents returns, and in Patch Sharp+ between two findings. `python3 "$R/dashboard.py" pending "$AUDIT"` prints the unacknowledged commands, one JSON object per line (`{id, at, source, action, ...}`, `finding` = finding file stem); nothing printed → continue. Handle them in order; every command ends acknowledged:
+Run before each stage, after each batch of agents returns, and in Patch Sharp+ (references/patch-reattack.md) between two findings. `python3 "$R/dashboard.py" pending "$AUDIT"` prints the unacknowledged commands, one JSON object per line (`{id, at, source, action, ...}`, `finding` = finding file stem); nothing printed → continue. Handle them in order; every command ends acknowledged:
 - `false_positive`, `prioritize_repro`, `merge_fix`, `set_cost`, `recompute_cost` → `python3 "$R/dashboard.py" apply "$AUDIT" <id>` (validates, writes the finding or `force_repro` or merges the fix, and acks it itself).
 - `fix` → `apply` (queues the fix and acks), then **Launch fixes** (below) (references/fixes.md).
 - `end_fixes` → `python3 "$R/dashboard.py" ack "$AUDIT" <id> refused "le mode Corrections n'est pas actif"`.
@@ -74,15 +74,15 @@ Run before each stage, after each batch of agents returns, and in Patch Sharp+ b
 - `stop` → **Stop** (then `python3 "$R/guard.py" resume "$AUDIT"`): first `apply` every other pending `fix` (queued for the resume, not launched); running fix agents are not stopped (they finish in the background, 1 reconciles them on resume). Then set the `running` stage, if any, back to `"pending"`, drop `current` and `paused`, set `stopped: true`, `rm -f "$AUDIT/waiting.json"`, ack `applied`, ack every other pending command `refused` « audit arrêté » (a leftover `stop` would end the next resume), run Finish 1, 2 and 4 (skip those whose inputs do not exist yet; never 3, so no `finished`), tell the user in 2 lines that the audit is stopped and `/mantis-run` resumes from there, and end.
 - `resume`, `retry`, `answer` outside a wait → `python3 "$R/dashboard.py" ack "$AUDIT" <id> refused "aucune attente en cours"`.
 
-**Wait for the user (pause, failure, question)** → read `references/wait.md` now (same directory as this file).
+**Wait for the user (pause, failure, question)** → read `references/wait.md` when you reach this step (same directory as this file).
 
-**From the terminal** → read `references/wait.md` now (same directory as this file).
+**From the terminal** (a request typed at any time in natural language) → read `references/wait.md` when it happens.
 
-**Launch fixes** → read `references/fixes.md` now (same directory as this file).
+**Launch fixes** → read `references/fixes.md` when you reach this step (same directory as this file).
 
-**Fix agent prompt** → read `references/fixes.md` now (same directory as this file).
+**Fix agent prompt** → read `references/fixes.md` when you reach this step (same directory as this file).
 
-**Fix agent finished** → read `references/fixes.md` now (same directory as this file).
+**Fix agent finished** (the notification that a background `Correctif …` agent finished, at any time in this session) → read `references/fixes.md` when it happens.
 
 ### Stage agent prompt
 
@@ -108,7 +108,7 @@ You run the Mantis stage `<stage>` of a security audit.
 - Level line, otherwise: `Level <level>.`
 - Docker line: `Execute target code only with: docker run --rm --name mantis-<audit name>-<stem>-<n> --network=none <-v "<deps_volume>":/deps:ro if state.json has deps_volume, with offline flags such as mvn -o -Dmaven.repo.local=/deps/m2 or NODE_PATH=/deps/npm/<dir>/node_modules> <--runtime=runsc if inventory.json repro.runsc> -v "<SHADOW>":/src<:ro for reproduce and the re-attack> <-v "<AUDIT>/workspace/reproducers":/poc:ro for reproduce and the re-attack> -w /src <official image for the stack, e.g. python:3.12-slim> <cmd>. For reproduce and the re-attack, the PoC file you wrote under state_root/workspace/reproducers/ is mounted read-only at /poc — run it as /poc/<file>. Pulling the image is the only network access allowed. Never run target code on the host.`
 
-**Patch + re-attack for reproduced findings (Sharp+)** → read `references/patch-reattack.md` now (same directory as this file).
+**Patch + re-attack for reproduced findings (Sharp+)** → read `references/patch-reattack.md` when you reach this step (same directory as this file).
 
 ## 4. Finish
 
@@ -119,4 +119,4 @@ You run the Mantis stage `<stage>` of a security audit.
 5. Report, 5 lines max: counts by severity, the top Critical or High finding, the `bilan.html` path, the `dashboard.html` path (for later reading; its Bilan tab exports the light and full archives). If `fixes.json` has `n` > 0 entries with `"status": "merged"`, add « <n> correctifs sur `mantis/<audit name>` : `git merge mantis/<audit name>` ». The commit line of `versioned` audits comes at the end of §5 Corrections (Exit) (references/fixes.md), since it stops the server.
 6. Enter 5 (Corrections) (references/fixes.md).
 
-**5. Corrections** → read `references/fixes.md` now (same directory as this file).
+**5. Corrections** → read `references/fixes.md` when you reach this step (same directory as this file).
