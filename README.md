@@ -126,6 +126,8 @@ bootstrap/claude/OSHO.md          global instructions, imported from ~/.claude/C
 docs/                             skills catalogue and design decisions
 ```
 
+Contributing: run `make hooks` once per clone, so every `git push` first runs `make ci` (the repo's own tests and checks).
+
 ## Learn more
 
 - [docs/skills.md](docs/skills.md): every skill and hook, and how to add a new skill

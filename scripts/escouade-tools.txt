@@ -1,0 +1,16 @@
+create_ticket
+split_ticket
+ask_user
+report_progress
+search_memory
+read_memory
+write_memory
+forget_memory
+propose_decision
+get_board
+get_ticket
+reject_ticket
+approve_ticket
+wait_ticket
+resolve_conflict
+get_agent_summary
