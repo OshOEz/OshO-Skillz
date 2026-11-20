@@ -1,0 +1,16 @@
+# patch-reattack
+
+Part of mantis-run. Paths: T, R, M as defined in SKILL.md.
+
+### Patch + re-attack for reproduced findings (Sharp+)
+
+Upstream `mantis-patch/SKILL.md` only grants `VERIFIED_SECURE` once "a fresh, independent `@mantis-reproduce --reattack` sub-agent" confirms the patch holds — but a Claude Code subagent has no Agent tool, so it cannot launch that sub-agent itself, and point 4 of the common prompt (Stage agent prompt, SKILL.md) forbids delegating anyway. mantis-run applies the patch and runs the re-attack itself, never one agent grading its own patch — and never trusting that the agent applied the diff it wrote to the tree the re-attack then tests:
+
+Findings with `repro_status: reproduced` run in groups of `parallel` (checkpoint (SKILL.md) before each group), **each with its own shadow**: `python3 "$R/guard.py" shadow-new "$AUDIT" --list` per finding (path appended to `state.json`'s `shadows` list), wiped and recopied as in 2.4 (SKILL.md) with `python3 "$R/guard.py" shadow-reset "$AUDIT" "$SHADOW"`, removed with `python3 "$R/guard.py" shadow-drop "$AUDIT" "$SHADOW"` once the finding is done (exit 2: the guard refused the path, nothing was deleted; stop and tell the user). Steps 1 to 7 run per finding inside a group (dispatch the group's patch agents in one message, then their re-attack agents in one message); `$SHADOW` below means that finding's own shadow: the path printed by the last `shadow-new`/`shadow-reset` for this finding.
+1. Wipe and recopy the shadow (2.4) (SKILL.md): `python3 "$R/guard.py" shadow-reset "$AUDIT" "$SHADOW"` — a clean copy for this finding alone.
+2. Dispatch the patch agent (stage agent prompt (SKILL.md), `mantis-patch`, opus, **no docker line** — it must not execute any code, only write `patch_diff`, scope this one finding), with this level line instead of the ones above (SKILL.md): `Write patch_diff as a unified diff relative to the repo root (a/<file>, b/<file>) and set patch_status to VERIFICATION_INCOMPLETE. Do not apply the diff, run any code, or attempt a re-attack yourself — mantis-run applies it and dispatches an independent re-attack agent next.`
+3. Wipe and recopy the shadow (2.4) (SKILL.md) again with `python3 "$R/guard.py" shadow-reset "$AUDIT" "$SHADOW"`, immediately before applying — a clean tree for `git apply`, regardless of what happened between step 1 and now.
+4. mantis-run itself writes `patch_diff` to a temp file `F` and runs `(cd "$SHADOW" && git apply --check "$F" && git apply "$F")`. On failure: set `patch_status` to `VERIFICATION_FAILED`, add a note naming the finding, and skip steps 5–6 for it (no re-attack).
+5. Dispatch a second, separate agent (stage agent prompt (SKILL.md), Mantis dir `mantis-reproduce`, opus, docker line, scope this one finding), with this level line: `Follow mantis-reproduce in --reattack mode against the patched code at <SHADOW> (the patch is already applied there by mantis-run): attempt to reproduce the finding again and write reattack_status (failed_to_bypass or bypassed_patch).`
+6. mantis-run itself sets the finding's final `patch_status` from `reattack_status`: `failed_to_bypass` → `VERIFIED_SECURE`; `bypassed_patch` → `VERIFICATION_FAILED`; anything else (missing or unclear) → `VERIFICATION_INCOMPLETE`.
+7. Check: this finding has `patch_status`, and also `reattack_status` unless step 4 skipped the re-attack.
