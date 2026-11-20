@@ -39,6 +39,13 @@ def load_lock(path):
     lock = json.loads(Path(path).read_text())
     if not all(isinstance(lock.get(k), str) and lock[k] for k in ("repo", "upstream", "commit")):
         raise ValueError(f"{path} : repo, upstream et commit attendus")
+    if not re.fullmatch(r"[0-9a-f]{40}", lock["commit"]):
+        raise ValueError(f"{path} : commit doit être un sha complet de 40 caractères, pas {lock['commit']!r}")
+    # MANTIS_SOURCE_ALLOW_LOCAL=1 n'existe que pour les tests, qui figent des dépôts locaux
+    if os.environ.get("MANTIS_SOURCE_ALLOW_LOCAL") != "1":
+        for k in ("repo", "upstream"):
+            if not lock[k].startswith("https://"):
+                raise ValueError(f"{path} : {k} doit commencer par https://")
     return lock
 
 
@@ -51,14 +58,20 @@ def ensure(lock, d):
     d = Path(d)
     cloned = not (d / ".git").exists()
     if cloned:
+        if d.exists() and any(d.iterdir()):  # git -C remonterait jusqu'à un dépôt englobant
+            raise ValueError(f"{d} n'est pas une copie de Mantis (dossier non vide sans .git)")
         d.parent.mkdir(parents=True, exist_ok=True)
-        git(d.parent, "clone", "-q", "--no-checkout", lock["repo"], str(d), timeout=NET_TIMEOUT)
+        git(d.parent, "clone", "-q", "--no-checkout", "--", lock["repo"], str(d), timeout=NET_TIMEOUT)
     set_remote(d, "origin", lock["repo"])
     set_remote(d, "upstream", lock["upstream"])
     git(d, "fetch", "-q", "origin", check=False, timeout=NET_TIMEOUT)  # hors ligne : le commit peut déjà être là
     if git(d, "cat-file", "-e", lock["commit"] + "^{commit}", check=False).returncode:
         raise ValueError(f"commit {lock['commit']} introuvable dans {lock['repo']}")
     git(d, "checkout", "-q", "--detach", lock["commit"])
+    # les SKILL.md sont lus comme consignes : une copie modifiée ne serait plus le commit figé
+    dirty = [l[3:] for l in git(d, "status", "--porcelain", "--untracked-files=all").stdout.splitlines()]
+    if dirty:
+        raise ValueError(f"copie locale de Mantis modifiée ({', '.join(dirty[:5])}) : la remettre au propre ou la supprimer")
     return {"dir": str(d), "commit": lock["commit"], "cloned": cloned}
 
 
@@ -75,17 +88,21 @@ def count(d, a, b):
 def behind(lock_path, d):
     try:
         lock = load_lock(lock_path)
+        if not (Path(d) / ".git").exists():
+            return {"behind": None}
         return {"behind": count(d, lock["commit"], upstream_head(lock, d))}
     except Exception:  # jamais bloquant : sans réseau ni amont, on ne sait pas
         return {"behind": None}
 
 
 def skill_dirs(d, rev):
-    out = git(d, "ls-tree", "-d", "--name-only", rev, "skills/").stdout.split()
+    out = git(d, "ls-tree", "-d", "--name-only", rev, "skills/").stdout.splitlines()
     return {p.split("/", 1)[1] for p in out}
 
 
 def diff(lock, d):
+    if not (Path(d) / ".git").exists():
+        raise ValueError(f"{d} n'est pas une copie de Mantis : lancer ensure d'abord")
     a, b = lock["commit"], upstream_head(lock, d)
     before, after = skill_dirs(d, a), skill_dirs(d, b)
     skills = {}

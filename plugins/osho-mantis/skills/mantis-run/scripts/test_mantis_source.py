@@ -11,6 +11,7 @@ import tempfile
 from pathlib import Path
 
 os.environ["GIT_CONFIG_GLOBAL"] = os.devnull  # aucun réglage de la machine dans les dépôts de test
+os.environ["MANTIS_SOURCE_ALLOW_LOCAL"] = "1"  # dépôts de test en chemins locaux, pas en https
 import mantis_source as ms
 
 HERE = Path(__file__).resolve().parent
@@ -121,7 +122,8 @@ def test_diff_reports_contract():
         assert run("ensure", lock, d)[0] == 0
         git(up, "mv", "skills/mantis-critic", "skills/mantis-critique")
         review = (up / "skills/mantis-review/SKILL.md").read_text().replace("`repro_status`", "")
-        commit(up, {"skills/mantis-review/SKILL.md": review, "skills/mantis-new/SKILL.md": "# new\n"})
+        commit(up, {"skills/mantis-review/SKILL.md": review, "skills/mantis-new/SKILL.md": "# new\n",
+                    "skills/mantis two/SKILL.md": "# two\n"})
         code, out = run("diff", lock, d)
         assert code == 0, out
         assert out["from"] == pinned and out["to"] == git(up, "rev-parse", "HEAD") and out["commits"] == 1, out
@@ -130,9 +132,59 @@ def test_diff_reports_contract():
             "mantis-critique": {"files": 1, "status": "added"},
             "mantis-new": {"files": 1, "status": "added"},
             "mantis-review": {"files": 1, "status": "changed"},
+            "mantis two": {"files": 1, "status": "added"},
         }, out["skills"]
         assert out["contract"] == {"missing_dirs": ["mantis-critic"], "missing_fields": ["repro_status"]}, out
         assert git(d, "rev-parse", "HEAD") == pinned  # l'amont n'est jamais extrait
+
+
+
+def test_ensure_refuses_modified_copy():
+    with tempfile.TemporaryDirectory() as tmp:
+        up, fork, lock, pinned = world(tmp)
+        d = Path(tmp) / "mantis"
+        assert run("ensure", lock, d)[0] == 0
+        (d / ".gitignore").write_text(".DS_Store\n")  # fichier non suivi
+        (d / "skills/mantis-plan/SKILL.md").write_text("autre consigne\n")
+        code, err = run("ensure", lock, d)
+        assert code == 1 and "skills/mantis-plan/SKILL.md" in err and "modifiée" in err, err
+        assert (d / "skills/mantis-plan/SKILL.md").read_text() == "autre consigne\n"  # rien d'effacé
+        git(d, "checkout", "--", "skills/mantis-plan/SKILL.md")
+        code, err = run("ensure", lock, d)
+        assert code == 1 and ".gitignore" in err, err
+        (d / ".gitignore").unlink()
+        assert run("ensure", lock, d)[0] == 0
+
+
+def test_lock_values_checked():
+    with tempfile.TemporaryDirectory() as tmp:
+        up, fork, lock, pinned = world(tmp)
+        d = Path(tmp) / "mantis"
+        lock.write_text(json.dumps({"repo": str(fork), "upstream": str(up), "commit": "origin/main"}))
+        code, err = run("ensure", lock, d)
+        assert code == 1 and "40" in err and not d.exists(), err
+        assert run("behind", lock, d) == (0, {"behind": None})
+        lock.write_text(json.dumps({"repo": str(fork), "upstream": str(up), "commit": pinned}))
+        env = dict(os.environ)
+        del env["MANTIS_SOURCE_ALLOW_LOCAL"]
+        r = subprocess.run([sys.executable, str(HERE / "mantis_source.py"), "ensure", "--lock", str(lock),
+                            "--dir", str(d)], text=True, capture_output=True, env=env)
+        assert r.returncode == 1 and "https://" in r.stderr and not d.exists(), r.stderr
+
+
+def test_dir_not_a_clone():
+    with tempfile.TemporaryDirectory() as tmp:
+        up, fork, lock, pinned = world(tmp)
+        d = up / "sub"  # dans un dépôt git : git -C remonterait jusqu'à l'amont
+        d.mkdir()
+        assert run("behind", lock, d) == (0, {"behind": None})
+        (d / "x.txt").write_text("x")
+        code, err = run("ensure", lock, d)
+        assert code == 1 and "pas une copie de Mantis" in err, err
+        assert git(up, "remote") == ""
+        (d / "x.txt").unlink()
+        code, out = run("ensure", lock, d)
+        assert code == 0 and out["cloned"] is True and git(d, "rev-parse", "HEAD") == pinned, out
 
 
 if __name__ == "__main__":
