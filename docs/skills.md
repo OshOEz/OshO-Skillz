@@ -22,6 +22,7 @@ Installé par le bootstrap (`osho-mantis@osho-skillz`). Lance les skills [google
 |---|---|---|
 | `mantis-triage` | Skill | Triage court : inventaire, zones à risque, niveau recommandé (Light, Sharp, Savage, Overkill) avec estimation de quota, dossier `osho-mantis/audit-<date>_<heure>/` |
 | `mantis-run` | Skill | Campagne au niveau choisi, un sous-agent par étape Mantis, reprise après coupure, rapport `README.md`, `patches/`, `dashboard.html` |
+| `mantis-update` | Skill | Pour le mainteneur, dans un clone d'OshO-Skillz : analyse par un sous-agent les commits de google/mantis depuis la version figée (utile, ce qui casse `mantis-run`, suspect), recommande prendre, attendre ou ne pas prendre sur une page de revue ; sur « prendre », synchronise le fork, déplace `mantis.lock` et ouvre une PR sans la fusionner |
 | `check-visibility.sh` | Script | `local` / `private` / `public` / `unknown` via `gh` ; self-test : `bash skills/mantis-triage/scripts/test_check_visibility.sh` |
 | `inventory.py` | Script | Inventaire zéro token et estimations ; self-test : `python3 skills/mantis-triage/scripts/test_inventory.py` |
 | `render.py` | Script | Findings → README, patchs, dashboard, bilan ; self-test : `python3 skills/mantis-run/scripts/test_render.py` |
