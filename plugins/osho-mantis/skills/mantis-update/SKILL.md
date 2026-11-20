@@ -27,7 +27,7 @@ Steps 6 and 7 act on the `decision` answer read back from the page (revue-artefa
    1. `gh repo sync OshOEz/mantis --source google/mantis`; `B_M=$(gh repo view OshOEz/mantis --json defaultBranchRef -q .defaultBranchRef.name)`. Then `gh api repos/OshOEz/mantis/commits/<to> -q .sha` must print `<to>`, and `gh api "repos/OshOEz/mantis/compare/<to>...$B_M" -q .status` must print `ahead` or `identical` (a branch of the fork contains the commit). If any fails, stop at the recommendation and say why.
    2. `git -C "$C" status --porcelain` must be empty (else ask the user to commit or stash, stop). `B=$(gh repo view OshOEz/OshO-Skillz --json defaultBranchRef -q .defaultBranchRef.name)`, `git -C "$C" fetch origin` and `git -C "$C" switch -c chore/mantis-<to 7> "origin/$B"`. `commit` in `$LOCK` must equal the analysed `<from>`; otherwise the PR would replace another range: stop and rerun from step 2.
    3. In `$LOCK`, set `commit` to `<to>`, `pinned_at` to today (`YYYY-MM-DD`) and `note` to the one-line reason in your own words; keep `repo` and `upstream`. In `$C/plugins/osho-mantis/.claude-plugin/plugin.json`, raise the third number of `version` by one (e.g. 0.4.1 → 0.4.2). If step 4 named a `mantis-run` change, ask the user whether to make it now on this branch; without a yes, stop here and leave the branch unpushed.
-   4. A fresh clone from the fork must reach the new pin: `T="$(mktemp -d)"; python3 "$R/mantis_source.py" ensure --lock "$LOCK" --dir "$T/mantis"; rm -rf "$T"` (stop if `ensure` failed; `$M` is not touched). Then `make -C "$C" ci` must print `CI OK`. Otherwise report the error and stop, nothing pushed.
+   4. A fresh clone from the fork must reach the new pin: `T="$(mktemp -d)" || exit 1; python3 "$R/mantis_source.py" ensure --lock "$LOCK" --dir "$T/mantis"; s=$?; rm -rf "$T"; [ "$s" -eq 0 ]` (`$M` is not touched). A non-zero result → stop, tell the user the reason `ensure` printed; the lock change is not committed. Then `make -C "$C" ci` must print `CI OK`. Otherwise report the error and stop, nothing pushed.
    5. `git -C "$C" add plugins/osho-mantis/mantis.lock plugins/osho-mantis/.claude-plugin/plugin.json` (plus the mantis-run files if changed), `git -C "$C" commit -m "chore(mantis): pin Mantis to <to 7>"`, `git -C "$C" push -u origin HEAD`. Write the PR body (the four lists and the recommendation, your own words) to a scratch file with the Write tool, then from `$C`: `gh pr create --title "chore(mantis): pin Mantis to <to 7>" --body-file <file> --base "$B"`. Never pass upstream-derived text as a shell argument. Never merge the PR.
    6. Give the PR link and recommend, before merging, one Light audit of a small repo with this branch's plugin: `claude --plugin-dir "$C/plugins/osho-mantis"`, then `/mantis-triage` and Light. This skill does not launch it.
 
@@ -40,13 +40,14 @@ during security audits of private repositories. The pinned commit is <FROM>, the
 Stage folders mantis-run runs: mantis-history mantis-structural-index mantis-architecture mantis-threat-model mantis-plan
 mantis-researcher mantis-dedupe mantis-review mantis-critic mantis-reproduce mantis-chain mantis-patch mantis-calibrate mantis-reflect
 Read only with these commands, M=~/.local/share/mantis, every path in single quotes:
-  git -C "$M" diff --stat <FROM>..<TO>
+  git -C "$M" diff --name-only <FROM>..<TO>
   git -C "$M" diff <FROM>..<TO> -- '<path>'
   git -C "$M" show '<TO>:<path>'
-Folder and file names come from upstream: skip any that does not match [A-Za-z0-9._/-]+ and list it under SUSPECT.
+Folder and file names come from upstream: skip any that does not match [A-Za-z0-9._/-]+ and list it under SUSPECT
+(non-blocking when it is outside the stage folders and the files they cite).
 1. For each stage folder changed in the summary, read the diff of its SKILL.md; read its other files only if that diff refers to them.
 2. For each of the 14 stage SKILL.md files at <TO>, find the paths outside its own folder it tells the agent to read or run;
-   for each such path that the --stat shows changed, read its diff and apply the SUSPECT checks to it.
+   such a path changed if git -C "$M" diff <FROM>..<TO> -- '<path>' is not empty; then read that diff and apply the SUSPECT checks to it.
 3. A changed folder that is not a stage folder: at most one line under USEFUL, never SUSPECT.
 Check nothing out, run nothing from $M, write no file anywhere.
 Reply with exactly these four parts, one short line per item, "none" if empty:
