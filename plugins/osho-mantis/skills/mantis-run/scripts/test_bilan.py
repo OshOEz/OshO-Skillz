@@ -68,8 +68,8 @@ def test_xss():
 
 def test_notes_rattachees():
     with tempfile.TemporaryDirectory() as tmp:
-        page = bilan.build(audit(tmp, [F(1)], notes=["id1aaaaa prérequis : définir EZYMOB_API_PASSWORD"]))
-        assert "EZYMOB_API_PASSWORD" in page.split('id="bref"')[1], "la réserve apparaît dans En bref"
+        page = bilan.build(audit(tmp, [F(1)], notes=["id1aaaaa prérequis : définir APP_API_PASSWORD"]))
+        assert "APP_API_PASSWORD" in page.split('id="bref"')[1], "la réserve apparaît dans En bref"
         page = bilan.build(audit(tmp + "/b", [F(1)], notes=["id1aaaaa relu deux fois"]))
         assert "relu deux fois" not in page.split('id="bref"')[1].split('id="echelles"')[0], "simple mention : pas une réserve"
 

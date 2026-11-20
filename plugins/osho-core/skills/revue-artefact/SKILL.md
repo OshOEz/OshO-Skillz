@@ -46,7 +46,7 @@ Pas pour : une réponse à une question de l'utilisateur, un message d'avancemen
 ```json
 {
   "titre": "Bilan SP19d",
-  "sur": "Kata · lot SP19d · 11 octobre 2026",
+  "sur": "Projet · lot 4 · 11 octobre 2026",
   "chapo": "Une ou deux phrases : où on en est, ce qu'on attend de toi.",
   "puces": ["12 tâches sur 12", "1 016 tests ✓", { "texte": "2 points ouverts", "ton": "alerte" }],
   "sections": [

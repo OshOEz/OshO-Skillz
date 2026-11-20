@@ -17,9 +17,9 @@ out=$(bash "$script" "$t/clone") && fail "branche dev reconnue comme ticket"
 [ -z "$out" ] || fail "sortie hors ticket"
 
 # Ticket à jour, base lue sur origin/HEAD
-g switch -c ticket/kat-4
+g switch -c ticket/abc-4
 out=$(bash "$script" "$t/clone") || fail "ticket non reconnu"
-[ "$out" = "$(printf 'ticket: KAT-4\nbranche: ticket/kat-4\nbase: dev\nretard: 0')" ] || fail "ticket à jour"
+[ "$out" = "$(printf 'ticket: ABC-4\nbranche: ticket/abc-4\nbase: dev\nretard: 0')" ] || fail "ticket à jour"
 
 # La base avance sur origin : retard 2
 git -C "$t/origine" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a

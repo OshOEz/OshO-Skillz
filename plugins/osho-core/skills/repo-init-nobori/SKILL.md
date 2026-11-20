@@ -1,9 +1,9 @@
 ---
-name: repo-init
+name: repo-init-nobori
 description: Activate OshO's per-repo tooling (code-review-graph graph + pre-commit hook, versioned pre-push hook) and align the repo on Nobori's Git & CI process (feat → dev → prod, local CI before push, GitHub Actions only to go to prod). Use right after `git init` or `git clone`, when opening a repo where `.code-review-graph/` is missing, when the user asks to set up, activate or initialize tools for a repo, or to audit or align a repo on the Git & CI process.
 ---
 
-# repo-init
+# repo-init-nobori
 
 Global tools (rtk, plugins, MCP server) are already installed machine-wide. This skill turns on what must be activated per repository, then checks the repo against Nobori's Git & CI process.
 
@@ -14,7 +14,7 @@ Global tools (rtk, plugins, MCP server) are already installed machine-wide. This
 3. Run the script from the repo root:
 
    ```bash
-   bash "${CLAUDE_PLUGIN_ROOT}/skills/repo-init/scripts/repo-init.sh" <repo-path>
+   bash "${CLAUDE_PLUGIN_ROOT}/skills/repo-init-nobori/scripts/repo-init.sh" <repo-path>
    ```
 
    It is idempotent: it builds the code-review-graph (or updates it), installs the code-review-graph pre-commit hook, and, if the repo has a versioned `.githooks/pre-push`, installs a relay hook that runs it. The relay works in every worktree and never uses `core.hooksPath` (which would disable the pre-commit).

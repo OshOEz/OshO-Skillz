@@ -11,14 +11,14 @@ Contexte du dépôt (sort 1 hors d'un ticket) :
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/skills/escouade/scripts/contexte.sh" [chemin] [base]
-# ticket: KAT-4 / branche: ticket/kat-4 / base: dev / retard: 3
+# ticket: ABC-4 / branche: ticket/abc-4 / base: dev / retard: 3
 ```
 
-`base` vient d'`origin/HEAD` ; passe-la en argument si le projet en a une autre (kata : `dev`).
+`base` vient d'`origin/HEAD` ; passe-la en argument si le projet en a une autre (par exemple `dev`).
 
 ## Découper : un ticket = un lot
 
-- **Un ticket Kanban par lot livrable** (une PR, un bilan), pas par tâche. Les tâches du lot sont des sous-tâches de la session (`TaskCreate`, une par tâche du plan) : elles s'affichent en haut de l'agent dans Escouade. C'est ce qui a marché sur les tickets V0.5-X de kata.
+- **Un ticket Kanban par lot livrable** (une PR, un bilan), pas par tâche. Les tâches du lot sont des sous-tâches de la session (`TaskCreate`, une par tâche du plan) : elles s'affichent en haut de l'agent dans Escouade.
 - **Plusieurs tickets** seulement pour des lots indépendants (fichiers disjoints, testables seuls), qui peuvent tourner en parallèle. Si un lot dépend d'un autre, crée-le **après** la fusion du premier, pour qu'il parte d'une base à jour.
 - Chaque ticket porte ses critères d'acceptation vérifiables (une commande, un test, un écran).
 - Le découpage se fait depuis une session classique (hors ticket), avec superpowers:brainstorming puis writing-plans si c'est complexe, puis le MCP Escouade pour créer les tickets.
@@ -39,7 +39,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/skills/escouade/scripts/contexte.sh" [chemin] [base]
 2. `git push origin <base>` : sinon la base locale diverge d'`origin` et les tickets suivants partent d'une base fausse.
 3. Fermer la PR d'audit : `gh pr close <n> --comment "Fusionné via le Kanban d'Escouade (<sha>)."`
 
-Ne jamais fusionner aussi la PR sur GitHub : sur kata, KAT-5 et KAT-6 ont été fusionnés deux fois (squash local par le Kanban et PR #105 et #108 sur `origin/dev`) ; le `dev` local avait alors 2 commits d'avance et 40 de retard.
+Ne jamais fusionner aussi la PR sur GitHub : sur un projet, deux tickets ont été fusionnés deux fois (squash local par le Kanban et PR sur `origin/dev`) ; le `dev` local avait alors 2 commits d'avance et 40 de retard.
 
 ## Hors Escouade
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Bilan d'un audit Mantis : synthèse HTML autonome, sans JS (bilan.html et onglet Bilan du dashboard)
   python3 bilan.py <AUDIT>   écrit <AUDIT>/bilan.html
-Structure reprise de la synthèse Kata, sans note ni plafond ; style du dashboard (jetons Horizon).
+Structure de synthèse de lot, sans note ni plafond ; style du dashboard (jetons Horizon).
 """
 import re
 import sys
