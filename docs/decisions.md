@@ -1,6 +1,6 @@
 # Decisions
 
-**Reference upstream, never vendor.** Third-party plugins are installed from their own marketplaces with `autoUpdate: true`, so we always get the latest version.
+**Reference upstream plugins, never vendor them.** Third-party plugins are installed from their own marketplaces with `autoUpdate: true`, so we always get the latest version. Mantis is the exception, pinned on purpose (see below).
 
 **Hooks live in the osho-core plugin, not in `settings.json`.** Versioned, and installed or removed in one command. Exception: rtk's hook, which `rtk init -g` manages itself.
 
