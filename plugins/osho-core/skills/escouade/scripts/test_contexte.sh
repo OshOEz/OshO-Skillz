@@ -2,6 +2,8 @@
 # Auto-test de contexte.sh sur des dépôts jetables
 #   bash test_contexte.sh
 set -eu
+# Un GIT_DIR hérité (hook pre-push d'un worktree lié) ferait écrire les dépôts de test dans le vrai dépôt.
+unset $(git rev-parse --local-env-vars)
 script="$(cd "$(dirname "$0")" && pwd)/contexte.sh"
 t=$(mktemp -d)
 trap 'rm -rf "$t"' EXIT

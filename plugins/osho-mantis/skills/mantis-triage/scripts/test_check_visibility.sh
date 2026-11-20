@@ -2,6 +2,8 @@
 # Auto-test de check-visibility.sh avec un faux gh dans le PATH
 #   bash test_check_visibility.sh
 set -eu
+# Un GIT_DIR hérité (hook pre-push d'un worktree lié) ferait écrire les dépôts de test dans le vrai dépôt.
+unset $(git rev-parse --local-env-vars)
 here=$(cd "$(dirname "$0")" && pwd)
 script="$here/check-visibility.sh"
 t=$(mktemp -d)

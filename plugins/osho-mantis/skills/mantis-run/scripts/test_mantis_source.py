@@ -12,6 +12,10 @@ from pathlib import Path
 
 os.environ["GIT_CONFIG_GLOBAL"] = os.devnull  # aucun réglage de la machine dans les dépôts de test
 os.environ["MANTIS_SOURCE_ALLOW_LOCAL"] = "1"  # dépôts de test en chemins locaux, pas en https
+# Un GIT_DIR hérité (hook pre-push d'un worktree lié) ferait écrire les dépôts de test dans le vrai dépôt.
+for _k in subprocess.run(["git", "rev-parse", "--local-env-vars"], capture_output=True, text=True).stdout.split():
+    os.environ.pop(_k, None)
+
 import mantis_source as ms
 
 HERE = Path(__file__).resolve().parent
@@ -52,8 +56,9 @@ def world(tmp):
     return up, fork, lock, pinned
 
 
-def run(cmd, lock, d):
-    r = subprocess.run([sys.executable, str(HERE / "mantis_source.py"), cmd, "--lock", str(lock), "--dir", str(d)],
+def run(cmd, lock, d, *extra):
+    r = subprocess.run([sys.executable, str(HERE / "mantis_source.py"), cmd, "--lock", str(lock), "--dir", str(d),
+                        *extra],
                        text=True, capture_output=True)
     return r.returncode, (json.loads(r.stdout) if r.returncode == 0 else r.stderr)
 
@@ -137,6 +142,19 @@ def test_diff_reports_contract():
         assert out["contract"] == {"missing_dirs": ["mantis-critic"], "missing_fields": ["repro_status"]}, out
         assert git(d, "rev-parse", "HEAD") == pinned  # l'amont n'est jamais extrait
 
+
+def test_ensure_commit_overrides_lock():
+    """Reprise d'un audit : le lock a bougé, l'audit garde le commit de son départ"""
+    with tempfile.TemporaryDirectory() as tmp:
+        up, fork, lock, pinned = world(tmp)
+        newer = commit(up, {"later.txt": "x"})
+        git(up, "push", "-q", str(fork), "main")
+        lock.write_text(json.dumps({"repo": str(fork), "upstream": str(up), "commit": newer}))
+        d = Path(tmp) / "mantis"
+        code, out = run("ensure", lock, d, "--commit", pinned)
+        assert code == 0 and out["commit"] == pinned and git(d, "rev-parse", "HEAD") == pinned, out
+        assert run("ensure", lock, d, "--commit", "main")[0] == 1
+        assert run("diff", lock, d, "--commit", pinned)[0] == 1
 
 
 def test_ensure_refuses_modified_copy():
