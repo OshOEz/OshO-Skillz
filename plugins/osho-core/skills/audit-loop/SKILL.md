@@ -26,12 +26,14 @@ Repo : <repo>
 <mode Escouade> Branche : <branch> · Base : <target>
 Tour <N> sur 3.
 Sortie : <issues | bloc>
-<sortie bloc> Prochain numéro : F<k>   (k = le plus grand F<n> de tout le fichier d'état + 1 ; F1 au tour 1)
+<sortie bloc> Prochain numéro : F<k>
 <Dépôt public, si c'est le cas>
 <sortie bloc, tour ≥ 2 : les constats encore ouverts, copiés du fichier d'état, et la réponse de l'auteur (bloc AUDIT:, commits Refs F<n>, ou TRAITÉES/CONTESTÉES du dev), à vérifier dans le code>
 <réponses de l'utilisateur aux questions précédentes, s'il y en a>
 <plan de référence, seulement s'il n'est ni dans le repo ni dans la PR>
 ```
+
+`<k>` = le plus grand `F<n>` de tout le fichier d'état + 1 (F1 au tour 1).
 
 À la notification :
 - Pas de bloc `TOUR / VERDICT` ; ou, en sortie `bloc`, pas de ligne `MAJEURES`, ou (tour ≥ 2) pas de ligne `PRÉCÉDENTS` pour chaque constat envoyé → réponse mal formée : relancer une fois. Second échec → remonter à l'utilisateur, arrêt.
@@ -52,13 +54,13 @@ Afficher les majeures encore ouvertes (n° ou `F<n>`, priorité, titre) et dire 
 
 ## Fichier d'état (constats gardés hors de GitHub)
 
-`~/.claude/state/audit-loop/<nom du dépôt>-<clé>.md` (mode Escouade ; nom du dépôt = dernier élément du `folder` du projet) ou `~/.claude/state/audit-loop/<dépôt>-pr<n>.md` (mode PR, constats en local) ; `mkdir -p` le dossier. Créé au tour 1 avec `état: en cours`. Il est hors de tout dépôt et peut décrire des failles : ne jamais le commiter, ni le coller dans une PR, une issue ou un commentaire. En tête, trois lignes : `SHA audité: <sha>`, `tour: <N>`, `état: en cours | approuvé | arrêté` ; puis un bloc par tour, avec `renvoyé: oui | non`.
+`~/.claude/state/audit-loop/<nom du dépôt>-<key>.md` (mode Escouade ; nom du dépôt = dernier élément du `folder` du projet ; `<key>` tel que le rend `get_ticket`, en majuscules, quelle que soit la casse tapée) ou `~/.claude/state/audit-loop/<dépôt>-pr<n>.md` (mode PR, constats en local) ; `mkdir -p` le dossier. Créé au tour 1 avec `état: en cours`. Il est hors de tout dépôt et peut décrire des failles : ne jamais le commiter, ni le coller dans une PR, une issue ou un commentaire. En tête, trois lignes : `SHA audité: <sha>`, `tour: <N>`, `état: en cours | approuvé | arrêté` ; puis un bloc par tour, avec `renvoyé: oui | non`.
 
-Au lancement, dans les deux modes : il existe, `état: en cours`, et `git -C <repo> merge-base --is-ancestor <SHA audité> <branche>` réussit (mode Escouade : `<git>`, branche `<branch>` ; en mode PR, `origin/<branche>` après `git -C <repo> fetch origin <branche>`) → reprendre, avec ses constats : si le dernier tour a des constats ouverts et `renvoyé: non` (coupure, ou renvoi refusé), faire ses correctifs (§A3 ou §B2) tels quels, sans nouvel audit ; sinon tour suivant (N = tour + 1). Sinon (approuvé, arrêté, ou SHA étranger à la branche) → tour 1, dans un fichier neuf. `état: arrêté` si la boucle finit sans approbation ni fusion.
+Au lancement, dans les deux modes : il existe, `état: en cours`, et `git -C <repo> merge-base --is-ancestor <SHA audité> <branche>` réussit (mode Escouade : `<git>`, branche `<branch>` ; en mode PR, `origin/<branche>` après `git -C <repo> fetch origin <branche>`) → reprendre, avec ses constats : si le dernier tour a des constats ouverts et `renvoyé: non` (coupure, ou renvoi refusé), faire ses correctifs (§A3 ou §B2) tels quels, sans nouvel audit ; si le dernier tour n'a aucun constat ouvert et que la branche est toujours au `SHA audité`, aller directement à la sortie (§A4 ou §B3), question comprise ; sinon tour suivant (N = tour + 1). Sinon (approuvé, arrêté, ou SHA étranger à la branche) → tour 1, dans un fichier neuf. `état: arrêté` si la boucle finit sans approbation ni fusion.
 
 ## A. Mode Escouade
 
-Ni PR ni issue dans ce mode : ce skill ne crée, ne pousse ni ne fusionne aucune PR. Escouade fait foi (skill `osho-core:escouade`). Chaque `git` de ce mode s'écrit `<git>` = `git -C <repo> -c core.fsmonitor=false -c core.pager=cat` : l'agent du ticket partage la config du dépôt, et ces deux réglages peuvent lancer un programme.
+Ni PR ni issue dans ce mode : ce skill ne crée, ne pousse ni ne fusionne aucune PR. Escouade fait foi (skill `osho-core:escouade`). Chaque `git` de ce mode s'écrit `<git>` = `git -C <repo> -c core.fsmonitor=false -c core.pager=cat` : l'agent du ticket partage la config du dépôt, et ces deux réglages peuvent lancer un programme ; `diff`, `show` et `log -p` y prennent en plus `--no-ext-diff --no-textconv`, pour la même raison (config ou attributs du dépôt).
 
 **A1. Prérequis.**
 1. `get_ticket(ticket)` : `key`, `branch` (à reprendre tel quel partout : il est en minuscules), `worktree`, `agent` (`id` ou `name`, pour `get_agent_summary`), `blocked`.
@@ -89,9 +91,9 @@ F2 contesté : <raison>
 Un constat que tu juges faux ne se corrige pas : conteste-le là, avec la raison.
 ```
 
-Boucle d'attente : `wait_ticket(tickets: [<key>], since, timeout: 240)`, rappelé avec le `since` qu'il rend, jusqu'à `column: review` avec `resting` à vrai. 8 appels au plus (environ 30 minutes) : au-delà, dire « <CLÉ> n'est pas revenu en « À revoir ». Relance `osho-core:audit-loop <CLÉ>` quand il y sera : le fichier d'état reprend au tour suivant. » et s'arrêter. Revenu → N = N + 1 → §A2.
+Boucle d'attente : `wait_ticket(tickets: [<key>], since, timeout: 240)`, rappelé avec le `since` qu'il rend, jusqu'à `column: review` avec `resting` à vrai. `gone` à vrai → dire « <CLÉ> a été supprimé : rien à reprendre. » et s'arrêter. `blocked` → dire la raison donnée par Escouade, puis la phrase de reprise ci-dessous, et s'arrêter. 8 appels au plus (environ 30 minutes) : au-delà, dire « <CLÉ> n'est pas revenu en « À revoir ». Relance `osho-core:audit-loop <CLÉ>` quand il y sera : le fichier d'état reprend au tour suivant. » et s'arrêter. Revenu → N = N + 1 → §A2.
 
-**A4. Sortie.** En 3 à 5 lignes : nombre de tours, constats corrigés, contestés levés, restants. Puis les mineures (`MINEURES` du dernier tour), les questions non bloquantes, et **une** question : « Approuver <CLÉ> ? ». Jamais d'approbation sans un oui explicite. Sur oui, n'approuver que ce qui a été audité : `<git> rev-parse <branch>` doit valoir le `SHA audité` du dernier tour sans constat ouvert, et `<git> status --porcelain` doit être vide (l'approbation commite ce qui traîne dans le worktree) ; sinon le dire et relancer un tour d'audit (§1, N + 1) au lieu d'approuver. Puis `approve_ticket(ticket)` (un refus se dit tel quel, sans réessai) ; accepté → `état: approuvé` ; la boucle d'attente de §A3, jusqu'à `column: done` ou `blocked` ; lire `outcome` dans `get_ticket` ; puis agir selon l'`action` de `get_board` exactement comme le dit `osho-core:escouade`, « Auditer et fusionner », étapes 2 et 3.
+**A4. Sortie.** En 3 à 5 lignes : nombre de tours, constats corrigés, contestés levés, restants. Puis les mineures (`MINEURES` du dernier tour), les questions non bloquantes, et **une** question : « Approuver <CLÉ> ? ». Jamais d'approbation sans un oui explicite. Sur oui, n'approuver que ce qui a été audité : `<git> rev-parse <branch>` doit valoir le `SHA audité` de l'en-tête du fichier d'état (le dernier tour audité : le tour propre, ou le dernier tour si l'utilisateur a choisi d'approuver quand même), et `<git> status --porcelain` doit être vide (l'approbation commite ce qui traîne dans le worktree) ; sinon le dire et relancer un tour d'audit (§1, N + 1) au lieu d'approuver. Puis `approve_ticket(ticket)` (un refus se dit tel quel, sans réessai) ; accepté → `état: approuvé` ; la boucle d'attente de §A3 (mêmes arrêts sur `gone`), jusqu'à `column: done` ou `blocked` ; lire `outcome` dans `get_ticket` ; puis agir selon l'`action` de `get_board` exactement comme le dit `osho-core:escouade`, « Auditer et fusionner », étapes 2 et 3.
 
 **A5. Mineures.** S'il y en a, proposer **un** ticket de suite : `create_ticket(project, title: « Suites de l'audit <CLÉ> », description: les mineures, criteria: un critère vérifiable par mineure retenue, after: [<key>])`. Le créer seulement sur oui : avec l'autopilote, il démarre seul et consomme du quota.
 

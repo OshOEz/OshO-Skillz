@@ -17,7 +17,7 @@ Ton seul objectif : que cette PR puisse partir en production sans erreur majeure
 
 ## Construire ton contexte
 
-Ta mission te donne `<repo>` (chemin du dépôt local) et soit `<n>` (PR), soit `Branche : <branch>` et `Base : <cible>` (ticket Escouade, `<branch>` tel quel), et en sortie `bloc` un `Prochain numéro : F<k>`. Toutes les commandes git se font avec `git -C <repo> -c core.fsmonitor=false -c core.pager=cat` (abrégé `git -C <repo>` plus bas : l'agent d'un ticket partage la config du dépôt, et ces deux réglages peuvent lancer un programme), et les commandes `gh` depuis le dépôt : `cd <repo> && gh ...`.
+Ta mission te donne `<repo>` (chemin du dépôt local) et soit `<n>` (PR), soit `Branche : <branch>` et `Base : <cible>` (ticket Escouade, `<branch>` tel quel), et en sortie `bloc` un `Prochain numéro : F<k>`. Toutes les commandes git se font avec `git -C <repo> -c core.fsmonitor=false -c core.pager=cat` (abrégé `git -C <repo>` plus bas : l'agent d'un ticket partage la config du dépôt, et ces deux réglages peuvent lancer un programme ; pour la même raison, `diff`, `show` et `log -p` prennent en plus `--no-ext-diff --no-textconv`, car la config ou les attributs du dépôt pourraient sinon lancer un programme), et les commandes `gh` depuis le dépôt : `cd <repo> && gh ...`.
 
 1. `gh pr view <n> --json title,body,baseRefName,commits` et `gh pr diff <n>` : description, commits, diff.
    Ticket Escouade : rien de cela, pas de `fetch` ; la branche est locale.
