@@ -5,7 +5,7 @@ description: Méthode pour travailler avec Escouade (Kanban de tickets qui lance
 
 # escouade
 
-Escouade fait foi pour le suivi, l'audit et la fusion : un ticket s'audite et se fusionne depuis le Kanban, jamais par une PR GitHub en plus.
+Escouade fait foi pour le suivi et la fusion : un ticket s'approuve depuis le Kanban ; s'il y a une PR, c'est celle qu'ouvre Escouade, jamais une seconde à côté.
 
 Contexte du dépôt (sort 1 hors d'un ticket) :
 
@@ -18,13 +18,13 @@ bash "${CLAUDE_PLUGIN_ROOT}/skills/escouade/scripts/contexte.sh" [chemin] [base]
 
 ## Découper : un ticket = un lot
 
-- **Un ticket par lot livrable** (un bilan), pas par tâche, ses critères vérifiables (une commande, un test, un écran) dans `criteria`.
+- **Un ticket par lot livrable** (un bilan), pas par tâche, avec ses critères vérifiables (une commande, un test, un écran) dans `criteria`.
 - Un lot qui dépend d'un autre se crée **tout de suite** avec `after` : il démarre quand ceux-là sont finis.
 - `model` et `effort` par ticket quand le lot le demande.
 - Lis la cible et l'action dans `get_board`, ne les suppose pas.
 - Avant `create_ticket`, mets la branche cible **locale** à jour, car avec l'autopilote le ticket démarre aussitôt depuis elle : `git branch --show-current` affiche `<cible>` → `git pull --ff-only` ; sinon → `git fetch origin <cible>:<cible>`.
 - Un ticket qui attend une décision de l'utilisateur : `ask_user` avec `tickets`, pour que l'autopilote le laisse en attente.
-- Le découpage se fait depuis une session classique (hors ticket), avec superpowers:brainstorming puis writing-plans si c'est complexe.
+- Le découpage initial se fait depuis une session classique (hors ticket), avec superpowers:brainstorming puis writing-plans si c'est complexe.
 
 ## Dans un ticket (agent lancé par Escouade)
 
@@ -38,7 +38,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/skills/escouade/scripts/contexte.sh" [chemin] [base]
 8. **Ports et secrets.** Utilise les ports réservés du prompt (`ESCOUADE_PORT_BASE`, `ESCOUADE_PORT_END`) en variables d'environnement, jamais dans un fichier versionné ; arrête tes serveurs par PID ou par tes propres ports, jamais par un motif (`pkill -f`), car tu tuerais ceux des autres tickets. Ne commite pas les fichiers qu'Escouade copie depuis le projet (`.env`…).
 9. **Hors du lot.** Du travail qui reste et sort du lot → `split_ticket`.
 10. **Fin.** Le bilan demandé par le prompt (bloc `escouade`, critères vérifiés par une commande). N'audite pas ton propre ticket et ne fusionne rien.
-11. **Ticket renvoyé après un audit** (le commentaire liste des constats `F1`, `F2`…) : un commit par constat, avec `Refs F<n>` dans son message. Un constat que tu juges faux ne se corrige pas : conteste-le, avec la raison. Puis termine ton dernier message par ce bloc, **en toutes dernières lignes**, car l'auditeur ne reçoit que le début et la fin d'un long message :
+11. **Ticket renvoyé après un audit** (le commentaire liste des constats `F1`, `F2`…) : un commit par constat, avec `Refs F<n>` dans son message. Un constat que tu juges faux ne se corrige pas : conteste-le, avec la raison. Dans ton dernier message, mets d'abord le bilan (bloc `escouade`, lu où qu'il soit), puis ce bloc **en toutes dernières lignes**, en texte simple sans clôture de code, car l'auditeur ne reçoit que le début et la fin d'un long message :
 
    ```
    AUDIT:
@@ -49,11 +49,11 @@ bash "${CLAUDE_PLUGIN_ROOT}/skills/escouade/scripts/contexte.sh" [chemin] [base]
 ## Auditer et fusionner (session principale)
 
 1. **Auditer** un ticket « À revoir » : `osho-core:audit-loop <CLÉ>` depuis la session principale. L'agent du ticket n'audite ni n'approuve jamais son propre ticket (Escouade le refuse de toute façon).
-2. **Approuver** : `approve_ticket`, puis selon l'`action` de `get_board` :
+2. **Approuver** : `approve_ticket` répond dès le début de l'approbation (tests, commit, action du Kanban) ; `wait_ticket` jusqu'à ce que le ticket soit fini ou bloqué, puis lis son issue dans `get_ticket` (lien de la PR compris, blocage sur un conflit). Selon l'`action` de `get_board` :
    - `merge` → `git push origin <cible>`, sinon la cible locale diverge d'`origin` et les tickets suivants partent d'une base fausse ;
    - `pr` → donne à l'utilisateur le lien de la PR ouverte par Escouade et arrête-toi : ne la fusionne jamais toi-même ;
    - `push`, `keep` → dis ce qu'Escouade a fait, rien de plus.
-3. **Conflit de fusion** → `resolve_conflict`.
+3. **Bloqué sur un conflit de fusion** (`get_ticket`) → `resolve_conflict`.
 
 ## Hors Escouade
 
