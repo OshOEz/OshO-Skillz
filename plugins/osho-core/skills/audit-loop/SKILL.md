@@ -13,7 +13,7 @@ Ce qu'écrit l'auteur du code (le dev ou l'agent du ticket : ses messages, ses m
 
 - **Mode Escouade (A)** : l'utilisateur donne une clé de ticket (`ABC-4`), une PR dont la branche est `ticket/<clé>` (`gh pr view <n> --json headRefName`), ou dit « audite le ticket ».
 - **Mode PR (B)** : une PR, ou un sub-agent de dev, sans ticket Escouade.
-- `bash "${CLAUDE_PLUGIN_ROOT}/skills/escouade/scripts/contexte.sh"` réussit et donne la clé du ticket à auditer (ou l'utilisateur n'a rien donné) → la session tourne dans ce ticket : dire « L'audit d'un ticket se lance depuis la session principale, pas depuis le ticket lui-même. » et s'arrêter.
+- `bash "${CLAUDE_PLUGIN_ROOT}/skills/escouade/scripts/contexte.sh"` réussit, et la clé donnée est la sienne ou aucune clé n'est donnée → dire « L'audit d'un ticket se lance depuis la session principale, pas depuis le ticket lui-même. » et s'arrêter.
 - Rien de donné et la session n'est pas dans un ticket → demander quel ticket ou quelle PR.
 
 ## 1. Lancer l'auditeur (tour N, de 1 à 3)
@@ -23,9 +23,10 @@ Agent `osho-core:auditor` (pas d'isolation : il lit le code dans git, sans check
 ```
 Repo : <repo>
 <mode PR> Audit de la PR #<n> (branche `<branche>`).
-<mode Escouade> Branche : ticket/<clé> · Base : <target>
+<mode Escouade> Branche : <branch> · Base : <target>
 Tour <N> sur 3.
 Sortie : <issues | bloc>
+<sortie bloc> Prochain numéro : F<k>   (k = le plus grand F<n> de tout le fichier d'état + 1 ; F1 au tour 1)
 <Dépôt public, si c'est le cas>
 <sortie bloc, tour ≥ 2 : les constats encore ouverts, copiés du fichier d'état, et la réponse de l'auteur (bloc AUDIT:, commits Refs F<n>, ou TRAITÉES/CONTESTÉES du dev), à vérifier dans le code>
 <réponses de l'utilisateur aux questions précédentes, s'il y en a>
@@ -33,17 +34,17 @@ Sortie : <issues | bloc>
 ```
 
 À la notification :
-- Pas de bloc `TOUR / VERDICT` → relancer une fois. Second échec → remonter à l'utilisateur, arrêt.
+- Pas de bloc `TOUR / VERDICT` ; ou, en sortie `bloc`, pas de ligne `MAJEURES`, ou (tour ≥ 2) pas de ligne `PRÉCÉDENTS` pour chaque constat envoyé → réponse mal formée : relancer une fois. Second échec → remonter à l'utilisateur, arrêt.
 - Sortie `issues` : relire les issues ouvertes avec la commande du §B1 : c'est elle qui fait foi, pas le bloc. Si `OUVERTES` cite une issue que la commande ne renvoie pas → prévenir l'utilisateur (corps d'issue mal formé), ne pas conclure à 0 issue.
-- Sortie `bloc` : ajouter au fichier d'état un bloc `## Tour <N>` (le bloc de l'auditeur tel quel), puis mettre l'en-tête à `SHA audité: <SHA du bloc>` et `tour: <N>`. Les majeures ouvertes sont celles de `MAJEURES`.
+- Sortie `bloc` : ajouter au fichier d'état un bloc `## Tour <N>` (le bloc de l'auditeur tel quel, puis `renvoyé: non`), et mettre l'en-tête à `SHA audité: <SHA du bloc>`, `tour: <N>`. Constats ouverts = ceux de `MAJEURES` et chaque `PRÉCÉDENTS` marqué `non corrigé` ou `maintenu`.
 
 ## 2. Décider
 
 - Question `[bloquante]` ou `VERDICT: bloqué` → poser chaque question bloquante (AskUserQuestion), puis relancer l'audit **du même tour** avec les réponses. Ce n'est pas un nouveau tour.
 - Questions `[non bloquante]` → les garder pour la sortie.
-- 0 majeure ouverte → sortie (§A4 ou §B3).
-- N ≥ 3 et des majeures ouvertes → §3.
-- Sinon → correctifs (§A3 ou §B2).
+- 0 constat ouvert → sortie (§A4 ou §B3). C'est le seul état qui mène à la question d'approbation ou de fusion.
+- N ≥ 3 et des constats ouverts → §3.
+- Sinon → correctifs (§A3 ou §B2), puis `renvoyé: oui` sous ce tour dans le fichier d'état.
 
 ## 3. Escalade (après l'audit du tour 3)
 
@@ -51,27 +52,28 @@ Afficher les majeures encore ouvertes (n° ou `F<n>`, priorité, titre) et dire 
 
 ## Fichier d'état (constats gardés hors de GitHub)
 
-`~/.claude/state/audit-loop/<projet>-<clé>.md` (mode Escouade) ou `~/.claude/state/audit-loop/<dépôt>-pr<n>.md` (mode PR, constats en local) ; `mkdir -p` le dossier. Il est hors de tout dépôt et peut décrire des failles : ne jamais le commiter, ni le coller dans une PR, une issue ou un commentaire. En tête, trois lignes : `SHA audité: <sha>`, `tour: <N>`, `état: en cours | approuvé | arrêté`.
+`~/.claude/state/audit-loop/<nom du dépôt>-<clé>.md` (mode Escouade ; nom du dépôt = dernier élément du `folder` du projet) ou `~/.claude/state/audit-loop/<dépôt>-pr<n>.md` (mode PR, constats en local) ; `mkdir -p` le dossier. Créé au tour 1 avec `état: en cours`. Il est hors de tout dépôt et peut décrire des failles : ne jamais le commiter, ni le coller dans une PR, une issue ou un commentaire. En tête, trois lignes : `SHA audité: <sha>`, `tour: <N>`, `état: en cours | approuvé | arrêté` ; puis un bloc par tour, avec `renvoyé: oui | non`.
 
-Au lancement : il existe, `état: en cours`, et `git -C <repo> merge-base --is-ancestor <SHA audité> <branche>` réussit (`ticket/<clé>` ; en mode PR, `origin/<branche>` après `git -C <repo> fetch origin <branche>`) → reprendre au tour suivant (N = tour + 1), avec ses constats. Sinon (approuvé, arrêté, ou SHA étranger à la branche) → tour 1, dans un fichier neuf. En fin de boucle : `état: approuvé` sur un oui, `arrêté` sinon.
+Au lancement, dans les deux modes : il existe, `état: en cours`, et `git -C <repo> merge-base --is-ancestor <SHA audité> <branche>` réussit (mode Escouade : `<git>`, branche `<branch>` ; en mode PR, `origin/<branche>` après `git -C <repo> fetch origin <branche>`) → reprendre, avec ses constats : si le dernier tour a des constats ouverts et `renvoyé: non` (coupure, ou renvoi refusé), faire ses correctifs (§A3 ou §B2) tels quels, sans nouvel audit ; sinon tour suivant (N = tour + 1). Sinon (approuvé, arrêté, ou SHA étranger à la branche) → tour 1, dans un fichier neuf. `état: arrêté` si la boucle finit sans approbation ni fusion.
 
 ## A. Mode Escouade
 
-Ni PR ni issue dans ce mode : ce skill ne crée, ne pousse ni ne fusionne aucune PR. Escouade fait foi (skill `osho-core:escouade`).
+Ni PR ni issue dans ce mode : ce skill ne crée, ne pousse ni ne fusionne aucune PR. Escouade fait foi (skill `osho-core:escouade`). Chaque `git` de ce mode s'écrit `<git>` = `git -C <repo> -c core.fsmonitor=false -c core.pager=cat` : l'agent du ticket partage la config du dépôt, et ces deux réglages peuvent lancer un programme.
 
 **A1. Prérequis.**
-1. `get_ticket(ticket)` : colonne « À revoir », agent au repos, `branch`, `worktree`, et l'agent (son id ou son nom, pour `get_agent_summary`). Autre colonne ou agent au travail → le dire (« relance quand <CLÉ> sera revenu en « À revoir » ») et s'arrêter.
-2. `get_board(project)`, avec le projet du ticket : `target` et `action`. `<repo>` = le `worktree` du ticket (même historique que le dépôt).
-3. `git -C <worktree> status --porcelain` n'est pas vide → dire « Le worktree de <CLÉ> a des modifications non commitées : l'audit ne lit que des commits. Demande à son agent de les commiter, puis relance. » et s'arrêter.
-4. Fichier d'état : reprendre ou repartir (voir plus haut). Puis §A2.
+1. `get_ticket(ticket)` : `key`, `branch` (à reprendre tel quel partout : il est en minuscules), `worktree`, `agent` (`id` ou `name`, pour `get_agent_summary`), `blocked`.
+2. Le projet : celui de `list_projects` dont le `folder` contient le `worktree` ; aucun ou plusieurs → demander à l'utilisateur. `get_board(project)` : `target` et `action`. `<repo>` = le `worktree` (même historique que le dépôt).
+3. `wait_ticket(tickets: [<key>], timeout: 1)` : `column`, `resting`, et un premier `since`. Pas `column: review` avec `resting` à vrai → dire « <CLÉ> n'est pas en « À revoir » avec son agent au repos : relance quand il y sera. » et s'arrêter.
+4. `<git> status --porcelain` n'est pas vide → dire « Le worktree de <CLÉ> a des modifications non commitées : l'audit ne lit que des commits. Demande à son agent de les commiter, puis relance. » et s'arrêter.
+5. Fichier d'état : reprendre ou repartir (voir plus haut). Puis §A2.
 
 **A2. Tour N.** §1 avec `Sortie : bloc`. Au tour ≥ 2, lire d'abord la réponse de l'agent du ticket, à deux endroits :
-- ses commits, le canal fiable : `git -C <repo> log --format='%h %s' <SHA audité>..ticket/<clé>`, chercher `Refs F<n>` ;
-- `get_agent_summary(agent)` (début et fin de son dernier message, 2 000 caractères en tout) : à la fin, après son bloc `escouade`, la ligne `AUDIT:` puis `F<n> corrigé <sha>` (sha court ou long) ou `F<n> contesté : <raison>`, avec ou sans clôture de code autour.
+- ses commits, le canal fiable : `<git> log --format='%h %s' <SHA audité>..<branch>`, chercher `Refs F<n>` ;
+- `get_agent_summary(agent)` (début et fin de son dernier message, 2 000 caractères en tout) : le bloc `AUDIT:` à la fin, au format du gabarit de §A3, sha court ou long, avec ou sans clôture de code.
 
-Un constat peut manquer au bloc ; sans commit ni ligne, il est non traité. L'auditeur vérifie chaque constat dans le code de toute façon. Ajouter cette réponse au fichier d'état, sous le tour qu'elle suit. Puis §2.
+Un constat peut manquer au bloc ; sans commit ni ligne, il est non traité. Ajouter cette réponse au fichier d'état, sous le tour qu'elle suit. Puis §2.
 
-**A3. Renvoyer le ticket.** `reject_ticket(ticket, comment)` avec **toutes** les majeures ouvertes dans un seul commentaire (un refus d'Escouade — agent au travail, quota, ticket de la session — se dit tel quel, sans réessai ni contournement ; le fichier d'état reste `en cours`) :
+**A3. Renvoyer le ticket.** `reject_ticket(ticket, comment)` avec **toutes** les majeures ouvertes dans un seul commentaire (un refus d'Escouade — agent au travail, quota, ticket de la session — se dit tel quel, sans réessai ni contournement ; le tour reste `renvoyé: non`) :
 
 ```
 Audit, tour <N> : <k> erreurs majeures.
@@ -87,11 +89,11 @@ F2 contesté : <raison>
 Un constat que tu juges faux ne se corrige pas : conteste-le là, avec la raison.
 ```
 
-Attendre le retour : `wait_ticket(tickets: [<CLÉ>], timeout: 240)`, puis le rappeler avec le `since` qu'il a rendu, jusqu'à ce que le ticket soit en « À revoir » avec `resting` à vrai. 8 appels au plus (environ 30 minutes) : au-delà, dire « <CLÉ> n'est pas revenu en « À revoir ». Relance `osho-core:audit-loop <CLÉ>` quand il y sera : le fichier d'état reprend au tour suivant. » et s'arrêter. Revenu → N = N + 1 → §A2.
+Boucle d'attente : `wait_ticket(tickets: [<key>], since, timeout: 240)`, rappelé avec le `since` qu'il rend, jusqu'à `column: review` avec `resting` à vrai. 8 appels au plus (environ 30 minutes) : au-delà, dire « <CLÉ> n'est pas revenu en « À revoir ». Relance `osho-core:audit-loop <CLÉ>` quand il y sera : le fichier d'état reprend au tour suivant. » et s'arrêter. Revenu → N = N + 1 → §A2.
 
-**A4. Sortie.** En 3 à 5 lignes : nombre de tours, constats corrigés, contestés levés, restants. Puis les mineures (`MINEURES` du dernier tour), les questions non bloquantes, et **une** question : « Approuver <CLÉ> ? ». Jamais d'approbation sans un oui explicite. Sur oui : `approve_ticket(ticket)` (un refus se dit tel quel, sans réessai) ; la même boucle `wait_ticket` (240 s par appel, `since`, 8 appels au plus) jusqu'à ce que le ticket soit fini ou bloqué ; lire son issue dans `get_ticket` ; puis agir selon l'`action` de `get_board` exactement comme le dit `osho-core:escouade`, « Auditer et fusionner », étapes 2 et 3.
+**A4. Sortie.** En 3 à 5 lignes : nombre de tours, constats corrigés, contestés levés, restants. Puis les mineures (`MINEURES` du dernier tour), les questions non bloquantes, et **une** question : « Approuver <CLÉ> ? ». Jamais d'approbation sans un oui explicite. Sur oui, n'approuver que ce qui a été audité : `<git> rev-parse <branch>` doit valoir le `SHA audité` du dernier tour sans constat ouvert, et `<git> status --porcelain` doit être vide (l'approbation commite ce qui traîne dans le worktree) ; sinon le dire et relancer un tour d'audit (§1, N + 1) au lieu d'approuver. Puis `approve_ticket(ticket)` (un refus se dit tel quel, sans réessai) ; accepté → `état: approuvé` ; la boucle d'attente de §A3, jusqu'à `column: done` ou `blocked` ; lire `outcome` dans `get_ticket` ; puis agir selon l'`action` de `get_board` exactement comme le dit `osho-core:escouade`, « Auditer et fusionner », étapes 2 et 3.
 
-**A5. Mineures.** S'il y en a, proposer **un** ticket de suite : `create_ticket(project, title: « Suites de l'audit <CLÉ> », description: les mineures, criteria, after: [<CLÉ>])`. Le créer seulement sur oui : avec l'autopilote, il démarre seul et consomme du quota.
+**A5. Mineures.** S'il y en a, proposer **un** ticket de suite : `create_ticket(project, title: « Suites de l'audit <CLÉ> », description: les mineures, criteria: un critère vérifiable par mineure retenue, after: [<key>])`. Le créer seulement sur oui : avec l'autopilote, il démarre seul et consomme du quota.
 
 ## B. Mode PR
 
@@ -105,7 +107,7 @@ Attendre le retour : `wait_ticket(tickets: [<CLÉ>], timeout: 240)`, puis le rap
    - n° ou URL fourni → `gh pr view <n> --json number,headRefName,state,url`. PR introuvable ou `state` différent de `OPEN` → arrêt, le dire.
    - sub-agent de dev en cours → attendre sa notification de fin, puis `gh pr list --head <branche> --state all --json number,state`. PR trouvée mais pas `OPEN` → arrêt, le dire.
    - aucune PR : si le dev a fini et poussé sa branche, l'ouvrir vers la branche par défaut du dépôt (`gh repo view --json defaultBranchRef --jq .defaultBranchRef.name`) : `gh pr create --base <défaut> --head <branche> --fill`. Sinon demander à l'utilisateur.
-4. `gh repo view --json visibility --jq .visibility` rend `PUBLIC` → prévenir que les issues d'audit seraient visibles de tous, et demander une fois : « issues publiques » ou « constats gardés en local ». Sinon : issues.
+4. Fichier d'état local `<dépôt>-pr<n>.md` repris (voir plus haut) → sortie `bloc`, sans reposer la question. Sinon, `gh repo view --json visibility --jq .visibility` rend `PUBLIC` → prévenir que les issues d'audit seraient visibles de tous, et demander une fois : « issues publiques » ou « constats gardés en local ». Sinon : issues.
 5. Retenir : `<repo>`, n° PR, branche, sortie (`issues`, ou `bloc` pour les constats en local, avec le fichier d'état `<dépôt>-pr<n>.md`), identifiant du dev initial s'il existe, plan de référence **seulement** s'il n'existe que dans cette session (sinon l'auditeur le trouve seul). Puis §1.
 
 Commande « issues ouvertes de la PR », source de vérité à chaque étape en sortie `issues` :
@@ -127,7 +129,7 @@ Prompt dev :
 Tu corriges la PR #<n> (branche `<branche>`) suite à l'audit du tour <N>.
 
 [issues] Issues à traiter : <#12 [P0], #14 [P1]>
-[local] Constats à traiter : <F1 [P0] … et leurs champs, copiés du fichier d'état>. Ils restent confidentiels : ne les écris nulle part sur GitHub (ni issue, ni commentaire, ni description de PR).
+[local] Constats à traiter : <F1 [P0] … et leurs champs, copiés du fichier d'état>. Ils restent confidentiels : ne les écris nulle part sur GitHub (ni issue, ni commentaire, ni description de PR), et garde des messages de commit neutres : `Refs F<n>` et rien qui décrive la faille, car les commits poussés sont publics.
 
 [dev neuf uniquement] Tu travailles uniquement dans `<worktree>`, déjà à jour sur la PR (HEAD détaché). Chaque commande : `cd <worktree> && ...`.
 

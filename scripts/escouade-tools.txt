@@ -14,3 +14,4 @@ approve_ticket
 wait_ticket
 resolve_conflict
 get_agent_summary
+list_projects
