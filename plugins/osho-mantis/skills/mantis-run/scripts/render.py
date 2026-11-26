@@ -136,7 +136,7 @@ def readme(meta, findings, unreadable, st):
     kept = sorted((f for f in findings if bucket(f) != "REJECTED"), key=lambda f: (BUCKETS.index(bucket(f)), sort_key(f)))
     rejected = [f for f in findings if bucket(f) == "REJECTED"]
     out = [f"# Audit de sécurité — {text(meta['repo_name'])}", "",
-           f"{meta['started_at'] or '?'} · niveau **{meta['level'] or '?'}** · Mantis `{meta['mantis_commit'] or '?'}`"
+           f"{meta['started_at'] or '?'} · niveau **{meta['level'] or '?'}** · Mantis `{(meta['mantis_commit'] or '?')[:7]}`"
            + (f" · durée {meta['duration']}" if meta["duration"] else ""), ""]
     if meta["level_banner"]:
         out += [text(meta["level_banner"]), ""]

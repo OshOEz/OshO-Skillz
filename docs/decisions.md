@@ -12,7 +12,7 @@
 
 **Homebrew Python and Node, first on PATH.** No pyenv/nvm; `uv tool` runs on Homebrew's Python.
 
-**Mantis is pinned to an accepted commit of the fork `OshOEz/mantis` (`plugins/osho-mantis/mantis.lock`), updated only through `/mantis-update` on the maintainer's yes.** Each osho-mantis subagent reads the `SKILL.md` of its stage from the clone in `~/.local/share/mantis`; its 19 descriptions cost nothing in other sessions, and Mantis (Apache-2.0) stays outside this MIT repo. Subagents follow those prompts, so third-party text runs only once reviewed, and the fork survives if upstream disappears.
+**Mantis is pinned to an accepted commit of the fork `OshOEz/mantis` (`plugins/osho-mantis/mantis.lock`), updated only through `/mantis-update` on the maintainer's yes.** Each osho-mantis subagent reads the `SKILL.md` of its stage from the clone in `~/.local/share/mantis`; its 19 descriptions cost nothing in other sessions, and Mantis (Apache-2.0) stays outside this MIT repo. Subagents follow those prompts, so third-party text runs only once reviewed, and the fork survives if upstream disappears. An audit keeps the commit it started with (`mantis_commit` in its `state.json`) across resumes, even if the pin moves meanwhile, and `/mantis-update` analyses on a temporary clone, so it never repoints the shared copy under a running audit.
 
 **Audit folders are versioned by default, with a guard for public repos.** An audit contains detailed vulnerabilities and exploits. The skill checks visibility with `gh`, recommends not versioning when the repo is public, and asks when visibility is unknown.
 

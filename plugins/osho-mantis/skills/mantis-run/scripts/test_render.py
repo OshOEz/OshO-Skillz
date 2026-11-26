@@ -29,7 +29,7 @@ def audit(tmp, findings, broken=False, fixes=None):
     (d / "workspace" / "findings").mkdir(parents=True)
     if fixes is not None:
         (d / "fixes.json").write_text(json.dumps(fixes))
-    (d / "campaign.json").write_text(json.dumps({"repo": "/x/demo", "level": "Light", "mantis_commit": "47099ed",
+    (d / "campaign.json").write_text(json.dumps({"repo": "/x/demo", "level": "Light", "mantis_commit": "47099edaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                                                  "started_at": "2026-10-01T14:32:00", "finished_at": "2026-10-01T15:47:00"}))
     (d / "state.json").write_text(json.dumps({"stages": {"threat-model": "done", "reproduce": "skipped"},
                                               "notes": ["reproduce sauté : niveau Light"]}))
@@ -65,6 +65,7 @@ def test_trois_findings():
         assert "**Résumé** : Clickjacking." in readme, "LOW has no executive_summary: README Résumé falls back to impact"
         assert "broken.json" in readme and "reproduce sauté : niveau Light" in readme
         assert "git apply osho-mantis/" in readme and ".._c1.diff" in readme
+        assert "Mantis `47099ed`" in readme and "47099edaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" not in readme, "commit Mantis court"
         if shutil.which("node"):
             js = Path(tmp, "check.js")
             js.write_text(re.findall(r"<script>(.*?)</script>", html, re.S)[0])
@@ -603,7 +604,6 @@ assert.strictEqual(cmdText({action: 'false_positive', finding: 'f1'}), 'Faux pos
 assert.strictEqual(cmdText({action: 'false_positive', finding: 'zz'}), 'Faux positif zz');
 assert.strictEqual(cmdText({action: 'pause'}), 'Pause');
 """)
-
 
 
 def test_etat_commande():

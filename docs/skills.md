@@ -32,7 +32,7 @@ Installé par le bootstrap (`osho-mantis@osho-skillz`). Lance les skills [google
 | `cost.py` | Script | Coût estimé (tarif public de l'API) et temps actif depuis les transcripts Claude Code → `cost.json` ; self-test : `python3 skills/mantis-run/scripts/test_cost.py` |
 | `feed.py` | Script | Fil de Claude en lecture seule pour le dashboard (texte des messages, lancement et retour des agents) ; self-test : `python3 skills/mantis-run/scripts/test_feed.py` |
 | `guard.py` | Script | Sauvegarde, contrôle et restauration des findings, `RESUME.md` après une coupure, garde du dossier de travail (`shadow-new`, `shadow-reset`, `shadow-drop`) ; self-test : `python3 skills/mantis-run/scripts/test_guard.py` |
-| `mantis_source.py` | Script | Copie de Mantis figée sur le commit de `mantis.lock` (`ensure`), commits de retard sur google/mantis (`behind`), skills changés et contrat des étapes (`diff`) ; self-test : `python3 skills/mantis-run/scripts/test_mantis_source.py` |
+| `mantis_source.py` | Script | Copie de Mantis figée sur le commit de `mantis.lock` (`ensure`, ou `ensure --commit <sha>` à la reprise d'un audit), commits de retard sur google/mantis (`behind`), skills changés et contrat des étapes (`diff`) ; self-test : `python3 skills/mantis-run/scripts/test_mantis_source.py` |
 | `mantis.lock` | Fichier | Commit accepté de Mantis, pris sur le fork `OshOEz/mantis` ; seul `/mantis-update` le change |
 
 ## Adding a skill

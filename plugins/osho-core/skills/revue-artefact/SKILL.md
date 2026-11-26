@@ -57,6 +57,11 @@ conversation : la page est publiée et ouverte comme plus haut, puis :
   s'arrête pour attendre compte dans les boucles du ticket ; à la fin, dis dans ton bilan que les réponses sont en
   attente. Sa réponse te réveille : lis alors la page (`ArtifactData` `get`, comme à l'étape 7) et agis. Si le ticket
   est déjà fini (« À revoir »), applique ce qu'elles changent sur la même branche, commite, et note-les comme à l'étape 8.
+  Si le ticket est déjà fusionné (`get_ticket` le dit, ou sa branche est dans la base), la branche n'est plus suivie :
+  ce que les réponses changent dans le code part dans un **ticket de suite** (`create_ticket`, titre « Suite de <clé> :
+  réponses de la revue », les réponses et ce qu'elles changent dans la description, un critère d'acceptation par
+  changement). Une réponse qui ne change rien au code se note seulement comme à l'étape 8. Ne rien commiter sur la
+  base ni sur une branche fusionnée.
 - **Les réponses bloquent la suite** : pas d'`ask_user` ; pose la question avec `AskUserQuestion` : « Réponds sur la
   page <lien>, puis valide ici », puis lis la page comme à l'étape 7.
 

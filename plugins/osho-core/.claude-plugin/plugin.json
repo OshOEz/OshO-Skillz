@@ -1,6 +1,6 @@
 {
   "name": "osho-core",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "Core hooks, skills and agents: repo-init-nobori (with Nobori's Git & CI process), donnees-fictives, audit-loop (auditor agent), escouade (Escouade ticket method), code-review-graph auto-update, per-session Superpowers offer, revue-artefact (plans, specs, dev reports and questions as an artifact page the user ticks).",
   "author": {
     "name": "OshOEz"

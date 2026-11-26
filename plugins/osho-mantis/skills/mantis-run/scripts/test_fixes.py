@@ -12,6 +12,10 @@ import tempfile
 import threading
 from pathlib import Path
 
+# Un GIT_DIR hérité (hook pre-push d'un worktree lié) ferait écrire les dépôts de test dans le vrai dépôt.
+for _k in subprocess.run(["git", "rev-parse", "--local-env-vars"], capture_output=True, text=True).stdout.split():
+    os.environ.pop(_k, None)
+
 import fixes
 from test_snapshot import audit as make_audit
 

@@ -2,7 +2,7 @@
 # The repo's own CI (make ci). Stops at the first failure and names the file.
 set -eu
 # A pre-push hook run from a linked worktree exports GIT_DIR; the tests build their own repositories.
-unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_PREFIX
+unset $(git rev-parse --local-env-vars)
 cd "$(dirname "$0")/.."
 fail() { echo "FAIL: $*" >&2; exit 1; }
 

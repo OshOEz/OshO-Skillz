@@ -22,7 +22,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/skills/escouade/scripts/contexte.sh" [chemin] [base]
 - Un lot qui dépend d'un autre se crée **tout de suite** avec `after` : il démarre quand ceux-là sont finis.
 - `model` et `effort` par ticket quand le lot le demande.
 - Lis la cible et l'action dans `get_board`, ne les suppose pas.
-- Avant `create_ticket`, mets la branche cible **locale** à jour, car avec l'autopilote le ticket démarre aussitôt depuis elle : `git branch --show-current` affiche `<cible>` → `git pull --ff-only` ; sinon → `git fetch origin <cible>:<cible>`.
+- Avant `create_ticket`, mets la branche cible **locale** à jour, car avec l'autopilote le ticket démarre aussitôt depuis elle : `<cible>` est extraite dans un worktree (`git worktree list --porcelain` montre `branch refs/heads/<cible>` sous `worktree <chemin>`, le dossier courant compris) → `git -C <chemin> pull --ff-only`, car git y refuse `fetch origin <cible>:<cible>` ; sinon → `git fetch origin <cible>:<cible>`.
 - Un ticket qui attend une décision de l'utilisateur : `ask_user` avec `tickets`, pour que l'autopilote le laisse en attente.
 - Le découpage initial se fait depuis une session classique (hors ticket), avec superpowers:brainstorming puis writing-plans si c'est complexe.
 
