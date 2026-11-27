@@ -2,7 +2,7 @@
 # whats-up garde v1
 """Refuse a production release (push or PR to the prod branch) that brings no newer What's up ? note.
 
-  python3 .whatsup/garde.py pre-push <remote> <url>   git pre-push hook: stdin = git's ref lines; exit 1 = refuse
+  python3 .whatsup/garde.py pre-push <remote> <url>   git pre-push hook: stdin = git's ref lines; exit 3 = refuse
   python3 .whatsup/garde.py claude                    Claude PreToolUse hook: stdin = hook JSON; exit 2 = refuse
 
 Copied into each repo at install time: a git hook cannot point at the plugin cache, whose path moves with each version.
@@ -16,8 +16,11 @@ import sys
 MESSAGE = "Pas de fiche What's up ? pour cette mise en prod : lance /whats-up, ou écris la raison."
 ZERO = re.compile(r"^0+$")
 ECHAPPE = re.compile(r"^\s*Sans nouveautés :[ \t]*\S", re.M)
-CORPS = re.compile(r"""(?:--body|-b)(?:\s+|=)(?:"((?:[^"\\]|\\.)*)"|'([^']*)'|(\S+))""")
-CORPS_FICHIER = re.compile(r"""(?:--body-file|-F)(?:\s+|=)["']?([^\s"']+)""")
+CORPS = re.compile(r"""(?<!\S)(?:--body|-b)(?:\s+|=)(?:"((?:[^"\\]|\\.)*)"|'([^']*)'|(\S+))""")
+CORPS_FICHIER = re.compile(r"""(?<!\S)(?:--body-file|-F)(?:\s+|=)["']?([^\s"']+)""")
+# A heredoc body (`--body "$(cat <<'EOF' … EOF)"`, the usual form from Claude) may hold quotes and flag-like text.
+HEREDOC = re.compile(r"""<<-?\s*(['"]?)(\w+)\1[^\n]*\n.*?^\s*\2\s*$""", re.S | re.M)
+REFUS = 3  # pre-push: its own code, so a hook can tell a refusal from a crash
 
 
 class Outillage(Exception):
@@ -53,7 +56,8 @@ def ids_sur(repo, ref, dossier):
     r = _git(repo, "show", f"{ref}:{dossier.strip('/')}/index.json")
     if r.returncode:
         return None
-    ids = json.loads(r.stdout).get("ids")
+    index = json.loads(r.stdout)
+    ids = index.get("ids") if isinstance(index, dict) else None
     if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
         raise ValueError("ids")
     return ids
@@ -68,7 +72,7 @@ def decider(part, prod):
 
 
 def _sans_corps(cmd):
-    return CORPS.sub(" ", cmd)
+    return CORPS.sub(" ", HEREDOC.sub(" ", cmd))
 
 
 def pr_vers_prod(cmd, prod):
@@ -76,17 +80,16 @@ def pr_vers_prod(cmd, prod):
     sans = _sans_corps(cmd)
     if not re.search(r"\bgh\s+pr\s+create\b", sans):
         return None
-    base = re.search(r"""(?:--base|-B)(?:\s+|=)["']?([^\s"']+)""", sans)
+    base = re.search(r"""(?<!\S)(?:--base|-B)(?:\s+|=)["']?([^\s"']+)""", sans)
     if not base or base.group(1) != prod:
         return None
-    head = re.search(r"""(?:--head|-H)(?:\s+|=)["']?([^\s"']+)""", sans)
+    head = re.search(r"""(?<!\S)(?:--head|-H)(?:\s+|=)["']?([^\s"']+)""", sans)
     return head.group(1) if head else ""
 
 
 def echappe(cmd, corps_fichier=""):
-    m = CORPS.search(cmd)
-    corps = (next(g for g in m.groups() if g is not None) if m else "").replace("\\n", "\n")
-    return bool(ECHAPPE.search(corps) or ECHAPPE.search(corps_fichier))
+    # The whole command: a body may be a heredoc whose quotes defeat any body parsing.
+    return bool(ECHAPPE.search(cmd.replace("\\n", "\n")) or ECHAPPE.search(corps_fichier))
 
 
 def poussees(lignes, prod):
@@ -128,19 +131,33 @@ def mode_pre_push(repo, entree):
         for local, distant in lignes:
             if not _juger(repo, c, local, None if ZERO.match(distant) else distant):
                 sys.stderr.write(MESSAGE + "\n")
-                return 1
+                return REFUS
     except Outillage as e:
         _avertir(e)
     return 0
 
 
+def _dossier_de_travail(defaut, donnees, cmd):
+    """Where the command runs: the hook's cwd, then a leading `cd <dir> &&`, then the repo top-level."""
+    d = donnees.get("cwd") if isinstance(donnees.get("cwd"), str) else defaut
+    m = re.match(r"""\s*cd\s+(?:"([^"]+)"|'([^']+)'|(\S+))\s*&&""", cmd)
+    if m:
+        d = os.path.join(d, os.path.expanduser(next(g for g in m.groups() if g)))
+    top = _git(d, "rev-parse", "--show-toplevel") if os.path.isdir(d) else None
+    return top.stdout.strip() if top and not top.returncode else d
+
+
 def mode_claude(repo, entree):
     try:
-        cmd = json.loads(entree)["tool_input"]["command"]
+        donnees = json.loads(entree)
+        cmd = donnees["tool_input"]["command"]
     except (ValueError, KeyError, TypeError):
         return 0
+    if not isinstance(cmd, str) or not isinstance(donnees, dict):
+        return 0
+    repo = _dossier_de_travail(repo, donnees, cmd)
     c = config(repo)
-    if not c or not isinstance(cmd, str):
+    if not c:
         return 0
     head = pr_vers_prod(cmd, c["prod"])
     if head is None:

@@ -137,11 +137,11 @@ class WhatsUp extends Base {
     const t = TEXTES[this.getAttribute('lang')] || TEXTES.fr;
     this.t = t;
     const racine = this.shadowRoot;
-    racine.innerHTML = '';
+    // The notes' CSS goes in as text only: re-serializing it (innerHTML +=) would let a `</style>` in it out.
     const style = document.createElement('style');
     style.textContent = STYLE + fiches.map((f) => f.css).join('\n');
-    racine.append(style);
-    racine.innerHTML += `
+    const gabarit = document.createElement('template');
+    gabarit.innerHTML = `
       <div class="voile">
         <div class="fenetre" role="dialog" aria-modal="true" aria-labelledby="wu-titre">
           <p class="entete"><span class="marque"></span><span class="date"></span>
@@ -157,6 +157,7 @@ class WhatsUp extends Base {
           </div>
         </div>
       </div>`;
+    racine.replaceChildren(style, gabarit.content);
     const $ = (s) => racine.querySelector(s);
     $('.marque').textContent = `✦ ${t.marque(this.getAttribute('app') || '')}`;
     $('.fermer').setAttribute('aria-label', t.fermer);

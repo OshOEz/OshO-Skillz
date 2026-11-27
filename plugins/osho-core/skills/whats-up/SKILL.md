@@ -34,15 +34,22 @@ Sinon → **Préparer une MEP**.
      ```
      L'app suit déjà ce que chaque compte a vu côté serveur → poser `vu="<id>"` avant d'insérer l'élément et écouter
      `whats-up:vu` (`event.detail.id`). Un menu « Nouveautés » → `document.querySelector('whats-up').ouvrir()`.
-   - le hook git `pre-push`, qui ne doit jamais remplacer un hook existant :
-     - le repo a un `.githooks/pre-push` versionné (relais de repo-init-nobori) ou un `$(git rev-parse --git-path hooks)/pre-push`
-       en shell → y ajouter, avant sa dernière commande :
-       `[ -f .whatsup/garde.py ] && { python3 .whatsup/garde.py pre-push "$@" || exit 1; }` ;
-     - aucun hook → créer `$(git rev-parse --git-path hooks)/pre-push` (`#!/bin/sh` + cette ligne, exécutable) ;
-     - un hook d'une autre forme (husky, lefthook, binaire) → donner la ligne à l'utilisateur pour qu'il l'ajoute.
-4. **Vérifier** : ajouter temporairement la fiche d'exemple `2026-01-01` au dossier, ouvrir l'app (ou l'aperçu) avec
-   `?whats-up=apercu`, constater qu'elle s'ouvre avec le thème ; la retirer. `WHATSUP_SANS=test git push --dry-run origin <prod>`
-   ne doit rien refuser ; sans la variable, sur une branche sans fiche, le message doit apparaître.
+   - le hook git `pre-push`, sans jamais remplacer un hook existant. L'extrait `<skill>/assets/pre-push.sh` se place
+     **juste après la ligne shebang** : il lit l'entrée de git une fois, la rend au reste du hook, ne refuse que sur le
+     code 3 du garde, et laisse passer si `python3` manque.
+     - `git config core.hooksPath` vaut `.githooks` (relais de repo-init-nobori) → l'insérer dans `.githooks/pre-push`,
+       versionné ; sinon, sans `core.hooksPath`, dans `$(git rev-parse --git-path hooks)/pre-push` s'il existe en `sh`
+       ou `bash` ;
+     - aucun hook → créer `$(git rev-parse --git-path hooks)/pre-push` (`#!/bin/sh` + l'extrait), exécutable ;
+     - tout autre cas (husky, lefthook, `core.hooksPath` vers un dossier généré, hook dans un autre langage) → ne rien
+       modifier, donner l'extrait à l'utilisateur et dire où il va.
+     Déjà là (`# >>> whats-up >>>`) → remplacer le bloc entre les deux marqueurs.
+4. **Vérifier** :
+   - la fenêtre : ajouter temporairement la fiche d'exemple `2026-01-01` au dossier, ouvrir l'app (ou l'aperçu) avec
+     `?whats-up=apercu`, constater qu'elle s'ouvre avec le thème ; la retirer ;
+   - le garde, appelé comme git l'appelle : `printf 'refs/heads/<prod> %s refs/heads/<prod> %s\n' "$(git rev-parse HEAD)" "$(git rev-parse origin/<prod>)" | python3 .whatsup/garde.py pre-push origin x; echo $?`
+     → `0` : la prod n'a pas encore d'`index.json`, cette mise en prod installe le composant. Le refus (code 3,
+     « Pas de fiche What's up ? ») ne peut apparaître qu'une fois une première fiche en prod ; ne pas le chercher avant.
 5. **Commit** `feat(whats-up): install the release notes window` sur `feat/whats-up`. Rien de plus sans l'accord de
    l'utilisateur (PR, fusion).
 
@@ -104,7 +111,8 @@ et recopier les fichiers plus récents ; ne changer la config qu'en le disant.
    1. `python3 -c 'import json,sys;[json.load(open(f)) for f in sys.argv[1:]]' <dossier>/*.json` passe ; la CI locale
       du repo, s'il en a une, est verte.
    2. Commit `feat(whats-up): release note <id>` (sans captures), sur `feat/whats-up-<id>`.
-   3. Sur le oui de l'utilisateur seulement : PR vers `base` (`gh pr create --base <base>`), ou fusion locale si le repo
+   3. Sur le oui de l'utilisateur seulement : PR vers `base` (`gh pr create --base <base> --head feat/whats-up-<id>`,
+      lancée depuis le worktree), ou fusion locale si le repo
       ne passe pas par des PR ; puis la mise en prod : les gardes laissent passer sans échappatoire. S'ils refusent, la
       fiche n'est pas sur ce qui part : vérifier la fusion, ne pas contourner.
    4. Retirer le worktree (`git worktree remove`).

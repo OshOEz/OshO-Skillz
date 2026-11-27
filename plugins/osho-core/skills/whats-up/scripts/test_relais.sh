@@ -19,4 +19,11 @@ out=$(echo '{"x":1}' | CLAUDE_PROJECT_DIR="$t/app" bash "$relais" 2>&1); code=$?
 set -e
 [ "$code" = 2 ] || fail "b: exit $code, expected 2"
 echo "$out" | grep -q 'recu:{"x":1}' || fail "b: stdin not passed: $out"
+# c. The hook's cwd (a worktree) wins over the project dir.
+mkdir -p "$t/wt/.whatsup"
+printf 'import sys\nsys.stderr.write("wt")\nsys.exit(2)\n' > "$t/wt/.whatsup/garde.py"
+set +e
+out=$(printf '{"cwd":"%s"}' "$t/wt" | CLAUDE_PROJECT_DIR="$t/vide" bash "$relais" 2>&1); code=$?
+set -e
+[ "$code" = 2 ] && [ "$out" = wt ] || fail "c: exit $code, output $out"
 echo "relais OK"
