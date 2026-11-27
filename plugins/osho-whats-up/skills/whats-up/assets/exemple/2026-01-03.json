@@ -1,0 +1,11 @@
+{
+ "id": "2026-01-03",
+ "ecrans": [
+  {
+   "etiquette": "Le tableau",
+   "titre": "Glissez une carte vers une autre colonne",
+   "texte": "Prenez la carte et déposez-la dans <b>En cours</b>. Son statut suit.",
+   "scene": "<div class=\"wu-20260103-cadre\"><img class=\"wu-20260103-etat\" src=\"2026-01-03-avant.webp\" data-sombre=\"2026-01-03-avant-sombre.webp\" alt=\"\"><img class=\"wu-20260103-etat wu-20260103-apres\" src=\"2026-01-03-apres.webp\" data-sombre=\"2026-01-03-apres-sombre.webp\" alt=\"\"><span class=\"wu-20260103-curseur\"></span></div>"
+  }
+ ]
+}

@@ -1,0 +1,17 @@
+/* A frame of the capture's size (1440 x 900), scaled into the scene; the camera moves it. */
+.wu-20260103-cadre { position: absolute; left: 0; top: 8px; width: 1440px; height: 900px; transform-origin: 0 0; transform: scale(.36);
+  animation: wu-20260103-camera .5s .2s ease-in-out forwards; }
+@keyframes wu-20260103-camera { to { transform: translate(-147px, -38px) scale(.64); } }
+.wu-20260103-etat { position: absolute; inset: 0; width: 1440px; height: 900px; }
+.wu-20260103-apres { opacity: 0; animation: wu-20260103-montre .25s 1.35s forwards; }
+@keyframes wu-20260103-montre { to { opacity: 1; } }
+.wu-20260103-curseur { position: absolute; z-index: 1; left: 436px; top: 222px; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%;
+  background: rgb(255 255 255 / .9); box-shadow: 0 0 0 3px rgb(0 0 0 / .35), 0 6px 16px rgb(0 0 0 / .4); opacity: 0;
+  animation: wu-20260103-vient .15s .7s forwards, wu-20260103-glisse .6s .8s ease-in-out forwards; }
+@keyframes wu-20260103-vient { to { opacity: 1; } }
+@keyframes wu-20260103-glisse { to { left: 830px; top: 222px; } }
+@media (prefers-reduced-motion: reduce) {
+  .wu-20260103-cadre { transform: translate(-147px, -38px) scale(.64); }
+  .wu-20260103-apres { opacity: 1; }
+  .wu-20260103-curseur { display: none; }
+}
