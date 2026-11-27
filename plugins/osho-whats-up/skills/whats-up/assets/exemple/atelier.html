@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Atelier d'exemple</title>
+<!-- The atelier contract: ?etat=<name>&theme=clair|sombre, then window.__whatsupPret = true once the screen is drawn. -->
+<style>
+  :root { --fond: #f6f6f8; --carte: #fff; --texte: #1b1b1f; --doux: #6b6b76; --bord: #e3e3ea; --accent: #4f46e5; }
+  :root[data-theme="sombre"] { --fond: #121216; --carte: #1c1c22; --texte: #ececf1; --doux: #a0a0ad; --bord: #2e2e38; --accent: #8b85ff; }
+  body { margin: 0; height: 100vh; display: grid; grid-template-columns: 220px 1fr; background: var(--fond); color: var(--texte); font: 14px system-ui, sans-serif; }
+  nav { padding: 20px 16px; border-right: 1px solid var(--bord); display: grid; gap: 6px; align-content: start; }
+  nav b { margin-bottom: 12px; } nav span { padding: 6px 10px; border-radius: 6px; color: var(--doux); } nav .ici { background: var(--carte); color: var(--texte); }
+  main { padding: 28px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; align-content: start; }
+  h1 { grid-column: 1 / -1; margin: 0 0 8px; font-size: 20px; }
+  .col { display: grid; gap: 10px; align-content: start; min-height: 520px; padding: 12px; border: 1px solid var(--bord); border-radius: 10px; }
+  .col h2 { margin: 0 0 4px; font-size: 13px; color: var(--doux); }
+  .carte { padding: 12px; border: 1px solid var(--bord); border-radius: 8px; background: var(--carte); }
+  .carte small { display: block; margin-top: 6px; color: var(--doux); }
+  .deplacee { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+</style>
+</head>
+<body>
+<nav><b>Exemple</b><span class="ici">Tableau</span><span>Calendrier</span><span>Équipe</span></nav>
+<main>
+  <h1>Tableau · Lancement</h1>
+  <section class="col" id="a-faire"><h2>À faire</h2>
+    <div class="carte">Relancer le fournisseur<small>Camille · demain</small></div>
+    <div class="carte" id="devis">Valider le devis<small>Sacha · vendredi</small></div>
+  </section>
+  <section class="col" id="en-cours"><h2>En cours</h2>
+    <div class="carte">Préparer la réunion<small>Noé · aujourd'hui</small></div>
+  </section>
+  <section class="col"><h2>Fait</h2><div class="carte">Choisir la salle<small>Camille</small></div></section>
+</main>
+<script>
+  const q = new URLSearchParams(location.search);
+  document.documentElement.dataset.theme = q.get('theme') === 'sombre' ? 'sombre' : 'clair';
+  if (q.get('etat') === 'apres') {
+    const d = document.getElementById('devis');
+    d.classList.add('deplacee');
+    document.getElementById('en-cours').append(d);
+  }
+  requestAnimationFrame(() => { window.__whatsupPret = true; });
+</script>
+</body>
+</html>

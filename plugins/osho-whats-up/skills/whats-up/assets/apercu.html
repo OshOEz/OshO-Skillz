@@ -7,13 +7,14 @@
 <style>
   :root { --wu-fond: #ffffff; --wu-texte: #1b1b1f; --wu-accent: #4f46e5; --wu-doux: #6b6b76; --wu-bord: #e3e3ea; --wu-rayon: 12px; }
   body { margin: 0; min-height: 100vh; padding: 16px; box-sizing: border-box; background: #f4f4f7; color: var(--wu-texte); font: 14px system-ui, sans-serif; }
-  body.sombre { background: #0f0f12; --wu-fond: #1b1b21; --wu-texte: #ececf1; --wu-accent: #8b85ff; --wu-doux: #a0a0ad; --wu-bord: #2e2e38; }
+  :root.sombre body { background: #0f0f12; }
+  :root.sombre { --wu-fond: #1b1b21; --wu-texte: #ececf1; --wu-accent: #8b85ff; --wu-doux: #a0a0ad; --wu-bord: #2e2e38; }
   .outils { display: flex; gap: 8px; flex-wrap: wrap; }
   button { padding: 6px 12px; }
 </style>
 </head>
 <body>
-<!-- ?src=<dossier des fiches>  ?theme=<css de l'app>  ?vu=<dernière fiche vue>  ?app=  ?lang=  -->
+<!-- ?src=<dossier des fiches>  ?theme=<css de l'app>  ?vu=<dernière fiche vue>  ?app=  ?lang=  ?sombre  ?pause=<ms> -->
 <div class="outils">
   <button type="button" id="theme">Clair / sombre</button>
   <button type="button" id="rejouer">Rejouer</button>
@@ -22,15 +23,25 @@
   import './whats-up.js';
   const p = new URLSearchParams(location.search);
   if (p.get('theme')) document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: p.get('theme') }));
-  if (p.get('sombre') !== null) document.body.classList.add('sombre');
+  if (p.get('sombre') !== null) document.documentElement.classList.add('sombre');
   const el = document.createElement('whats-up');
   el.setAttribute('src', p.get('src') || './exemple/');
   el.setAttribute('app', p.get('app') || 'Exemple');
   el.setAttribute('lang', p.get('lang') || 'fr');
   // Every note newer than ?vu= is chained, the example's trapped note included; the attribute wins over localStorage.
   el.setAttribute('vu', p.get('vu') || '0000-00-00');
+  el.setAttribute('theme-sombre', '.sombre');
   document.body.append(el);
-  document.getElementById('theme').onclick = () => document.body.classList.toggle('sombre');
+  document.getElementById('theme').onclick = () => document.documentElement.classList.toggle('sombre');
+  // ?pause=<ms>: the scene's animations frozen at that time, for a capture of one moment.
+  if (p.get('pause')) {
+    const figer = () => {
+      const a = el.shadowRoot?.querySelector('.scene img, .scene div') ? el.shadowRoot.getAnimations() : [];
+      if (!a.length) return void setTimeout(figer, 50);
+      for (const x of a) { x.pause(); x.currentTime = Number(p.get('pause')); }
+    };
+    figer();
+  }
   document.getElementById('rejouer').onclick = () => location.reload();
 </script>
 </body>

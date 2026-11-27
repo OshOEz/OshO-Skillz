@@ -8,7 +8,10 @@ node --input-type=module - "$assets" <<'JS'
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 const assets = process.argv[2];
-const { dues, filtrerCss, cle } = await import(`${assets}/whats-up.js`);
+const { dues, filtrerCss, cle, imageSure } = await import(`${assets}/whats-up.js`);
+
+for (const ok of ['2026-11-27-avant.webp', './a/b.webp', 'a-sombre.webp']) assert.ok(imageSure(ok), ok);
+for (const ko of ['https://x/a.webp', '//cdn/a.webp', 'data:image/png;base64,AA', 'javascript:alert(1)', '/abs/a.webp', '../haut.webp', '', ' http://x', 'a.webp?x=//y']) assert.ok(!imageSure(ko), ko);
 
 assert.deepEqual(dues(['2026-01-01', '2026-01-02'], null), ['2026-01-02']);
 assert.deepEqual(dues(['2026-01-01', '2026-01-02', '2026-01-03'], '2026-01-01'), ['2026-01-02', '2026-01-03']);
