@@ -36,10 +36,11 @@ Sinon → **Préparer une MEP**.
       avec un compte de démo ; les états se posent par un script de données ;
    3. ni l'un ni l'autre → le dire, proposer de construire l'un des deux, et garder en attendant les scènes HTML.
    L'atelier n'entre jamais dans le build de l'app. Config : `"atelier": { "lancer": "<commande avec {port}>", "url":
-   "http://localhost:{port}/<chemin de l'atelier>" }`. Vérifier par une capture (§ Préparer une MEP, 3) de l'état par
-   défaut, regardée : l'app entière, sans donnée réelle.
+   "http://localhost:{port}/<chemin de l'atelier>" }`. Vérifier : l'atelier lancé sur un port libre,
+   `node <skill>/scripts/capturer.mjs --url "<url>?etat=defaut&theme=clair" --sortie <scratchpad>/defaut.webp`, l'image
+   regardée (l'app entière, sans donnée réelle), puis l'atelier arrêté par son PID.
 4. **Écrire**, sur une branche `feat/whats-up` :
-   - `.whatsup/config.json` : `app`, `langue` (`fr` | `en`), `prod`, `base`, `dossier`, `url`, `theme`, et
+   - `.whatsup/config.json` : `app`, `langue` (`fr` | `en`), `prod`, `base`, `dossier`, `url`, `theme`, `atelier` (étape 3), et
      `apercu` si l'app se lance en local (`{ "lancer": "<commande avec {port}>", "url": "http://localhost:{port}/?whats-up=apercu" }`) ;
    - `<dossier>/whats-up.js` (copie de `<skill>/assets/whats-up.js`) et `<dossier>/index.json` = `{ "ids": [] }` ;
    - `.whatsup/garde.py` (copie de `<skill>/scripts/garde.py`) ;
@@ -107,7 +108,7 @@ et la fiche part sur `base` avant de poser le tag.
 3. **Rédiger** :
    1. `id` = date du jour `AAAA-MM-JJ` ; déjà dans `index.json` de `<ce qui part>` → `-2`, puis `-3`…
    2. Worktree depuis `<ce qui part>`, jamais dans le dossier de l'utilisateur :
-      `git worktree add ../<nom du repo>-wt/whats-up-<id> -b feat/whats-up-<id> <ce qui part>` ; si l'aperçu lance l'app,
+      `git worktree add ../<nom du repo>-wt/whats-up-<id> -b feat/whats-up-<id> <ce qui part>` ; si l'aperçu ou l'atelier lance l'app,
       installer ses dépendances dans le worktree (son propre cache, jamais celui de l'utilisateur).
    3. Lancer l'atelier depuis le worktree, sur un port libre (commande `atelier.lancer`, `{port}` remplacé), noter le PID.
    4. Lancer un `Agent` (`general-purpose`, `model: opus`), nommé pour pouvoir le relancer, avec : le chemin de

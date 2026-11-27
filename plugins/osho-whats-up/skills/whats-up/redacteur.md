@@ -58,20 +58,20 @@ l'atelier, dans ses états (`.whatsup/atelier/etats.*` ou ce que l'atelier utili
 avec l'app : aucun vrai client, aucune vraie personne, aucun vrai chemin ni jeton. Vérifie chaque état dans l'atelier
 (`<atelier>?etat=<nom>&theme=clair`) avant de le capturer.
 
-**2. Les captures.** Pour chaque état, en clair et en sombre :
+**2. Les captures.** Pour chaque état, en clair et en sombre, avec la commande de capture qu'on t'a donnée (`<capturer>`) :
 ```
-node <capturer> --url "<atelier>?etat=<nom>&theme=clair" --sortie <dossier>/<id>-<nom>.webp
-node <capturer> --url "<atelier>?etat=<nom>&theme=sombre" --sortie <dossier>/<id>-<nom>-sombre.webp
+<capturer> --url "<atelier>?etat=<nom>&theme=clair" --sortie <dossier>/<id>-<nom>.webp
+<capturer> --url "<atelier>?etat=<nom>&theme=sombre" --sortie <dossier>/<id>-<nom>-sombre.webp
 ```
 1440 × 900, échelle 2, WebP qualité 80 (les valeurs par défaut). Regarde chaque image : l'état attendu, rien de réel,
 rien de coupé. Au plus 4 captures par écran et 1,5 Mo par fiche, thèmes compris (`--qualite 70` si besoin).
 
 **3. La mise en scène**, dans `<id>.json` et `<id>.css` :
 ```html
-<div class="wu-<id>-cadre">
-  <img class="wu-<id>-etat" src="<id>-avant.webp" data-sombre="<id>-avant-sombre.webp" alt="">
-  <img class="wu-<id>-etat wu-<id>-apres" src="<id>-apres.webp" data-sombre="<id>-apres-sombre.webp" alt="">
-  <span class="wu-<id>-curseur"></span>
+<div class="wu-<idc>-cadre">
+  <img class="wu-<idc>-etat" src="<id>-avant.webp" data-sombre="<id>-avant-sombre.webp" alt="">
+  <img class="wu-<idc>-etat wu-<idc>-apres" src="<id>-apres.webp" data-sombre="<id>-apres-sombre.webp" alt="">
+  <span class="wu-<idc>-curseur"></span>
 </div>
 ```
 - Le cadre fait 1440 × 900 (la taille de capture), `position: absolute`, `transform-origin: 0 0` ; la scène fait environ
@@ -84,7 +84,7 @@ rien de coupé. Au plus 4 captures par écran et 1,5 Mo par fiche, thèmes compr
 - `src` et `data-sombre` : des fichiers du dossier des fiches seulement, sans chemin absolu, sans `..`, sans URL.
 - L'état final est atteint en 1,5 à 2 s, puis tient. `prefers-reduced-motion` : le cadre déjà cadré, le dernier état
   visible, pas de curseur.
-- Toutes les classes et keyframes préfixées `wu-<id sans tirets>-`.
+- Toutes les classes et keyframes préfixées `wu-<idc>-`, où `<idc>` est l'id sans tirets (`2026-11-27` → `wu-20261127-`).
 
 **Sans atelier** (le repo n'en a pas, on te l'a dit) : une scène HTML + CSS, maquette simplifiée de l'écran, couleurs
 `var(--wu-fond)`, `var(--wu-texte)`, `var(--wu-accent)`, `var(--wu-doux)`, `var(--wu-bord)` seulement, modèle
