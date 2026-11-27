@@ -10,7 +10,7 @@
 
 **The audit of an Escouade ticket runs from the main session, by send-back.** Majors go back to the same agent (`reject_ticket`), the user approves from the session (`approve_ticket`), and there is no audit pull request. A ticket created per finding would start from a branch that does not hold the audited code, and an audit PR merged on GitHub as well as by the Kanban merged a project's tickets twice.
 
-**What's up ? is copied into each repo, never referenced from the plugin.** The component and the guard live in the app's repo (`<served folder>/whats-up.js`, `.whatsup/garde.py`): a git hook cannot point at the plugin cache, whose path moves with each version, and the app must work without Claude. One web component (Shadow DOM, no dependency) serves every stack, so no app gets its own insertion code to maintain.
+**What's up ? is copied into each repo, never referenced from the plugin.** The component and the guard live in the app's repo (`<served folder>/whats-up.js`, `.whatsup/garde.py`): a git hook cannot point at the plugin cache, whose path moves with each version, and the app must work without Claude. One web component (Shadow DOM, no dependency) serves every stack, so no app gets its own insertion code to maintain. It is its own plugin (`osho-whats-up`) so a project's other developers can install it without osho-core's personal hooks.
 
 **Homebrew Python and Node, first on PATH.** No pyenv/nvm; `uv tool` runs on Homebrew's Python.
 

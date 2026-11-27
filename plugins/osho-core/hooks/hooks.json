@@ -49,18 +49,6 @@
           }
         ]
       }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/whats-up.sh\"",
-            "timeout": 30
-          }
-        ]
-      }
     ]
   }
 }

@@ -1,0 +1,10 @@
+{
+  "name": "osho-whats-up",
+  "version": "0.1.0",
+  "description": "What's up ?: release notes window for any web app (React, Svelte, Tauri, HTML), a guard that asks for a note before production (git pre-push on a branch or a release tag, gh pr create), and the procedures to install it and to prepare each release (reader agent, notes to tick, writer agent, previews).",
+  "author": {
+    "name": "OshOEz"
+  },
+  "repository": "https://github.com/OshOEz/OshO-Skillz",
+  "license": "MIT"
+}

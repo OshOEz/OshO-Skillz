@@ -10,7 +10,12 @@
     {
       "name": "osho-core",
       "source": "./plugins/osho-core",
-      "description": "Core hooks, skills and agents: repo-init-nobori (with Nobori's Git & CI process), donnees-fictives, audit-loop (auditor agent), code-review-graph auto-update, per-session Superpowers offer, revue-artefact (plans, specs, dev reports and questions as an artifact page the user ticks), whats-up (release notes window for any app, with a pre-production guard)."
+      "description": "Core hooks, skills and agents: repo-init-nobori (with Nobori's Git & CI process), donnees-fictives, audit-loop (auditor agent), code-review-graph auto-update, per-session Superpowers offer, revue-artefact (plans, specs, dev reports and questions as an artifact page the user ticks)."
+    },
+    {
+      "name": "osho-whats-up",
+      "source": "./plugins/osho-whats-up",
+      "description": "What's up ?: release notes window for any web app (React, Svelte, Tauri, HTML), a guard that asks for a note before production (git pre-push on a branch or a release tag, gh pr create), and the procedures to install it and to prepare each release (reader agent, notes to tick, writer agent, previews)."
     },
     {
       "name": "osho-mantis",

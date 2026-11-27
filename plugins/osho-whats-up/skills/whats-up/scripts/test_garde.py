@@ -30,7 +30,7 @@ def ecrire_index(repo, ids):
     (d / "index.json").write_text(json.dumps({"ids": ids}))
 
 
-def depot(tmp, ids=("2026-11-20",), config=True):
+def depot(tmp, ids=("2026-11-20",), config=True, prod="main"):
     """A repo whose main holds `ids` and is pushed to a bare origin; returns its path."""
     origin = Path(tmp) / "origin.git"
     git(tmp, "init", "-q", "--bare", "-b", "main", str(origin))
@@ -40,7 +40,7 @@ def depot(tmp, ids=("2026-11-20",), config=True):
     git(repo, "config", "user.name", "t")
     if config:
         (repo / ".whatsup").mkdir()
-        (repo / ".whatsup" / "config.json").write_text(json.dumps({"prod": "main", "base": "dev", "dossier": "public/whats-up"}))
+        (repo / ".whatsup" / "config.json").write_text(json.dumps({"prod": prod, "base": "dev", "dossier": "public/whats-up"}))
     if ids is not None:
         ecrire_index(repo, list(ids))
     (repo / "a.txt").write_text("a")
@@ -186,6 +186,51 @@ class PrePush(unittest.TestCase):
             r = pre_push(repo, commit(repo), "1" * 40)
             self.assertEqual(r.returncode, 0)
             self.assertIn("vérification impossible", r.stderr)
+
+
+def pousser_tag(repo, tag, env=None):
+    sha = git(repo, "rev-parse", tag)
+    ligne = f"refs/tags/{tag} {sha} refs/tags/{tag} {Z}\n"
+    return subprocess.run([sys.executable, str(GARDE), "pre-push", "origin", "x"], cwd=repo, input=ligne,
+                          capture_output=True, text=True, env={**os.environ, **(env or {})})
+
+
+class Tags(unittest.TestCase):
+    def test_poussees_tags(self):
+        lignes = f"refs/tags/v2.3.0 aaa refs/tags/v2.3.0 {Z}\nrefs/tags/other bbb refs/tags/other {Z}\nrefs/heads/main ccc refs/heads/main ddd\n"
+        self.assertEqual(poussees(lignes, "tag:v*"), [("aaa", Z)])
+
+    def test_first_release_tag_passes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = depot(tmp, prod="tag:v*")
+            git(repo, "tag", "-a", "v1.0.0", "-m", "v1")
+            self.assertEqual(pousser_tag(repo, "v1.0.0").returncode, 0)
+
+    def test_tag_without_newer_note_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = depot(tmp, prod="tag:v*")
+            git(repo, "tag", "v1.0.0")
+            commit(repo)
+            git(repo, "tag", "-a", "v1.1.0", "-m", "v1.1")
+            r = pousser_tag(repo, "v1.1.0")
+            self.assertEqual(r.returncode, 3, r.stderr)
+            self.assertIn("Pas de fiche What's up ?", r.stderr)
+            self.assertEqual(pousser_tag(repo, "v1.1.0", {"WHATSUP_SANS": "correctif"}).returncode, 0)
+
+    def test_tag_with_newer_note_passes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = depot(tmp, prod="tag:v*")
+            git(repo, "tag", "v1.0.0")
+            ecrire_index(repo, ["2026-11-20", "2026-11-28"])
+            commit(repo)
+            git(repo, "tag", "v1.1.0")
+            self.assertEqual(pousser_tag(repo, "v1.1.0").returncode, 0)
+
+    def test_branch_push_not_judged_in_tag_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = depot(tmp, prod="tag:v*")
+            avant = git(repo, "rev-parse", "HEAD")
+            self.assertEqual(pre_push(repo, commit(repo), avant).returncode, 0)
 
 
 class Claude(unittest.TestCase):

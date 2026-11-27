@@ -12,6 +12,7 @@ MARKETPLACES=(
 )
 PLUGINS=(
   osho-core@osho-skillz
+  osho-whats-up@osho-skillz
   osho-mantis@osho-skillz
   ponytail@ponytail
   i-have-adhd@i-have-adhd
