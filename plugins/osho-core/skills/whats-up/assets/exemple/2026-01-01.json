@@ -1,0 +1,17 @@
+{
+  "id": "2026-01-01",
+  "ecrans": [
+    {
+      "etiquette": "Le tableau",
+      "titre": "Glissez une carte vers une autre colonne",
+      "texte": "Prenez la carte par son bord et déposez-la dans <b>En cours</b>. Son statut suit.",
+      "scene": "<div class=\"wu-20260101-tableau\"><div class=\"wu-20260101-col\"><span class=\"wu-20260101-titre\">À faire</span><div class=\"wu-20260101-carte\">Relancer le fournisseur</div><div class=\"wu-20260101-carte wu-20260101-mobile\">Valider le devis</div></div><div class=\"wu-20260101-col wu-20260101-cible\"><span class=\"wu-20260101-titre\">En cours</span><div class=\"wu-20260101-carte\">Préparer la réunion</div><div class=\"wu-20260101-place\"></div></div><span class=\"wu-20260101-curseur\"></span></div>"
+    },
+    {
+      "etiquette": "Les filtres",
+      "titre": "Filtrez le tableau par personne",
+      "texte": "Le bouton <b>Filtrer</b> ne garde que les cartes d'une personne. Les autres restent à un clic.",
+      "scene": "<div class=\"wu-20260101-aa\"><div class=\"wu-20260101-avant\"><span class=\"wu-20260101-titre\">Avant</span><div class=\"wu-20260101-carte\">Relancer le fournisseur</div><div class=\"wu-20260101-carte\">Valider le devis</div><div class=\"wu-20260101-carte\">Préparer la réunion</div></div><svg class=\"wu-20260101-fleche\" viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" aria-hidden=\"true\"><path d=\"M4 12h14M13 6l6 6-6 6\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"></path></svg><div class=\"wu-20260101-apres\"><span class=\"wu-20260101-titre\">Filtré : Camille</span><div class=\"wu-20260101-carte\">Valider le devis</div></div></div>"
+    }
+  ]
+}
