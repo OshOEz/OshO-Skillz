@@ -10,7 +10,8 @@ Une fiche = 1 à 5 écrans qui s'ouvrent une fois chez chaque utilisateur après
 `.css`, rien d'autre. Spec : `docs/superpowers/specs/2026-11-27-whats-up-design.md` du dépôt OshO-Skillz.
 
 `<skill>` = le « Base directory » affiché au lancement du skill. Le repo n'a pas `.whatsup/config.json` → **Installer**.
-Sinon → **Préparer une MEP**.
+Il l'a, mais sans `atelier`, ou avec un `whats-up.js` / `garde.py` plus ancien que ceux du skill (ligne de version)
+→ **Installer** en mise à niveau d'abord (voir sa fin), puis **Préparer une MEP**. Sinon → **Préparer une MEP**.
 
 ## Installer (une fois par repo)
 
@@ -73,8 +74,10 @@ Sinon → **Préparer une MEP**.
 6. **Commit** `feat(whats-up): install the release notes window` sur `feat/whats-up`. Rien de plus sans l'accord de
    l'utilisateur (PR, fusion).
 
-Relancer l'installation sur un repo installé : comparer la ligne de version (`// whats-up v<n>`, `# whats-up garde v<n>`)
-et recopier les fichiers plus récents ; ne changer la config qu'en le disant.
+Relancer l'installation sur un repo installé (mise à niveau) : comparer la ligne de version (`// whats-up v<n>`,
+`# whats-up garde v<n>`) et recopier les fichiers plus récents ; config sans `atelier` → faire l'étape 3 (construire
+l'atelier) et poser `theme-sombre` sur l'élément (étape 2) ; ne changer la config qu'en le disant. Une fiche déjà en
+prod reste telle quelle ; une fiche pas encore en prod peut être refaite en captures si l'utilisateur le demande.
 
 ## Préparer une MEP
 
