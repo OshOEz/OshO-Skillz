@@ -17,7 +17,9 @@ Sinon → **Préparer une MEP**.
 1. **Lire le repo** : stack, dossier servi tel quel (`public/`, `static/`, dossier des assets de Tauri…), layout racine
    (là où monter la fenêtre, après la connexion s'il y en a une), thème (variables CSS de `:root` et du mode sombre,
    config Tailwind, jetons du design system), branches : `prod` et `base` lues dans le Git & CI du repo (`CLAUDE.md`,
-   `docs/`, `.githooks/`), sinon demandées. Le repo pousse directement sur main → `base` = `prod`.
+   `docs/`, `.githooks/`, `.github/workflows/`), sinon demandées. Le repo pousse directement sur main → `base` = `prod`.
+   Une mise en prod qui part d'un tag (workflow `on: push: tags: ['v*']`) → `prod` = `tag:v*` (le motif du workflow) :
+   le garde juge alors le push de ce tag contre le tag précédent du même motif, et laisse passer les pushs de branches.
 2. **Proposer le thème** : une valeur pour chaque clé `fond`, `texte`, `accent`, `doux`, `bord`, `rayon`, `police`, de
    préférence les variables de l'app (`var(--card)`…), pour suivre son mode clair / sombre ; `police` = la pile de
    polices de l'app (pas `inherit` : le composant isole ses styles). Montrer l'aperçu (§ Montrer, avec la fiche
@@ -44,6 +46,9 @@ Sinon → **Préparer une MEP**.
      - tout autre cas (husky, lefthook, `core.hooksPath` vers un dossier généré, hook dans un autre langage) → ne rien
        modifier, donner l'extrait à l'utilisateur et dire où il va.
      Déjà là (`# >>> whats-up >>>`) → remplacer le bloc entre les deux marqueurs.
+     Hook versionné dans `.githooks/` mais `core.hooksPath` pas encore réglé → `git config core.hooksPath .githooks`, et
+     ajouter au README du repo la ligne à lancer une fois par développeur, avec le plugin à installer
+     (`claude plugin marketplace add OshOEz/OshO-Skillz && claude plugin install osho-whats-up@osho-skillz`).
 4. **Vérifier** :
    - la fenêtre : ajouter temporairement la fiche d'exemple `2026-01-01` au dossier, ouvrir l'app (ou l'aperçu) avec
      `?whats-up=apercu`, constater qu'elle s'ouvre avec le thème ; la retirer ;
@@ -58,7 +63,9 @@ et recopier les fichiers plus récents ; ne changer la config qu'en le disant.
 
 ## Préparer une MEP
 
-`<ce qui part>` = `origin/<base>` (ou la branche que l'utilisateur pousse, si `base` = `prod`).
+`<ce qui part>` = `origin/<base>` (ou la branche que l'utilisateur pousse, si `base` = `prod`). `prod` = `tag:<motif>` →
+`origin/<prod>` se lit « le dernier tag publié du motif » (`git describe --tags --abbrev=0 --match=<motif> origin/<base>`)
+et la fiche part sur `base` avant de poser le tag.
 
 1. **Lire** (sous-agent lecteur, `Agent` `general-purpose`, premier plan) avec ce prompt, complété :
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# whats-up garde v1
+# whats-up garde v2
 """Refuse a production release (push or PR to the prod branch) that brings no newer What's up ? note.
 
   python3 .whatsup/garde.py pre-push <remote> <url>   git pre-push hook: stdin = git's ref lines; exit 3 = refuse
@@ -7,6 +7,7 @@
 
 Copied into each repo at install time: a git hook cannot point at the plugin cache, whose path moves with each version.
 """
+import fnmatch
 import json
 import os
 import re
@@ -92,14 +93,29 @@ def echappe(cmd, corps_fichier=""):
     return bool(ECHAPPE.search(cmd.replace("\\n", "\n")) or ECHAPPE.search(corps_fichier))
 
 
+def _motif_tag(prod):
+    """`tag:v*` → `v*` (a release is a pushed tag); None when prod is a branch."""
+    return prod[4:] if prod.startswith("tag:") else None
+
+
 def poussees(lignes, prod):
-    """(local sha, remote sha) of each pushed line that updates the prod branch (deletions excluded)."""
+    """(local sha, remote sha) of each pushed line that releases to prod (deletions excluded)."""
+    motif = _motif_tag(prod)
     out = []
     for ligne in lignes.splitlines():
         champs = ligne.split()
-        if len(champs) == 4 and champs[2] == f"refs/heads/{prod}" and not ZERO.match(champs[1]):
+        if len(champs) != 4 or ZERO.match(champs[1]):
+            continue
+        ref = champs[2]
+        if (ref.startswith("refs/tags/") and fnmatch.fnmatchcase(ref[10:], motif)) if motif else ref == f"refs/heads/{prod}":
             out.append((champs[1], champs[3]))
     return out
+
+
+def _tag_precedent(repo, sha, motif):
+    """The release before `sha`: the newest matching tag reachable from its parent; None for the first release."""
+    r = _git(repo, "describe", "--tags", "--abbrev=0", f"--match={motif}", f"{sha}^{{commit}}^")
+    return r.stdout.strip() or None if not r.returncode else None
 
 
 def _juger(repo, c, part_ref, prod_ref):
@@ -128,8 +144,10 @@ def mode_pre_push(repo, entree):
     if os.environ.get("WHATSUP_SANS", "").strip():
         return 0
     try:
+        motif = _motif_tag(c["prod"])
         for local, distant in lignes:
-            if not _juger(repo, c, local, None if ZERO.match(distant) else distant):
+            prod_ref = _tag_precedent(repo, local, motif) if motif else (None if ZERO.match(distant) else distant)
+            if not _juger(repo, c, f"{local}^{{commit}}", prod_ref):
                 sys.stderr.write(MESSAGE + "\n")
                 return REFUS
     except Outillage as e:

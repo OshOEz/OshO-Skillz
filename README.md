@@ -38,6 +38,7 @@ claude plugin install osho-mantis@osho-skillz
 | [i-have-adhd](https://github.com/ayghri/i-have-adhd) | its marketplace + `OSHO.md` | Action-first answers, always on |
 | [superpowers](https://github.com/obra/superpowers) | official marketplace | Planning, TDD and debugging skills, offered per session |
 | **osho-core** | this repo | Our own skills and hooks (below) |
+| **osho-whats-up** | this repo | What's up ? release notes for any app (below) |
 | **osho-mantis** | this repo | Security audits with google/mantis on your subscription (below) |
 
 Third-party plugins are **referenced, never copied**: they auto-update from upstream.
@@ -58,7 +59,7 @@ Third-party plugins are **referenced, never copied**: they auto-update from upst
 
 ## osho-core
 
-Our own skills, agent and hooks: repo setup on Nobori's Git & CI process, invented test data from confidential documents, the audit loop, reviews as an artifact page, and What's up ? release notes for any app. Every component is listed in [docs/skills.md](docs/skills.md).
+Our own skills, agent and hooks: repo setup on Nobori's Git & CI process, invented test data from confidential documents, the audit loop, and reviews as an artifact page. Every component is listed in [docs/skills.md](docs/skills.md).
 
 ### Activate a repo
 
@@ -74,6 +75,19 @@ pre-commit: installed (.git/hooks/pre-commit)
 ```
 
 From then on the graph stays up to date on every edit and every commit.
+
+## osho-whats-up
+
+What's up ? shows a short « What's new » window in any web app (React, Svelte, Tauri, HTML) after each release, and asks for it before production. In a repo, say *"installe What's up"* once, then *"/whats-up"* before each release. The window and the guard are copied into the app's repo, so the app needs nothing from Claude.
+
+Share it with another developer without the rest of this setup:
+
+```bash
+claude plugin marketplace add OshOEz/OshO-Skillz
+claude plugin install osho-whats-up@osho-skillz
+```
+
+In a repo where the guard lives in `.githooks/pre-push`, each developer runs `git config core.hooksPath .githooks` once.
 
 ## osho-mantis
 
