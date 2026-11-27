@@ -1,0 +1,11 @@
+{
+  "id": "2026-01-02",
+  "ecrans": [
+    {
+      "etiquette": "Fiche piégée",
+      "titre": "Cette fiche doit s'afficher nettoyée",
+      "texte": "Le texte garde le <b>gras</b><script>document.title='PIÉGÉ'</script><img src=x onerror=\"document.title='PIÉGÉ'\">, rien d'autre.",
+      "scene": "<div class=\"wu-20260102-boite\" onclick=\"document.title='PIÉGÉ'\" style=\"background:url(https://exemple.invalid/x.png)\">Scène sans image ni script<img src=\"https://exemple.invalid/y.png\"><script>document.title='PIÉGÉ'</script><a href=\"javascript:alert(1)\">lien</a><iframe src=\"https://exemple.invalid\"></iframe></div>"
+    }
+  ]
+}

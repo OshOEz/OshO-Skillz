@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aperçu What's up</title>
+<style>
+  :root { --wu-fond: #ffffff; --wu-texte: #1b1b1f; --wu-accent: #4f46e5; --wu-doux: #6b6b76; --wu-bord: #e3e3ea; --wu-rayon: 12px; }
+  body { margin: 0; min-height: 100vh; padding: 16px; box-sizing: border-box; background: #f4f4f7; color: var(--wu-texte); font: 14px system-ui, sans-serif; }
+  body.sombre { background: #0f0f12; --wu-fond: #1b1b21; --wu-texte: #ececf1; --wu-accent: #8b85ff; --wu-doux: #a0a0ad; --wu-bord: #2e2e38; }
+  .outils { display: flex; gap: 8px; flex-wrap: wrap; }
+  button { padding: 6px 12px; }
+</style>
+</head>
+<body>
+<!-- ?src=<dossier des fiches>  ?theme=<css de l'app>  ?vu=<dernière fiche vue>  ?app=  ?lang=  -->
+<div class="outils">
+  <button type="button" id="theme">Clair / sombre</button>
+  <button type="button" id="rejouer">Rejouer</button>
+</div>
+<script type="module">
+  import './whats-up.js';
+  const p = new URLSearchParams(location.search);
+  if (p.get('theme')) document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: p.get('theme') }));
+  if (p.get('sombre') !== null) document.body.classList.add('sombre');
+  const el = document.createElement('whats-up');
+  el.setAttribute('src', p.get('src') || './exemple/');
+  el.setAttribute('app', p.get('app') || 'Exemple');
+  el.setAttribute('lang', p.get('lang') || 'fr');
+  // Every note newer than ?vu= is chained, the example's trapped note included; the attribute wins over localStorage.
+  el.setAttribute('vu', p.get('vu') || '0000-00-00');
+  document.body.append(el);
+  document.getElementById('theme').onclick = () => document.body.classList.toggle('sombre');
+  document.getElementById('rejouer').onclick = () => location.reload();
+</script>
+</body>
+</html>
