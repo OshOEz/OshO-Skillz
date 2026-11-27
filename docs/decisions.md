@@ -10,6 +10,8 @@
 
 **The audit of an Escouade ticket runs from the main session, by send-back.** Majors go back to the same agent (`reject_ticket`), the user approves from the session (`approve_ticket`), and there is no audit pull request. A ticket created per finding would start from a branch that does not hold the audited code, and an audit PR merged on GitHub as well as by the Kanban merged a project's tickets twice.
 
+**What's up ? is copied into each repo, never referenced from the plugin.** The component and the guard live in the app's repo (`<served folder>/whats-up.js`, `.whatsup/garde.py`): a git hook cannot point at the plugin cache, whose path moves with each version, and the app must work without Claude. One web component (Shadow DOM, no dependency) serves every stack, so no app gets its own insertion code to maintain.
+
 **Homebrew Python and Node, first on PATH.** No pyenv/nvm; `uv tool` runs on Homebrew's Python.
 
 **Mantis is pinned to an accepted commit of the fork `OshOEz/mantis` (`plugins/osho-mantis/mantis.lock`), updated only through `/mantis-update` on the maintainer's yes.** Each osho-mantis subagent reads the `SKILL.md` of its stage from the clone in `~/.local/share/mantis`; its 19 descriptions cost nothing in other sessions, and Mantis (Apache-2.0) stays outside this MIT repo. Subagents follow those prompts, so third-party text runs only once reviewed, and the fork survives if upstream disappears. An audit keeps the commit it started with (`mantis_commit` in its `state.json`) across resumes, even if the pin moves meanwhile, and `/mantis-update` analyses on a temporary clone, so it never repoints the shared copy under a running audit.

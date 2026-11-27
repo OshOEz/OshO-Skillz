@@ -58,7 +58,7 @@ Third-party plugins are **referenced, never copied**: they auto-update from upst
 
 ## osho-core
 
-Our own skills, agent and hooks: repo setup on Nobori's Git & CI process, invented test data from confidential documents, the audit loop, and reviews as an artifact page. Every component is listed in [docs/skills.md](docs/skills.md).
+Our own skills, agent and hooks: repo setup on Nobori's Git & CI process, invented test data from confidential documents, the audit loop, reviews as an artifact page, and What's up ? release notes for any app. Every component is listed in [docs/skills.md](docs/skills.md).
 
 ### Activate a repo
 
