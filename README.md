@@ -78,7 +78,7 @@ From then on the graph stays up to date on every edit and every commit.
 
 ## osho-whats-up
 
-What's up ? shows a short « What's new » window in any web app (React, Svelte, Tauri, HTML) after each release, and asks for it before production. In a repo, say *"installe What's up"* once, then *"/whats-up"* before each release. The window and the guard are copied into the app's repo, so the app needs nothing from Claude.
+What's up ? shows a short « What's new » window in any web app (React, Svelte, Tauri, HTML) after each release, and asks for it before production. Its scenes are captures of the real app, taken in an atelier (the app in a browser on invented data), then animated. In a repo, say *"installe What's up"* once, then *"/whats-up"* before each release. The window and the guard are copied into the app's repo, so the app needs nothing from Claude.
 
 Share it with another developer without the rest of this setup:
 

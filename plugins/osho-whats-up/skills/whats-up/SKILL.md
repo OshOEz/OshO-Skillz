@@ -24,7 +24,21 @@ Sinon → **Préparer une MEP**.
    préférence les variables de l'app (`var(--card)`…), pour suivre son mode clair / sombre ; `police` = la pile de
    polices de l'app (pas `inherit` : le composant isole ses styles). Montrer l'aperçu (§ Montrer, avec la fiche
    d'exemple de `<skill>/assets/exemple/`) en clair et en sombre. Plus d'un choix à faire → page `osho-core:revue-artefact`.
-3. **Écrire**, sur une branche `feat/whats-up` :
+   Repérer aussi comment l'app marque son thème sombre sur `<html>` (`[data-theme="dark"]`, `.dark`…) : c'est le
+   sélecteur `theme-sombre` ; sans marque sur `<html>`, ne pas poser l'attribut (la fenêtre suit alors le système).
+3. **Construire l'atelier** : la vraie app dans un navigateur, avec des données fictives, mise dans un état nommé par son
+   adresse. Contrat : `<url>?etat=<nom>&theme=clair|sombre`, puis `window.__whatsupPret = true` quand l'écran est dessiné.
+   Modèle minimal : `<skill>/assets/exemple/atelier.html`. Dans l'ordre de préférence, et dire lequel :
+   1. l'app a un faux backend pour ses tests (IPC simulé comme `mockIPC` de Tauri, MSW, fixtures) → une page
+      `.whatsup/atelier/atelier.html` + un point d'entrée qui monte l'app réelle sur ce faux backend, avec les états dans
+      `.whatsup/atelier/etats.*` et sa config Vite (ou équivalent) à lui, son cache hors de celui de l'utilisateur ;
+   2. l'app tourne en local avec une base de démo → l'app locale sur une base fictive à elle, jamais la base de travail,
+      avec un compte de démo ; les états se posent par un script de données ;
+   3. ni l'un ni l'autre → le dire, proposer de construire l'un des deux, et garder en attendant les scènes HTML.
+   L'atelier n'entre jamais dans le build de l'app. Config : `"atelier": { "lancer": "<commande avec {port}>", "url":
+   "http://localhost:{port}/<chemin de l'atelier>" }`. Vérifier par une capture (§ Préparer une MEP, 3) de l'état par
+   défaut, regardée : l'app entière, sans donnée réelle.
+4. **Écrire**, sur une branche `feat/whats-up` :
    - `.whatsup/config.json` : `app`, `langue` (`fr` | `en`), `prod`, `base`, `dossier`, `url`, `theme`, et
      `apercu` si l'app se lance en local (`{ "lancer": "<commande avec {port}>", "url": "http://localhost:{port}/?whats-up=apercu" }`) ;
    - `<dossier>/whats-up.js` (copie de `<skill>/assets/whats-up.js`) et `<dossier>/index.json` = `{ "ids": [] }` ;
@@ -32,7 +46,7 @@ Sinon → **Préparer une MEP**.
    - la ligne de montage dans le layout racine, thème en style :
      ```html
      <script type="module" src="<url>whats-up.js"></script>
-     <whats-up src="<url>" app="<app>" lang="<langue>" style="--wu-fond: …; --wu-texte: …; --wu-accent: …; --wu-doux: …; --wu-bord: …; --wu-rayon: …; --wu-police: …"></whats-up>
+     <whats-up src="<url>" app="<app>" lang="<langue>" theme-sombre="<sélecteur>" style="--wu-fond: …; --wu-texte: …; --wu-accent: …; --wu-doux: …; --wu-bord: …; --wu-rayon: …; --wu-police: …"></whats-up>
      ```
      L'app suit déjà ce que chaque compte a vu côté serveur → poser `vu="<id>"` avant d'insérer l'élément et écouter
      `whats-up:vu` (`event.detail.id`). Un menu « Nouveautés » → `document.querySelector('whats-up').ouvrir()`.
@@ -49,13 +63,13 @@ Sinon → **Préparer une MEP**.
      Hook versionné dans `.githooks/` mais `core.hooksPath` pas encore réglé → `git config core.hooksPath .githooks`, et
      ajouter au README du repo la ligne à lancer une fois par développeur, avec le plugin à installer
      (`claude plugin marketplace add OshOEz/OshO-Skillz && claude plugin install osho-whats-up@osho-skillz`).
-4. **Vérifier** :
+5. **Vérifier** :
    - la fenêtre : ajouter temporairement la fiche d'exemple `2026-01-01` au dossier, ouvrir l'app (ou l'aperçu) avec
      `?whats-up=apercu`, constater qu'elle s'ouvre avec le thème ; la retirer ;
    - le garde, appelé comme git l'appelle : `printf 'refs/heads/<prod> %s refs/heads/<prod> %s\n' "$(git rev-parse HEAD)" "$(git rev-parse origin/<prod>)" | python3 .whatsup/garde.py pre-push origin x; echo $?`
      → `0` : la prod n'a pas encore d'`index.json`, cette mise en prod installe le composant. Le refus (code 3,
      « Pas de fiche What's up ? ») ne peut apparaître qu'une fois une première fiche en prod ; ne pas le chercher avant.
-5. **Commit** `feat(whats-up): install the release notes window` sur `feat/whats-up`. Rien de plus sans l'accord de
+6. **Commit** `feat(whats-up): install the release notes window` sur `feat/whats-up`. Rien de plus sans l'accord de
    l'utilisateur (PR, fusion).
 
 Relancer l'installation sur un repo installé : comparer la ligne de version (`// whats-up v<n>`, `# whats-up garde v<n>`)
@@ -95,9 +109,13 @@ et la fiche part sur `base` avant de poser le tag.
    2. Worktree depuis `<ce qui part>`, jamais dans le dossier de l'utilisateur :
       `git worktree add ../<nom du repo>-wt/whats-up-<id> -b feat/whats-up-<id> <ce qui part>` ; si l'aperçu lance l'app,
       installer ses dépendances dans le worktree (son propre cache, jamais celui de l'utilisateur).
-   3. Lancer un `Agent` (`general-purpose`, `model: opus`), nommé pour pouvoir le relancer, avec : le chemin de
+   3. Lancer l'atelier depuis le worktree, sur un port libre (commande `atelier.lancer`, `{port}` remplacé), noter le PID.
+   4. Lancer un `Agent` (`general-purpose`, `model: opus`), nommé pour pouvoir le relancer, avec : le chemin de
       `<skill>/redacteur.md` (sa consigne, à lire en premier), le worktree, l'`id`, le `dossier`, le nom de l'app, les
-      nouveautés retenues (phrase, écran, forme, ref), et les fiches précédentes du dossier à lire comme modèle.
+      nouveautés retenues (phrase, écran, forme, ref), l'adresse de l'atelier, la commande de capture
+      `node <skill>/scripts/capturer.mjs` (Node ≥ 22, Chrome), et les fiches précédentes du dossier comme modèle.
+      Sans atelier (installation, cas 3) : le dire au rédacteur, qui fait des scènes HTML.
+   5. Regarder chaque capture qu'il a prise (chemins complets dans sa réponse) : aucune donnée réelle, l'état attendu.
 
 4. **Montrer** :
    1. Aperçu, sur un port libre (`python3 -c 'import socket;s=socket.socket();s.bind(("",0));print(s.getsockname()[1])'`),
@@ -117,7 +135,7 @@ et la fiche part sur `base` avant de poser le tag.
 5. **Livrer** (dans le worktree) :
    1. `python3 -c 'import json,sys;[json.load(open(f)) for f in sys.argv[1:]]' <dossier>/*.json` passe ; la CI locale
       du repo, s'il en a une, est verte.
-   2. Commit `feat(whats-up): release note <id>` (sans captures), sur `feat/whats-up-<id>`.
+   2. Commit `feat(whats-up): release note <id>` : la fiche, ses captures `.webp` et les états ajoutés à l'atelier (pas les captures de la fenêtre), sur `feat/whats-up-<id>`.
    3. Sur le oui de l'utilisateur seulement : PR vers `base` (`gh pr create --base <base> --head feat/whats-up-<id>`,
       lancée depuis le worktree), ou fusion locale si le repo
       ne passe pas par des PR ; puis la mise en prod : les gardes laissent passer sans échappatoire. S'ils refusent, la

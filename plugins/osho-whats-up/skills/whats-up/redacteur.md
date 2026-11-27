@@ -13,10 +13,13 @@ Dans le worktree et le `dossier` donnés, sans commit :
   ```
   Un écran par nouveauté retenue, dans l'ordre donné.
 - `<id>.css` : les styles des scènes.
+- `<id>-<état>.webp` et `<id>-<état>-sombre.webp` : les captures de l'app, prises dans l'atelier.
+- Dans l'atelier : les états que tes scènes demandent (voir La scène).
 - `index.json` : `<id>` ajouté à la fin de `ids` (du plus ancien au plus récent).
 
-Modèles à lire d'abord : `assets/exemple/2026-01-01.*` du skill (cadre, proportions, animation), puis les fiches
-précédentes du dossier, pour ne pas répéter leurs scènes.
+Modèle à lire d'abord : `assets/exemple/2026-01-03.*` et `assets/exemple/atelier.html` du skill (une scène faite de
+captures : cadre, caméra, curseur, enchaînement des états), puis les fiches précédentes du dossier, pour ne pas répéter
+leurs scènes.
 
 ## Le texte
 
@@ -48,25 +51,47 @@ Mauvais :
 
 ## La scène
 
-- **Tuto** : le geste montré pas à pas en animation (le curseur ou la main qui fait, l'élément qui réagit), en 2 à
-  4 temps enchaînés par `animation-delay`.
-- **Présentation** : avant / après côte à côte (ou l'un qui se transforme en l'autre), l'avant estompé.
-- HTML + CSS seulement : pas d'image, de canvas, de script, de lien, d'iframe, d'URL externe. Un SVG en ligne simple
-  (une flèche, un trait : `svg`, `path`, `line`, `circle`, `rect`, `polyline`, `polygon`, `g`) est permis. Balises
-  permises : `div span p b i strong em ul ol li br` ; attributs : `class`, `style`, `aria-hidden` et la géométrie SVG.
-  Le reste est retiré à l'affichage.
-- Une maquette dessinée de l'écran, simplifiée : les formes et les mots qu'il faut, pas une copie de toute la page.
-- Couleurs : seulement `var(--wu-fond)`, `var(--wu-texte)`, `var(--wu-accent)`, `var(--wu-doux)`, `var(--wu-bord)`,
-  et des mélanges `color-mix(in srgb, var(--wu-…) <n>%, transparent)`. Aucune couleur en dur : la fiche doit rester
-  lisible dans les thèmes clair et sombre de l'app.
-- Toutes les classes et keyframes préfixées `wu-<id sans tirets>-` (ex. `wu-20261127-carte`).
-- `prefers-reduced-motion` : le composant coupe les animations ; ajoute une règle qui pose l'état final de chaque
-  élément animé, pour que la scène figée montre le résultat.
-- La scène tient dans 340 px de haut, et dans environ 310 px de large à 390 px d'écran : pas de largeur fixe sans
-  `max-width: 100%`, `min-width: 0` sur les colonnes flex, `flex-wrap` ou une `@media (max-width: 480px)` qui resserre.
-  Aucun texte ne déborde de sa boîte. Une animation qui dépend de la largeur se calcule en `%`, pas en px.
-- L'état final de l'animation est atteint en 1,5 s au plus (les captures sont prises après), puis tient.
-- Données fictives seulement, cohérentes avec l'app ; aucun vrai client, aucune vraie personne.
+Une scène montre **la vraie app**, capturée dans l'atelier, jamais une maquette redessinée.
+
+**1. Les états.** Pour chaque écran, 1 à 4 états qui racontent le geste (« avant », « coché », « envoyé »…). Ajoute-les à
+l'atelier, dans ses états (`.whatsup/atelier/etats.*` ou ce que l'atelier utilise), avec des données fictives cohérentes
+avec l'app : aucun vrai client, aucune vraie personne, aucun vrai chemin ni jeton. Vérifie chaque état dans l'atelier
+(`<atelier>?etat=<nom>&theme=clair`) avant de le capturer.
+
+**2. Les captures.** Pour chaque état, en clair et en sombre :
+```
+node <capturer> --url "<atelier>?etat=<nom>&theme=clair" --sortie <dossier>/<id>-<nom>.webp
+node <capturer> --url "<atelier>?etat=<nom>&theme=sombre" --sortie <dossier>/<id>-<nom>-sombre.webp
+```
+1440 × 900, échelle 2, WebP qualité 80 (les valeurs par défaut). Regarde chaque image : l'état attendu, rien de réel,
+rien de coupé. Au plus 4 captures par écran et 1,5 Mo par fiche, thèmes compris (`--qualite 70` si besoin).
+
+**3. La mise en scène**, dans `<id>.json` et `<id>.css` :
+```html
+<div class="wu-<id>-cadre">
+  <img class="wu-<id>-etat" src="<id>-avant.webp" data-sombre="<id>-avant-sombre.webp" alt="">
+  <img class="wu-<id>-etat wu-<id>-apres" src="<id>-apres.webp" data-sombre="<id>-apres-sombre.webp" alt="">
+  <span class="wu-<id>-curseur"></span>
+</div>
+```
+- Le cadre fait 1440 × 900 (la taille de capture), `position: absolute`, `transform-origin: 0 0` ; la scène fait environ
+  518 × 340 : vue d'ensemble = `scale(.36)`. La **caméra** anime le `transform` du cadre vers la zone du geste :
+  `translate(-x·s, -y·s) scale(s)` pour montrer la zone qui commence en (x, y), avec `s` = 518 / largeur de la zone.
+- Les états s'empilent (`position: absolute; inset: 0; width: 1440px; height: 900px`) et se relaient par l'opacité,
+  avec `animation-delay`.
+- Le **curseur** (une pastille claire et ombrée) et les surlignages se placent en pixels de capture, dans le cadre :
+  ils suivent la caméra. Mesure les positions dans l'atelier (outils du navigateur), pas à l'œil.
+- `src` et `data-sombre` : des fichiers du dossier des fiches seulement, sans chemin absolu, sans `..`, sans URL.
+- L'état final est atteint en 1,5 à 2 s, puis tient. `prefers-reduced-motion` : le cadre déjà cadré, le dernier état
+  visible, pas de curseur.
+- Toutes les classes et keyframes préfixées `wu-<id sans tirets>-`.
+
+**Sans atelier** (le repo n'en a pas, on te l'a dit) : une scène HTML + CSS, maquette simplifiée de l'écran, couleurs
+`var(--wu-fond)`, `var(--wu-texte)`, `var(--wu-accent)`, `var(--wu-doux)`, `var(--wu-bord)` seulement, modèle
+`assets/exemple/2026-01-01.*`, mêmes règles de durée, de mouvement réduit et de préfixe. Balises permises :
+`div span p b i strong em ul ol li br img`, SVG simple (`svg path line circle rect polyline polygon g`).
+
+Réponds avec la liste des fichiers écrits, captures comprises, en chemins complets.
 
 ## Les retouches
 
