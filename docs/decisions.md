@@ -16,4 +16,4 @@
 
 **Audit folders are versioned by default, with a guard for public repos.** An audit contains detailed vulnerabilities and exploits. The skill checks visibility with `gh`, recommends not versioning when the repo is public, and asks when visibility is unknown.
 
-**Audit findings on a public repo stay local on request.** An issue on a public repository publishes the flaw before it is fixed, so `audit-loop` offers to keep the findings in a local state file instead.
+**audit-loop audits Escouade tickets only, never through GitHub issues.** Development runs on Superpowers, which already reviews each task; audit-loop's own value is the independent pass that gates `approve_ticket` on the audited commit. A pull request outside Escouade gets `/code-review`. Findings stay in a local state file, so a flaw is never published before it is fixed.

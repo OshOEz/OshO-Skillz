@@ -48,7 +48,7 @@ Pas pour : une réponse à une question de l'utilisateur, un message d'avancemen
 
 ## Dans un ticket Escouade
 
-On y est quand `bash "${CLAUDE_PLUGIN_ROOT}/skills/escouade/scripts/contexte.sh"` réussit. L'utilisateur ne suit pas la
+On y est quand `git branch --show-current` rend `ticket/<clé>`. L'utilisateur ne suit pas la
 conversation : la page est publiée et ouverte comme plus haut, puis :
 
 - **Les réponses ne bloquent pas la suite** : `ask_user` de `kind: "task"`, titre « Réponds sur la page : <titre> »,
